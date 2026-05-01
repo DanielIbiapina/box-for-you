@@ -564,10 +564,10 @@ export default function App() {
         </div>
       </header>
 
-      {/* 3 colunas: cardápio | checkout | dashboard */}
-      <main className="flex flex-1 min-h-0 overflow-hidden">
-        {/* ── Cardápio (principal, sem scroll intencional) ── */}
-        <section className="flex-[1.15] min-w-0 flex flex-col bg-gradient-to-br from-amber-100/70 via-orange-50 to-stone-100 border-r border-stone-200 px-4 py-3">
+      {/* Desktop: 3 colunas · Tablet/retrato (ex.: iPad vertical): pilha + scroll local */}
+      <main className="flex flex-1 min-h-0 flex-col overflow-hidden lg:flex-row">
+        {/* ── Cardápio ── */}
+        <section className="flex min-h-0 flex-[1.15] flex-col border-stone-200 bg-gradient-to-br from-amber-100/70 via-orange-50 to-stone-100 px-3 py-2 sm:px-4 sm:py-3 lg:border-r max-lg:max-h-[min(52dvh,520px)] max-lg:flex-none max-lg:overflow-y-auto lg:max-h-none">
           <div className="shrink-0 flex items-center justify-between gap-2 mb-2">
             <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-900/80">
               Cardápio
@@ -577,9 +577,9 @@ export default function App() {
             </span>
           </div>
 
-          <div className="flex-1 min-h-0 flex flex-col justify-center gap-y-4 py-2">
+          <div className="flex min-h-0 flex-1 flex-col justify-center gap-y-3 py-2 max-lg:justify-start sm:gap-y-4">
             {/* Cookies — cards grandes por sabor */}
-            <div className="grid grid-cols-5 gap-3 xl:gap-4 shrink-0">
+            <div className="grid shrink-0 grid-cols-5 gap-2 sm:gap-3 xl:gap-4">
               {COOKIE_FLAVORS.map((f) => {
                 const n = cart[f.id] ?? 0
                 const on = n > 0
@@ -589,8 +589,8 @@ export default function App() {
                     type="button"
                     onClick={() => addCartLine(f.id)}
                     className={[
-                      'group relative rounded-3xl px-3 py-5 xl:py-7 text-center transition-all duration-150',
-                      'min-h-[7.75rem] xl:min-h-[9rem] flex flex-col items-center justify-center gap-2',
+                      'group relative rounded-3xl px-2 py-4 text-center transition-all duration-150 sm:px-3 sm:py-5 xl:py-7',
+                      'flex min-h-[6.5rem] flex-col items-center justify-center gap-1.5 sm:min-h-[7.75rem] sm:gap-2 xl:min-h-[9rem]',
                       'active:scale-[0.97]',
                       on ? f.menuActive : f.menuIdle,
                     ].join(' ')}
@@ -709,8 +709,8 @@ export default function App() {
           </div>
         </section>
 
-        {/* ── Checkout (fixo ao centro — sem descer o cardápio) ── */}
-        <section className="w-[min(380px,32vw)] shrink-0 flex flex-col bg-stone-50 border-r border-stone-200 shadow-inner">
+        {/* ── Checkout / Finalizar ── */}
+        <section className="flex w-full shrink-0 flex-col border-stone-200 bg-stone-50 shadow-inner max-lg:max-h-[min(42dvh,420px)] max-lg:min-h-[220px] max-lg:border-b max-lg:overflow-hidden lg:w-[min(380px,32vw)] lg:max-h-none lg:border-r">
           <div className="shrink-0 px-4 py-2 border-b border-stone-200 bg-white/70">
             <div className="text-[11px] font-black uppercase tracking-widest text-stone-400">Finalizar</div>
           </div>
@@ -981,7 +981,7 @@ export default function App() {
         </section>
 
         {/* ── Dashboard à direita (scroll apenas aqui em ecrãs baixos) ── */}
-        <aside className="w-[300px] lg:w-[min(380px,28vw)] shrink-0 bg-white overflow-y-auto border-l border-stone-100">
+        <aside className="min-h-0 w-full flex-1 overflow-y-auto border-stone-100 bg-white max-lg:border-t lg:w-[min(380px,28vw)] lg:flex-none lg:shrink-0 lg:border-l">
           <div className="p-4 space-y-4">
             <div className="grid grid-cols-1 gap-2">
               <DashCardMini label="Total caixa" value={fmtEuro(metrics.total)} accent />
