@@ -70,7 +70,7 @@ const COOKIE_FLAVORS = [
     label: 'Especial Brasil (BOW)',
     short: 'BOW',
     emoji: '🇧🇷',
-    price: 3,
+    price: 3.5,
     menuIdle:
       'bg-gradient-to-br from-emerald-200 via-lime-50 to-green-950/15 border-[3px] border-emerald-700/42 shadow-xl shadow-emerald-900/18 hover:border-emerald-600',
     menuActive:
@@ -83,14 +83,14 @@ const COOKIE_FLAVORS = [
 ]
 
 const EXTRA_SINGLE = [
-  { id: 'mini', label: 'Mini cookies', short: 'Mini', emoji: '🍪', subtitle: 'Pacote mini', price: 2.5 },
+  { id: 'mini', label: 'Mini cookies', short: 'Mini', emoji: '🍪', subtitle: 'Pacote mini', price: 5 },
   {
     id: 'brigadeiros',
     label: '4 Brigadeiros',
     short: 'Brig.',
     emoji: '🟤',
     subtitle: '4 unidades',
-    price: 6,
+    price: 5,
   },
 ]
 
