@@ -21,3 +21,6 @@ create policy "Atualização pública com anon key"
   on public.business_data for update
   using (true)
   with check (true);
+
+-- Ativa Realtime (atualização automática entre dispositivos)
+alter publication supabase_realtime add table public.business_data;

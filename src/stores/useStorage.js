@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { STORAGE_SYNC_EVENT } from '../lib/syncKeys'
-import { scheduleSync } from '../lib/syncService'
+import { scheduleSync, isApplyingRemoteSync } from '../lib/syncService'
 
 function readKey(key, defaultValue) {
   try {
@@ -18,7 +18,7 @@ export function useStorage(key, defaultValue) {
   useEffect(() => {
     try {
       localStorage.setItem(key, JSON.stringify(value))
-      scheduleSync(key)
+      if (!isApplyingRemoteSync()) scheduleSync(key)
     } catch {
       // storage full or disabled
     }

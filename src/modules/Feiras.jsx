@@ -433,44 +433,60 @@ export function Feiras({ onPosModeChange }) {
 
           {/* Ações principais */}
           <div className="grid sm:grid-cols-2 gap-4">
+            {/* Iniciar Caixa */}
             <button
-              className="bfy-card p-6 flex flex-col items-center gap-3 text-center transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
               onClick={() => setView('pos')}
+              className="group relative overflow-hidden rounded-2xl p-6 flex items-center gap-4 text-left transition-all hover:scale-[1.015] active:scale-[0.99]"
+              style={{
+                background: 'linear-gradient(135deg, var(--color-success) 0%, #3a9e7a 100%)',
+                boxShadow: '0 6px 24px rgba(90,158,133,0.35)',
+              }}
             >
               <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
-                style={{ background: 'rgba(90,158,133,0.15)' }}
+                className="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
+                style={{ background: 'rgba(255,255,255,0.2)' }}
               >
-                🟢
+                🛒
               </div>
-              <div>
-                <p className="font-black text-lg" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}>
+              <div className="min-w-0">
+                <p className="font-black text-xl leading-tight" style={{ fontFamily: 'var(--font-title)', color: '#fff' }}>
                   Iniciar Caixa
                 </p>
-                <p className="text-sm mt-0.5 opacity-50" style={{ color: 'var(--color-text)' }}>
+                <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.72)' }}>
                   Abrir o sistema de vendas
                 </p>
               </div>
+              <svg className="ml-auto shrink-0 opacity-40 group-hover:opacity-70 transition-opacity" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
             </button>
 
+            {/* Gerenciar Cardápio */}
             <button
-              className="bfy-card p-6 flex flex-col items-center gap-3 text-center transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
               onClick={() => setView('manage')}
+              className="group relative overflow-hidden rounded-2xl p-6 flex items-center gap-4 text-left transition-all hover:scale-[1.015] active:scale-[0.99]"
+              style={{
+                background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%)',
+                boxShadow: '0 6px 24px rgba(194,75,41,0.30)',
+              }}
             >
               <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
-                style={{ background: 'rgba(194,75,41,0.12)' }}
+                className="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
+                style={{ background: 'rgba(255,255,255,0.18)' }}
               >
-                ⚙️
+                🍪
               </div>
-              <div>
-                <p className="font-black text-lg" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}>
-                  Gerenciar Cardápio
+              <div className="min-w-0">
+                <p className="font-black text-xl leading-tight" style={{ fontFamily: 'var(--font-title)', color: '#fff' }}>
+                  Gerir Cardápio
                 </p>
-                <p className="text-sm mt-0.5 opacity-50" style={{ color: 'var(--color-text)' }}>
+                <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.72)' }}>
                   Produtos, preços e imagens
                 </p>
               </div>
+              <svg className="ml-auto shrink-0 opacity-40 group-hover:opacity-70 transition-opacity" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
             </button>
           </div>
 

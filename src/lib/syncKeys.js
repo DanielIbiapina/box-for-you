@@ -16,4 +16,17 @@ export const SYNC_KEYS = [
   'bfy:pedidos-vendas',
 ]
 
+/** Arrays que são unidos por id ao sincronizar (evita perder vendas/pedidos simultâneos) */
+export const ARRAY_SYNC_KEYS = new Set([
+  'bfy:receitas',
+  'bfy:ingredientes',
+  'bfy:movimentacoes',
+  'bfy:eventos',
+  'cookies-sales:v1',
+  'bfy:feiras-cookies',
+  'bfy:vendas-avulsas',
+  'bfy:clientes',
+  'bfy:pedidos-vendas',
+])
+
 export const STORAGE_SYNC_EVENT = 'bfy:storage-sync'

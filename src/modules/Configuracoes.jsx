@@ -19,18 +19,20 @@ function Field({ label, children }) {
 const EMPTY_EVENTO = { nome: '', local: '', data: '', status: 'planejada' }
 
 const SYNC_LABELS = {
-  idle: 'Aguardando alterações',
+  idle: 'Sincronizado em tempo real',
   pulling: 'Baixando da nuvem…',
-  pulled: 'Dados da nuvem carregados',
+  pulled: 'Dados atualizados',
   syncing: 'Enviando para a nuvem…',
-  synced: 'Sincronizado',
+  synced: 'Guardado na nuvem',
+  merged: 'Dados fundidos com a nuvem',
+  offline: 'Sem internet — alterações em fila',
   error: 'Erro na sincronização',
 }
 
 export function Configuracoes() {
   const { config, update } = useConfiguracoes()
   const { eventos, adicionar, atualizar, remover } = useEventos()
-  const syncStatus = useSyncStatus()
+  const { status: syncStatus, online: syncOnline } = useSyncStatus()
   const [saved, setSaved] = useState(false)
   const [syncBusy, setSyncBusy] = useState(false)
   const [form, setForm] = useState({ ...config })
@@ -111,7 +113,7 @@ export function Configuracoes() {
           Backup na Nuvem
         </h2>
         <p className="text-sm opacity-60" style={{ color: 'var(--color-text)' }}>
-          Sincroniza automaticamente com o Supabase. O app continua funcionando offline na feira.
+          Sincronização em tempo real com o Supabase. Quando você ou outra pessoa altera algo, os dados atualizam automaticamente nos dois dispositivos.
         </p>
 
         {!isSupabaseConfigured ? (
@@ -131,6 +133,7 @@ export function Configuracoes() {
               <span className="text-xl">☁️</span>
               <p className="text-xs opacity-60" style={{ color: 'var(--color-text)' }}>
                 {SYNC_LABELS[syncStatus] ?? syncStatus}
+                {!syncOnline && ' · sem ligação'}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">

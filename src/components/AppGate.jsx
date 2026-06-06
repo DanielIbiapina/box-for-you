@@ -1,29 +1,45 @@
 import { useEffect, useState } from 'react'
 import { isAppLockEnabled, isUnlocked, unlock } from '../lib/appLock'
-import { initSync, pullFromCloud } from '../lib/syncService'
+import { isSupabaseConfigured } from '../lib/supabase'
+import { bootstrapSync } from '../lib/syncService'
 import App from '../App.jsx'
 
 export function AppGate() {
-  const [ready, setReady] = useState(!isAppLockEnabled)
+  const needsCloudBoot = isSupabaseConfigured
+  const [ready, setReady] = useState(!isAppLockEnabled && !needsCloudBoot)
   const [checking, setChecking] = useState(isAppLockEnabled)
+  const [booting, setBooting] = useState(!isAppLockEnabled && needsCloudBoot)
+  const [bootError, setBootError] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
+  async function loadCloudData() {
+    if (!isSupabaseConfigured) return true
+    setBooting(true)
+    setBootError('')
+    const result = await bootstrapSync()
+    setBooting(false)
+    if (!result.ok && result.reason !== 'offline') {
+      setBootError(result.reason ?? 'Não foi possível carregar os dados.')
+      return false
+    }
+    return true
+  }
+
   useEffect(() => {
     if (!isAppLockEnabled) {
-      initSync()
-      pullFromCloud()
+      loadCloudData().then((ok) => {
+        if (ok || !navigator.onLine) setReady(true)
+      })
       return
     }
 
-    isUnlocked().then((ok) => {
-      setReady(ok)
+    isUnlocked().then(async (ok) => {
       setChecking(false)
-      if (ok) {
-        initSync()
-        pullFromCloud()
-      }
+      if (!ok) return
+      const cloudOk = await loadCloudData()
+      if (cloudOk || !navigator.onLine) setReady(true)
     })
   }, [])
 
@@ -33,24 +49,53 @@ export function AppGate() {
     setBusy(true)
     const result = await unlock(password)
     if (result.ok) {
-      initSync()
-      await pullFromCloud()
-      setReady(true)
+      const cloudOk = await loadCloudData()
+      if (cloudOk || !navigator.onLine) setReady(true)
     } else {
       setError(result.reason)
     }
     setBusy(false)
   }
 
-  if (checking) {
+  if (checking || booting) {
     return (
       <div
-        className="flex h-[100dvh] items-center justify-center"
+        className="flex h-[100dvh] items-center justify-center p-6"
         style={{ background: 'var(--color-bg)' }}
       >
-        <p className="text-sm opacity-50" style={{ color: 'var(--color-text)' }}>
-          Carregando…
-        </p>
+        <div className="text-center space-y-2">
+          <p className="text-sm font-semibold opacity-70" style={{ color: 'var(--color-text)' }}>
+            {booting ? 'A carregar dados da nuvem…' : 'Carregando…'}
+          </p>
+          {booting && (
+            <p className="text-xs opacity-45" style={{ color: 'var(--color-text)' }}>
+              Garante ligação à internet para não perder alterações
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (bootError && !ready) {
+    return (
+      <div
+        className="flex h-[100dvh] items-center justify-center p-6"
+        style={{ background: 'var(--color-bg)' }}
+      >
+        <div className="bfy-card w-full max-w-sm p-8 space-y-4 text-center">
+          <p className="font-black text-lg" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}>
+            Erro ao sincronizar
+          </p>
+          <p className="text-sm opacity-60" style={{ color: 'var(--color-text)' }}>{bootError}</p>
+          <button
+            type="button"
+            className="btn-primary w-full py-3"
+            onClick={() => loadCloudData().then((ok) => ok && setReady(true))}
+          >
+            Tentar de novo
+          </button>
+        </div>
       </div>
     )
   }

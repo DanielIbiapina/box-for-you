@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useEventos } from '../stores/useEventos'
 import { usePedidosVendas } from '../stores/usePedidosVendas'
 import { useClientes } from '../stores/useClientes'
@@ -103,6 +103,8 @@ function IconTrend() {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
+const POS_INICIAL = 20
+
 export function Relatorios() {
   const { eventos } = useEventos()
   const { pedidos: pedidosVendas } = usePedidosVendas()
@@ -112,6 +114,11 @@ export function Relatorios() {
   const now = new Date()
   const [mesSelecionado, setMesSelecionado] = useState(monthKey(now))
   const [tabVendas, setTabVendas] = useState('avulsas') // 'avulsas' | 'pos'
+  const [posVisiveis, setPosVisiveis] = useState(POS_INICIAL)
+
+  useEffect(() => {
+    setPosVisiveis(POS_INICIAL)
+  }, [mesSelecionado])
 
   const meses = useMemo(() => {
     return Array.from({ length: 6 }, (_, i) => {
@@ -164,9 +171,16 @@ export function Relatorios() {
 
   // Últimas vendas POS do mês
   const posMes = useMemo(
-    () => salesPos.filter((s) => (s.createdAt ?? '').startsWith(mesSelecionado) && (s.totalEur ?? 0) > 0).slice(0, 20),
+    () => salesPos.filter((s) => (s.createdAt ?? '').startsWith(mesSelecionado) && (s.totalEur ?? 0) > 0),
     [salesPos, mesSelecionado],
   )
+
+  const posMesVisivel = useMemo(
+    () => posMes.slice(0, posVisiveis),
+    [posMes, posVisiveis],
+  )
+
+  const posRestantes = Math.max(0, posMes.length - posVisiveis)
 
   const porEvento = useMemo(() => {
     return eventos.map((ev) => {
@@ -405,7 +419,7 @@ export function Relatorios() {
               </p>
             ) : (
               <div className="space-y-1.5">
-                {posMes.map((s) => (
+                {posMesVisivel.map((s) => (
                   <div
                     key={s.id}
                     className="flex items-center gap-3 rounded-xl px-3 py-2"
@@ -424,6 +438,24 @@ export function Relatorios() {
                     </span>
                   </div>
                 ))}
+                {posRestantes > 0 && (
+                  <button
+                    type="button"
+                    className="btn-ghost w-full text-xs py-2.5 mt-1"
+                    onClick={() => setPosVisiveis((n) => Math.min(n + POS_INICIAL, posMes.length))}
+                  >
+                    Ver mais ({posRestantes} restantes)
+                  </button>
+                )}
+                {posVisiveis > POS_INICIAL && posRestantes === 0 && (
+                  <button
+                    type="button"
+                    className="btn-ghost w-full text-xs py-2.5 mt-1 opacity-60"
+                    onClick={() => setPosVisiveis(POS_INICIAL)}
+                  >
+                    Ver menos
+                  </button>
+                )}
               </div>
             )}
           </>

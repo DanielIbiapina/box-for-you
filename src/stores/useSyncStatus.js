@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { onSyncStatus } from '../lib/syncService'
 
 export function useSyncStatus() {
-  const [status, setStatus] = useState('idle')
+  const [state, setState] = useState({ status: 'idle', online: navigator.onLine })
 
-  useEffect(() => onSyncStatus(({ status: s }) => setStatus(s)), [])
+  useEffect(() => onSyncStatus(setState), [])
 
-  return status
+  return state
 }

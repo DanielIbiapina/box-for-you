@@ -8,6 +8,7 @@ import { Relatorios } from './modules/Relatorios'
 import { Feiras } from './modules/Feiras'
 import { Vendas } from './modules/Vendas'
 import { Configuracoes } from './modules/Configuracoes'
+import { SyncBar } from './components/SyncBar'
 
 // ─── Ícone SVG para o item "Vendas" no nav ────────────────────────────────────
 
@@ -200,6 +201,7 @@ export default function App() {
 
       {/* ── Área de conteúdo + bottom nav ── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <SyncBar />
         <main className={`flex-1 min-h-0 ${isFeirasPos ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           {renderModule()}
           {!isFeirasPos && <div className="md:hidden h-16" />}
