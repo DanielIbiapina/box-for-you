@@ -1,17 +1,122 @@
 @import "tailwindcss";
 
-html,
-body,
-#root {
+:root {
+  --color-primary: #1D1008;
+  --color-bg: #EFE4CB;
+  --color-surface: #FAF5ED;
+  --color-accent: #C24B29;
+  --color-accent-dark: #9A3B1C;
+  --color-text: #1D1008;
+  --color-text-light: #EFE4CB;
+  --color-success: #5A9E85;
+  --color-warning: #E8C080;
+  --radius-card: 16px;
+  --radius-btn: 10px;
+  --shadow-card: 0 4px 16px rgba(29, 16, 8, 0.10);
+  --font-title: 'Fraunces', Georgia, serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+}
+
+html, body, #root {
   height: 100%;
+  font-family: var(--font-body);
 }
 
 body {
   margin: 0;
   -webkit-tap-highlight-color: transparent;
+  background-color: var(--color-bg);
+  color: var(--color-text);
 }
 
-button,
-[role='button'] {
+button, [role='button'], input, select, textarea {
   touch-action: manipulation;
+  font-family: var(--font-body);
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(61,43,31,0.18); border-radius: 3px; }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.bfy-card { background: var(--color-surface); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+
+.btn-accent {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  background: var(--color-accent); color: var(--color-text);
+  border: none; border-radius: var(--radius-btn);
+  padding: 0.625rem 1.25rem; font-weight: 700; font-size: 0.875rem;
+  cursor: pointer; transition: opacity 0.15s, transform 0.1s;
+}
+.btn-accent:hover { opacity: 0.88; }
+.btn-accent:active { transform: scale(0.97); }
+
+.btn-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  background: var(--color-accent-dark); color: #fff;
+  border: none; border-radius: var(--radius-btn);
+  padding: 0.625rem 1.25rem; font-weight: 700; font-size: 0.875rem;
+  cursor: pointer; transition: opacity 0.15s, transform 0.1s;
+}
+.btn-primary:hover { opacity: 0.88; }
+.btn-primary:active { transform: scale(0.97); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  background: transparent; color: var(--color-text);
+  border: 1.5px solid rgba(61,43,31,0.2); border-radius: var(--radius-btn);
+  padding: 0.625rem 1.25rem; font-weight: 600; font-size: 0.875rem;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.btn-ghost:hover { border-color: var(--color-accent-dark); background: rgba(212,132,110,0.06); }
+.btn-ghost:active { transform: scale(0.97); }
+
+.bfy-input {
+  width: 100%; padding: 0.625rem 1rem;
+  border: 1.5px solid rgba(61,43,31,0.2); border-radius: 10px;
+  font-family: var(--font-body); color: var(--color-text);
+  background: #fff; font-size: 0.875rem; outline: none;
+  transition: border-color 0.15s; box-sizing: border-box;
+}
+.bfy-input:focus { border-color: var(--color-accent-dark); }
+
+.bfy-label {
+  display: block; font-size: 0.8125rem; font-weight: 600;
+  color: var(--color-text); margin-bottom: 0.3rem; opacity: 0.75;
+}
+
+.badge-ok    { background: var(--color-success); color: var(--color-text); }
+.badge-baixo { background: var(--color-warning); color: var(--color-text); }
+.badge-critico { background: #e57373; color: #fff; }
+.badge-ok, .badge-baixo, .badge-critico {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  font-size: 0.6875rem; font-weight: 700; padding: 0.15rem 0.45rem; border-radius: 6px;
+  white-space: nowrap; flex-shrink: 0;
+}
+
+.btn-sm {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0.3rem 0.45rem; font-size: 0.6875rem; font-weight: 700;
+  line-height: 1.2; min-width: 0;
+}
+
+.btn-icon-sm {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.75rem; height: 1.75rem; flex-shrink: 0;
+  padding: 0; font-size: 0.875rem; line-height: 1;
+  background: transparent; color: var(--color-text);
+  border: 1.5px solid rgba(61,43,31,0.2); border-radius: 8px;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.btn-icon-sm:hover { border-color: var(--color-accent-dark); background: rgba(212,132,110,0.06); }
+
+.bfy-search { position: relative; }
+.bfy-search .bfy-input { padding-left: 2.25rem; }
+.bfy-search-icon {
+  position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%);
+  width: 1rem; height: 1rem; color: var(--color-text); opacity: 0.4;
+  pointer-events: none;
 }

@@ -1,16 +1,81 @@
-# React + Vite
+# Box for You — Bake Your Dreams
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+App offline-first para gestão de uma marca de cookies: receitas, estoque, produção, preços, relatórios, vendas em feiras e configurações.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React 19
+- Vite 8
+- Tailwind CSS 4
 
-## React Compiler
+## Comandos
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+npm run dev       # http://localhost:5173
+npm run build     # gera dist/
+npm run preview   # serve o build localmente
+npm run lint      # ESLint
+```
 
-## Expanding the ESLint configuration
+Não há suite de testes. Valide mudanças de UI com `npm run dev` no navegador.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Módulos
+
+| Tela | Arquivo | Função |
+|------|---------|--------|
+| Início | `src/modules/Home.jsx` | Dashboard |
+| Receitas | `src/modules/Receitas.jsx` | Cadastro de receitas |
+| Estoque | `src/modules/Estoque.jsx` | Ingredientes e movimentações |
+| Produção | `src/modules/Producao.jsx` | Lotes de produção |
+| Preços | `src/modules/Precificacao.jsx` | Precificação |
+| Relatórios | `src/modules/Relatorios.jsx` | Relatórios e exportação |
+| Feiras | `src/modules/Feiras.jsx` | POS para vendas em feiras |
+| Config | `src/modules/Configuracoes.jsx` | Negócio, eventos, reset |
+
+A navegação fica em `src/App.jsx`. Dados persistem em `localStorage` (sem backend).
+
+## Ícones do menu
+
+Os ícones da navegação ficam em **`public/icons/`** e são referenciados como `/icons/...` no código.
+
+| Arquivo esperado | Tela |
+|------------------|------|
+| `nav-inicio.png` | Início |
+| `nav-receitas.png` | Receitas |
+| `nav-estoque.png` | Estoque |
+| `nav-producao.png` | Produção |
+| `nav-precos.png` | Preços |
+| `nav-relatorios.png` | Relatórios |
+| `nav-feiras.png` | Feiras |
+| `nav-config.png` | Config |
+| `logo.png` | Logo na sidebar tablet |
+
+**Já incluídos:** `nav-receitas.png`, `nav-estoque.png`, `nav-producao.png`.
+
+**Pendentes:** os demais arquivos da tabela acima.
+
+## Estrutura
+
+```
+src/
+├── App.jsx              # Shell + navegação
+├── index.css            # Tema e utilitários Tailwind
+├── components/          # Modal, BarChart
+├── modules/             # Telas do app
+└── stores/              # Hooks de localStorage
+public/
+├── favicon.svg
+└── icons/               # Ícones PNG do menu
+```
+
+## Persistência (`localStorage`)
+
+| Chave | Conteúdo |
+|-------|----------|
+| `bfy:receitas` | Receitas |
+| `bfy:ingredientes` | Ingredientes |
+| `bfy:movimentacoes` | Movimentações de estoque |
+| `bfy:eventos` | Feiras / eventos |
+| `bfy:configuracoes` | Configurações do negócio |
+| `cookies-sales:v1` | Vendas do POS (Feiras) |
