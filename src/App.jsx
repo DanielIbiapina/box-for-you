@@ -11,7 +11,7 @@ import { Configuracoes } from './modules/Configuracoes'
 
 // ─── Ícone SVG para o item "Vendas" no nav ────────────────────────────────────
 
-function VendasNavSvg({ size = 28, active = false }) {
+function NavSvgIcon({ size = 28, active = false, children }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -29,11 +29,28 @@ function VendasNavSvg({ size = 28, active = false }) {
         color: 'var(--color-text-light)',
       }}
     >
+      {children}
+    </svg>
+  )
+}
+
+function VendasNavSvg(props) {
+  return (
+    <NavSvgIcon {...props}>
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
       <circle cx="9" cy="7" r="4" />
       <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
       <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
+    </NavSvgIcon>
+  )
+}
+
+function ConfigNavSvg(props) {
+  return (
+    <NavSvgIcon {...props}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+    </NavSvgIcon>
   )
 }
 
@@ -46,13 +63,12 @@ const NAV = [
   { id: 'vendas',       label: 'Vendas',     icon: '/icons/nav-vendas.png' },
   { id: 'relatorios',   label: 'Relatórios', icon: '/icons/nav-relatorios.png' },
   { id: 'feiras',       label: 'Feiras',     icon: '/icons/nav-feiras.png' },
-  { id: 'config',       label: 'Config',     icon: '/icons/nav-config.png' },
+  { id: 'config',       label: 'Config',     svg: 'config' },
 ]
 
 function NavIcon({ item, size = 28, active = false }) {
-  if (item.svg) {
-    return <VendasNavSvg size={size} active={active} />
-  }
+  if (item.svg === 'config') return <ConfigNavSvg size={size} active={active} />
+  if (item.svg === 'vendas') return <VendasNavSvg size={size} active={active} />
   return (
     <span
       aria-hidden="true"

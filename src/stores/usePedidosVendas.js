@@ -6,6 +6,7 @@ const uid = () =>
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`
 
 // linhas: [{ cookieId, qty, preco }]
+// box: opcional { counts: { cookieId: qty }, priceEur }
 // status: 'pendente' | 'pago' | 'entregue' | 'cancelado'
 
 export const STATUS_PEDIDO = [
@@ -24,6 +25,7 @@ export function usePedidosVendas() {
       criadoEm: new Date().toISOString(),
       clienteId: dados.clienteId ?? null,
       linhas: dados.linhas ?? [],       // [{ cookieId, qty, preco }]
+      box: dados.box ?? null,           // { counts, priceEur } | null
       totalEur: dados.totalEur ?? 0,
       formaPagamento: dados.formaPagamento ?? '',
       status: dados.status ?? 'pendente',

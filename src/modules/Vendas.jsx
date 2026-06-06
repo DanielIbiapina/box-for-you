@@ -32,6 +32,50 @@ function linhaSummary(linhas, cookies) {
     .join(', ')
 }
 
+function initialBoxCounts(cookies) {
+  return Object.fromEntries(cookies.map((c) => [c.id, 0]))
+}
+
+function boxTotalCount(boxCounts) {
+  return Object.values(boxCounts).reduce((acc, v) => acc + (v ?? 0), 0)
+}
+
+function formatBoxCountsSummary(boxCounts, cookies) {
+  return cookies
+    .filter((c) => (boxCounts[c.id] ?? 0) > 0)
+    .map((c) => `${boxCounts[c.id]}× ${c.short}`)
+    .join(', ')
+}
+
+function pedidoSummary(p, cookies) {
+  const parts = []
+  if (p.box?.counts && boxTotalCount(p.box.counts) > 0) {
+    parts.push(`BOX · ${formatBoxCountsSummary(p.box.counts, cookies)}`)
+  }
+  const avulsos = linhaSummary(p.linhas ?? [], cookies)
+  if (avulsos) parts.push(avulsos)
+  return parts.join(' · ') || '—'
+}
+
+function deductPedidoStock(linhas, box, deductSale) {
+  const items = linhas.map((l) => ({ cookieId: l.cookieId, qty: l.qty }))
+  if (box?.counts) {
+    for (const [cookieId, qty] of Object.entries(box.counts)) {
+      if (qty > 0) items.push({ cookieId, qty })
+    }
+  }
+  if (items.length) deductSale(items)
+}
+
+function restorePedidoStock(linhas, box, adjustCookies) {
+  for (const l of linhas ?? []) adjustCookies(l.cookieId, l.qty)
+  if (box?.counts) {
+    for (const [cookieId, qty] of Object.entries(box.counts)) {
+      if (qty > 0) adjustCookies(cookieId, qty)
+    }
+  }
+}
+
 const EMPTY_CLIENTE = { nome: '', telefone: '', instagram: '', email: '', notas: '' }
 const EMPTY_PEDIDO  = { clienteId: '', status: 'pendente', formaPagamento: 'Dinheiro', notas: '' }
 
@@ -84,7 +128,7 @@ function IconEdit() {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export function Vendas() {
-  const { cookies } = useCookies()
+  const { cookies, boxConfig } = useCookies()
   const { stockCookies, adjustCookies, deductSale } = useEstoqueCookies()
   const { clientes, adicionar: addCliente, atualizar: updateCliente, remover: removeCliente } = useClientes()
   const { pedidos, adicionar: addPedido, atualizar: updatePedido, remover: removePedido } = usePedidosVendas()
@@ -99,6 +143,7 @@ export function Vendas() {
   const [clienteForm,  setClienteForm]  = useState(EMPTY_CLIENTE)
   const [pedidoForm,   setPedidoForm]   = useState(EMPTY_PEDIDO)
   const [pedidoCart,   setPedidoCart]   = useState({}) // { cookieId: qty }
+  const [pedidoBox,    setPedidoBox]    = useState(null) // null | { boxCounts }
 
   // ── Busca ──
   const [searchCliente, setSearchCliente] = useState('')
@@ -130,11 +175,18 @@ export function Vendas() {
   const totalMes    = pedidosMes.filter((p) => p.status !== 'cancelado').reduce((s, p) => s + p.totalEur, 0)
   const pendenteMes = pedidosMes.filter((p) => p.status === 'pendente').length
 
-  const pedidoCartTotal = useMemo(() =>
-    Object.entries(pedidoCart).reduce((sum, [id, qty]) => {
+  const boxFilled = pedidoBox ? boxTotalCount(pedidoBox.boxCounts) : 0
+  const boxReady  = pedidoBox && boxFilled === boxConfig.size
+
+  const pedidoCartTotal = useMemo(() => {
+    const cartSum = Object.entries(pedidoCart).reduce((sum, [id, qty]) => {
       const c = cookies.find((x) => x.id === id)
       return sum + (c ? c.price * qty : 0)
-    }, 0), [pedidoCart, cookies])
+    }, 0)
+    const filled = pedidoBox ? boxTotalCount(pedidoBox.boxCounts) : 0
+    const ready  = pedidoBox && filled === boxConfig.size
+    return cartSum + (ready ? boxConfig.price : 0)
+  }, [pedidoCart, pedidoBox, cookies, boxConfig])
 
   // ── Handlers clientes ─────────────────────────────────────────────────────
 
@@ -173,6 +225,7 @@ export function Vendas() {
   function openNewPedido(clienteId = '') {
     setPedidoForm({ ...EMPTY_PEDIDO, clienteId })
     setPedidoCart({})
+    setPedidoBox(null)
     setModalPedido('new')
   }
 
@@ -184,9 +237,32 @@ export function Vendas() {
       notas: p.notas,
     })
     const cart = {}
-    for (const l of p.linhas) cart[l.cookieId] = l.qty
+    for (const l of p.linhas ?? []) cart[l.cookieId] = l.qty
     setPedidoCart(cart)
+    if (p.box?.counts && boxTotalCount(p.box.counts) > 0) {
+      setPedidoBox({ boxCounts: { ...initialBoxCounts(cookies), ...p.box.counts } })
+    } else {
+      setPedidoBox(null)
+    }
     setModalPedido(p.id)
+  }
+
+  function startBox() {
+    setPedidoBox({ boxCounts: initialBoxCounts(cookies) })
+  }
+
+  function cancelBox() {
+    setPedidoBox(null)
+  }
+
+  function boxAdjust(flavorId, delta) {
+    setPedidoBox((prev) => {
+      if (!prev) return prev
+      const counts = { ...prev.boxCounts }
+      if (delta > 0 && boxTotalCount(counts) >= boxConfig.size) return prev
+      counts[flavorId] = Math.max(0, (counts[flavorId] ?? 0) + delta)
+      return { ...prev, boxCounts: counts }
+    })
   }
 
   function cartAdjust(cookieId, delta) {
@@ -207,11 +283,21 @@ export function Vendas() {
   function handleSavePedido(e) {
     e.preventDefault()
     const linhas = buildLinhas()
-    if (!linhas.length) return
+    const filled = pedidoBox ? boxTotalCount(pedidoBox.boxCounts) : 0
+    const ready  = pedidoBox && filled === boxConfig.size
+    const partial = pedidoBox && filled > 0 && !ready
+
+    if (partial) return
+    if (!linhas.length && !ready) return
+
+    const boxData = ready
+      ? { counts: { ...pedidoBox.boxCounts }, priceEur: boxConfig.price }
+      : null
 
     const dados = {
       clienteId: pedidoForm.clienteId || null,
       linhas,
+      box: boxData,
       totalEur: pedidoCartTotal,
       formaPagamento: pedidoForm.formaPagamento,
       status: pedidoForm.status,
@@ -221,7 +307,7 @@ export function Vendas() {
     if (modalPedido === 'new') {
       addPedido(dados)
       if (pedidoForm.status !== 'cancelado') {
-        deductSale(linhas.map((l) => ({ cookieId: l.cookieId, qty: l.qty })))
+        deductPedidoStock(linhas, boxData, deductSale)
       }
     } else {
       const old = pedidos.find((p) => p.id === modalPedido)
@@ -231,11 +317,9 @@ export function Vendas() {
       const isNowActive = dados.status !== 'cancelado'
 
       if (wasActive && !isNowActive) {
-        // Cancelado → devolver stock
-        for (const l of old.linhas) adjustCookies(l.cookieId, l.qty)
+        restorePedidoStock(old.linhas, old.box, adjustCookies)
       } else if (!wasActive && isNowActive) {
-        // Reativado → deduzir stock
-        deductSale(linhas.map((l) => ({ cookieId: l.cookieId, qty: l.qty })))
+        deductPedidoStock(linhas, boxData, deductSale)
       }
     }
     setModalPedido(null)
@@ -244,7 +328,7 @@ export function Vendas() {
   function handleDeletePedido(p) {
     if (!confirm(`Excluir pedido de ${fmtEuro(p.totalEur)}?`)) return
     if (p.status !== 'cancelado') {
-      for (const l of p.linhas) adjustCookies(l.cookieId, l.qty)
+      restorePedidoStock(p.linhas, p.box, adjustCookies)
     }
     removePedido(p.id)
   }
@@ -412,6 +496,13 @@ export function Vendas() {
             setForm={setPedidoForm}
             cart={pedidoCart}
             cartAdjust={cartAdjust}
+            pedidoBox={pedidoBox}
+            boxConfig={boxConfig}
+            boxFilled={boxFilled}
+            boxReady={boxReady}
+            startBox={startBox}
+            cancelBox={cancelBox}
+            boxAdjust={boxAdjust}
             total={pedidoCartTotal}
             cookies={cookies}
             stockCookies={stockCookies}
@@ -539,7 +630,7 @@ export function Vendas() {
                         )}
                       </div>
                       <p className="text-xs opacity-55 truncate" style={{ color: 'var(--color-text)' }}>
-                        {linhaSummary(p.linhas, cookies)}
+                        {pedidoSummary(p, cookies)}
                       </p>
                       {p.notas && (
                         <p className="text-[10px] opacity-40 italic truncate" style={{ color: 'var(--color-text)' }}>
@@ -678,6 +769,13 @@ export function Vendas() {
           setForm={setPedidoForm}
           cart={pedidoCart}
           cartAdjust={cartAdjust}
+          pedidoBox={pedidoBox}
+          boxConfig={boxConfig}
+          boxFilled={boxFilled}
+          boxReady={boxReady}
+          startBox={startBox}
+          cancelBox={cancelBox}
+          boxAdjust={boxAdjust}
           total={pedidoCartTotal}
           cookies={cookies}
           stockCookies={stockCookies}
@@ -711,7 +809,7 @@ function PedidoCard({ pedido, cookies, st, onEdit, onDelete }) {
           </span>
         </div>
         <p className="text-xs opacity-55 truncate" style={{ color: 'var(--color-text)' }}>
-          {linhaSummary(pedido.linhas, cookies)}
+          {pedidoSummary(pedido, cookies)}
         </p>
         {pedido.notas && (
           <p className="text-[10px] opacity-40 italic" style={{ color: 'var(--color-text)' }}>{pedido.notas}</p>
@@ -808,7 +906,15 @@ function ClienteModal({ title, form, setForm, onClose, onSave, canDelete, onDele
   )
 }
 
-function PedidoModal({ title, form, setForm, cart, cartAdjust, total, cookies, stockCookies, clientes, onClose, onSave }) {
+function PedidoModal({
+  title, form, setForm, cart, cartAdjust,
+  pedidoBox, boxConfig, boxFilled, boxReady,
+  startBox, cancelBox, boxAdjust,
+  total, cookies, stockCookies, clientes, onClose, onSave,
+}) {
+  const boxPartial = pedidoBox && boxFilled > 0 && !boxReady
+  const canSave = total > 0 && !boxPartial
+
   return (
     <Modal title={title} onClose={onClose} size="md">
       <form onSubmit={onSave} className="space-y-4">
@@ -827,9 +933,101 @@ function PedidoModal({ title, form, setForm, cart, cartAdjust, total, cookies, s
           </select>
         </label>
 
-        {/* Cookies */}
+        {/* BOX */}
+        {!pedidoBox ? (
+          <button
+            type="button"
+            onClick={startBox}
+            className="w-full flex items-center justify-between gap-3 rounded-xl px-4 py-3 transition-all"
+            style={{
+              border: '1.5px solid rgba(194,75,41,0.25)',
+              background: 'rgba(194,75,41,0.07)',
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xl">📦</span>
+              <div className="text-left">
+                <div className="text-sm font-bold" style={{ color: 'var(--color-accent-dark)' }}>
+                  BOX {boxConfig.size} cookies
+                </div>
+                <div className="text-[10px] opacity-55" style={{ color: 'var(--color-text)' }}>
+                  Mix de sabores · preço fixo
+                </div>
+              </div>
+            </div>
+            <span className="text-sm font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
+              {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(boxConfig.price)}
+            </span>
+          </button>
+        ) : (
+          <div
+            className="rounded-xl p-3 space-y-2"
+            style={{ background: 'rgba(154,59,28,0.06)', border: '1.5px solid rgba(154,59,28,0.18)' }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xl">📦</span>
+              <div className="flex-1">
+                <div className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>
+                  BOX {boxConfig.size} cookies ({boxFilled}/{boxConfig.size})
+                </div>
+                <div className="text-xs opacity-45" style={{ color: 'var(--color-text)' }}>
+                  {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(boxConfig.price)} · mix de sabores
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={cancelBox}
+                className="text-xs font-semibold opacity-40 hover:opacity-70 shrink-0 px-2 py-1"
+                style={{ color: '#e57373' }}
+                title="Remover BOX"
+              >
+                ✕
+              </button>
+            </div>
+            {cookies.map((c) => {
+              const n = pedidoBox.boxCounts[c.id] ?? 0
+              return (
+                <div
+                  key={c.id}
+                  className="flex items-center gap-2 rounded-xl px-2 py-1.5"
+                  style={{ background: 'rgba(29,16,8,0.04)' }}
+                >
+                  <span className="text-sm shrink-0">{c.emoji}</span>
+                  <span className="flex-1 text-xs font-semibold truncate" style={{ color: 'var(--color-text)' }}>{c.short}</span>
+                  <button
+                    type="button"
+                    onClick={() => boxAdjust(c.id, -1)}
+                    disabled={n <= 0}
+                    className="w-7 h-7 rounded-lg font-bold text-base disabled:opacity-25"
+                    style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                  >−</button>
+                  <span className="w-5 text-center text-sm font-black tabular-nums" style={{ color: 'var(--color-text)' }}>{n}</span>
+                  <button
+                    type="button"
+                    onClick={() => boxAdjust(c.id, 1)}
+                    disabled={boxFilled >= boxConfig.size}
+                    className="w-7 h-7 rounded-lg font-bold text-base disabled:opacity-25"
+                    style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                  >+</button>
+                </div>
+              )
+            })}
+            {boxFilled > 0 && (
+              <div className="text-[10px] opacity-40 pt-0.5" style={{ color: 'var(--color-text)' }}>
+                {formatBoxCountsSummary(pedidoBox.boxCounts, cookies)}
+              </div>
+            )}
+            {boxPartial && (
+              <p className="text-[10px] font-semibold" style={{ color: '#E8A040' }}>
+                Seleciona {boxConfig.size - boxFilled} cookie(s) para completar a BOX
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Cookies avulsos */}
         <div>
-          <span className="bfy-label mb-2 block">Cookies *</span>
+          <span className="bfy-label mb-2 block">{pedidoBox ? 'Cookies avulsos (opcional)' : 'Cookies *'}</span>
           <div className="grid grid-cols-2 gap-2">
             {cookies.map((c) => {
               const n = cart[c.id] ?? 0
@@ -928,7 +1126,7 @@ function PedidoModal({ title, form, setForm, cart, cartAdjust, total, cookies, s
           <button
             type="submit"
             className="btn-primary flex-1"
-            disabled={total <= 0}
+            disabled={!canSave}
           >
             Salvar pedido
           </button>
