@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { isAppLockEnabled, isUnlocked, unlock } from '../lib/appLock'
 import { isSupabaseConfigured } from '../lib/supabase'
-import { bootstrapSync } from '../lib/syncService'
+import { bootstrapSync, pushToCloud } from '../lib/syncService'
+import { runDataMigrations } from '../lib/dataMigrations'
 import App from '../App.jsx'
 
 export function AppGate() {
@@ -20,27 +21,40 @@ export function AppGate() {
     setBootError('')
     const result = await bootstrapSync()
     setBooting(false)
-    if (!result.ok && result.reason !== 'offline') {
-      setBootError(result.reason ?? 'Não foi possível carregar os dados.')
+    if (!result.ok) {
+      const msg =
+        result.reason === 'offline'
+          ? 'Sem internet — liga-te à rede para carregar e guardar os dados.'
+          : (result.reason ?? 'Não foi possível carregar os dados.')
+      setBootError(msg)
       return false
     }
     return true
   }
 
   useEffect(() => {
-    if (!isAppLockEnabled) {
-      loadCloudData().then((ok) => {
-        if (ok || !navigator.onLine) setReady(true)
-      })
-      return
-    }
+    async function boot() {
+      if (!isAppLockEnabled) {
+        const ok = await loadCloudData()
+        if (ok) {
+          runDataMigrations()
+          await pushToCloud()
+          setReady(true)
+        }
+        return
+      }
 
-    isUnlocked().then(async (ok) => {
+      const unlocked = await isUnlocked()
       setChecking(false)
-      if (!ok) return
-      const cloudOk = await loadCloudData()
-      if (cloudOk || !navigator.onLine) setReady(true)
-    })
+      if (!unlocked) return
+      const ok = await loadCloudData()
+      if (ok) {
+        runDataMigrations()
+        await pushToCloud()
+        setReady(true)
+      }
+    }
+    boot()
   }, [])
 
   async function handleSubmit(e) {
@@ -50,7 +64,11 @@ export function AppGate() {
     const result = await unlock(password)
     if (result.ok) {
       const cloudOk = await loadCloudData()
-      if (cloudOk || !navigator.onLine) setReady(true)
+      if (cloudOk) {
+        runDataMigrations()
+        await pushToCloud()
+        setReady(true)
+      }
     } else {
       setError(result.reason)
     }
@@ -91,7 +109,13 @@ export function AppGate() {
           <button
             type="button"
             className="btn-primary w-full py-3"
-            onClick={() => loadCloudData().then((ok) => ok && setReady(true))}
+            onClick={() => loadCloudData().then(async (ok) => {
+              if (ok) {
+                runDataMigrations()
+                await pushToCloud()
+                setReady(true)
+              }
+            })}
           >
             Tentar de novo
           </button>

@@ -13,8 +13,12 @@ let applyingRemote = false
 let isPushing = false
 let lastCloudUpdatedAt = null
 let lastPushAt = 0
+let lastPullAt = 0
 let realtimeChannel = null
 let listenersBound = false
+
+const ECHO_IGNORE_MS = 5000
+const PULL_COOLDOWN_MS = 30_000
 
 export function initSync() {
   if (!isSupabaseConfigured) return
@@ -140,9 +144,9 @@ function bindGlobalListeners() {
   })
 
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && syncEnabled && navigator.onLine) {
-      pullFromCloud()
-    }
+    if (document.visibilityState !== 'visible' || !syncEnabled || !navigator.onLine) return
+    if (Date.now() - lastPullAt < PULL_COOLDOWN_MS) return
+    pullFromCloud({ silent: true })
   })
 }
 
@@ -168,7 +172,11 @@ function handleRemoteUpdate(row) {
   if (!row || isPushing) return
 
   const updatedAt = row.updated_at
-  if (updatedAt && lastPushAt && Date.parse(updatedAt) <= lastPushAt + 800) return
+  if (!updatedAt) return
+
+  // Ignora eco do nosso próprio push (evita loop sync ↔ localStorage)
+  if (updatedAt === lastCloudUpdatedAt) return
+  if (lastPushAt && Date.parse(updatedAt) <= lastPushAt + ECHO_IGNORE_MS) return
 
   const cloudData = row.data ?? {}
   lastCloudUpdatedAt = updatedAt
@@ -176,10 +184,10 @@ function handleRemoteUpdate(row) {
   if (pendingKeys.size > 0) {
     const merged = buildMergedSnapshot(collectLocalSnapshot(), cloudData, pendingKeys)
     applySnapshotToLocal(merged)
-    emitSyncStatus('merged')
+    emitSyncStatus('idle')
   } else {
     applySnapshotToLocal(cloudData)
-    emitSyncStatus('pulled')
+    emitSyncStatus('idle')
   }
 }
 
@@ -210,7 +218,6 @@ async function flushSync() {
 
   const keys = [...pendingKeys]
   isPushing = true
-  emitSyncStatus('syncing')
 
   try {
     const remoteRow = await fetchRemoteRow()
@@ -233,7 +240,7 @@ async function flushSync() {
     pendingKeys.clear()
     lastPushAt = Date.parse(now)
     lastCloudUpdatedAt = now
-    emitSyncStatus('synced', { keys })
+    emitSyncStatus('idle')
   } catch (err) {
     keys.forEach((k) => pendingKeys.add(k))
     emitSyncStatus('error', { message: err.message })
@@ -255,35 +262,38 @@ export async function bootstrapSync() {
 }
 
 /** Baixa dados da nuvem e funde com alterações locais pendentes */
-export async function pullFromCloud() {
+export async function pullFromCloud(options = {}) {
   if (!supabase) return { ok: false, reason: 'not_configured' }
   if (!navigator.onLine) {
     emitSyncStatus('offline')
     return { ok: false, reason: 'offline' }
   }
 
-  emitSyncStatus('pulling')
-
   try {
     const remoteRow = await fetchRemoteRow()
     const cloudData = remoteRow?.data ?? {}
     const hasCloudData = Object.keys(cloudData).length > 0
-    lastCloudUpdatedAt = remoteRow?.updated_at ?? null
+    const remoteUpdatedAt = remoteRow?.updated_at ?? null
+
+    if (remoteUpdatedAt && remoteUpdatedAt === lastCloudUpdatedAt && pendingKeys.size === 0) {
+      lastPullAt = Date.now()
+      return { ok: true, hasCloudData, unchanged: true }
+    }
+
+    lastCloudUpdatedAt = remoteUpdatedAt
 
     if (hasCloudData) {
       if (pendingKeys.size > 0) {
         const merged = buildMergedSnapshot(collectLocalSnapshot(), cloudData, pendingKeys)
         applySnapshotToLocal(merged)
-        emitSyncStatus('merged')
         await flushSync()
       } else {
         applySnapshotToLocal(cloudData)
-        emitSyncStatus('pulled')
       }
-    } else {
-      emitSyncStatus('pulled', { hasCloudData: false })
     }
 
+    lastPullAt = Date.now()
+    if (!options.silent) emitSyncStatus('idle')
     return { ok: true, hasCloudData }
   } catch (err) {
     emitSyncStatus('error', { message: err.message })

@@ -26,6 +26,7 @@ function statusInfo(id) {
 function linhaSummary(linhas, cookies) {
   return linhas
     .map((l) => {
+      if (l.customLabel) return `${l.qty}× ${l.customLabel}`
       const c = cookies.find((x) => x.id === l.cookieId)
       return `${l.qty}× ${c?.short ?? l.cookieId}`
     })
@@ -58,7 +59,9 @@ function pedidoSummary(p, cookies) {
 }
 
 function deductPedidoStock(linhas, box, deductSale) {
-  const items = linhas.map((l) => ({ cookieId: l.cookieId, qty: l.qty }))
+  const items = (linhas ?? [])
+    .filter((l) => !l.customLabel && !String(l.cookieId).startsWith('custom-'))
+    .map((l) => ({ cookieId: l.cookieId, qty: l.qty }))
   if (box?.counts) {
     for (const [cookieId, qty] of Object.entries(box.counts)) {
       if (qty > 0) items.push({ cookieId, qty })
@@ -68,7 +71,10 @@ function deductPedidoStock(linhas, box, deductSale) {
 }
 
 function restorePedidoStock(linhas, box, adjustCookies) {
-  for (const l of linhas ?? []) adjustCookies(l.cookieId, l.qty)
+  for (const l of linhas ?? []) {
+    if (l.customLabel || String(l.cookieId).startsWith('custom-')) continue
+    adjustCookies(l.cookieId, l.qty)
+  }
   if (box?.counts) {
     for (const [cookieId, qty] of Object.entries(box.counts)) {
       if (qty > 0) adjustCookies(cookieId, qty)
@@ -128,7 +134,7 @@ function IconEdit() {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export function Vendas() {
-  const { cookies, boxConfig } = useCookies()
+  const { cookies, boxConfig, addCookie } = useCookies()
   const { stockCookies, adjustCookies, deductSale } = useEstoqueCookies()
   const { clientes, adicionar: addCliente, atualizar: updateCliente, remover: removeCliente } = useClientes()
   const { pedidos, adicionar: addPedido, atualizar: updatePedido, remover: removePedido } = usePedidosVendas()
@@ -142,8 +148,10 @@ export function Vendas() {
   const [modalPedido,  setModalPedido]  = useState(null)  // null | 'new' | id
   const [clienteForm,  setClienteForm]  = useState(EMPTY_CLIENTE)
   const [pedidoForm,   setPedidoForm]   = useState(EMPTY_PEDIDO)
-  const [pedidoCart,   setPedidoCart]   = useState({}) // { cookieId: qty }
-  const [pedidoBox,    setPedidoBox]    = useState(null) // null | { boxCounts }
+  const [pedidoCart,   setPedidoCart]   = useState({})
+  const [pedidoCustom, setPedidoCustom] = useState([])
+  const [pedidoBox,    setPedidoBox]    = useState(null)
+  const [customDraft,  setCustomDraft]  = useState({ label: '', price: '', qty: '1', addToMenu: false })
 
   // ── Busca ──
   const [searchCliente, setSearchCliente] = useState('')
@@ -183,10 +191,11 @@ export function Vendas() {
       const c = cookies.find((x) => x.id === id)
       return sum + (c ? c.price * qty : 0)
     }, 0)
+    const customSum = pedidoCustom.reduce((sum, l) => sum + l.preco * l.qty, 0)
     const filled = pedidoBox ? boxTotalCount(pedidoBox.boxCounts) : 0
     const ready  = pedidoBox && filled === boxConfig.size
-    return cartSum + (ready ? boxConfig.price : 0)
-  }, [pedidoCart, pedidoBox, cookies, boxConfig])
+    return cartSum + customSum + (ready ? boxConfig.price : 0)
+  }, [pedidoCart, pedidoCustom, pedidoBox, cookies, boxConfig])
 
   // ── Handlers clientes ─────────────────────────────────────────────────────
 
@@ -225,6 +234,8 @@ export function Vendas() {
   function openNewPedido(clienteId = '') {
     setPedidoForm({ ...EMPTY_PEDIDO, clienteId })
     setPedidoCart({})
+    setPedidoCustom([])
+    setCustomDraft({ label: '', price: '', qty: '1', addToMenu: false })
     setPedidoBox(null)
     setModalPedido('new')
   }
@@ -237,8 +248,22 @@ export function Vendas() {
       notas: p.notas,
     })
     const cart = {}
-    for (const l of p.linhas ?? []) cart[l.cookieId] = l.qty
+    const custom = []
+    for (const l of p.linhas ?? []) {
+      if (l.customLabel) {
+        custom.push({
+          id: l.cookieId || `custom-${custom.length}`,
+          label: l.customLabel,
+          qty: l.qty,
+          preco: l.preco ?? 0,
+        })
+      } else {
+        cart[l.cookieId] = l.qty
+      }
+    }
     setPedidoCart(cart)
+    setPedidoCustom(custom)
+    setCustomDraft({ label: '', price: '', qty: '1', addToMenu: false })
     if (p.box?.counts && boxTotalCount(p.box.counts) > 0) {
       setPedidoBox({ boxCounts: { ...initialBoxCounts(cookies), ...p.box.counts } })
     } else {
@@ -274,10 +299,45 @@ export function Vendas() {
   }
 
   function buildLinhas() {
-    return Object.entries(pedidoCart).map(([cookieId, qty]) => {
+    const catalog = Object.entries(pedidoCart).map(([cookieId, qty]) => {
       const c = cookies.find((x) => x.id === cookieId)
       return { cookieId, qty, preco: c?.price ?? 0 }
     })
+    const custom = pedidoCustom.map((l) => ({
+      cookieId: l.id,
+      qty: l.qty,
+      preco: l.preco,
+      customLabel: l.label,
+    }))
+    return [...catalog, ...custom]
+  }
+
+  function addCustomLine() {
+    const label = customDraft.label.trim()
+    const price = parseFloat(String(customDraft.price).replace(',', '.'))
+    const qty = parseInt(customDraft.qty, 10) || 1
+    if (!label || Number.isNaN(price) || price < 0 || qty < 1) return
+
+    if (customDraft.addToMenu) {
+      addCookie({
+        nome: label,
+        short: label.length > 14 ? `${label.slice(0, 12)}…` : label,
+        emoji: '✨',
+        price,
+        image: '',
+        ativoNoCardapio: true,
+      })
+    }
+
+    setPedidoCustom((prev) => [
+      ...prev,
+      { id: `custom-${Date.now()}`, label, qty, preco: price },
+    ])
+    setCustomDraft({ label: '', price: '', qty: '1', addToMenu: false })
+  }
+
+  function removeCustomLine(id) {
+    setPedidoCustom((prev) => prev.filter((l) => l.id !== id))
   }
 
   function handleSavePedido(e) {
@@ -509,6 +569,11 @@ export function Vendas() {
             clientes={clientes}
             onClose={() => setModalPedido(null)}
             onSave={handleSavePedido}
+            customLinhas={pedidoCustom}
+            customDraft={customDraft}
+            setCustomDraft={setCustomDraft}
+            onAddCustom={addCustomLine}
+            onRemoveCustom={removeCustomLine}
           />
         )}
       </div>
@@ -782,6 +847,11 @@ export function Vendas() {
           clientes={clientes}
           onClose={() => setModalPedido(null)}
           onSave={handleSavePedido}
+          customLinhas={pedidoCustom}
+          customDraft={customDraft}
+          setCustomDraft={setCustomDraft}
+          onAddCustom={addCustomLine}
+          onRemoveCustom={removeCustomLine}
         />
       )}
     </div>
@@ -911,6 +981,7 @@ function PedidoModal({
   pedidoBox, boxConfig, boxFilled, boxReady,
   startBox, cancelBox, boxAdjust,
   total, cookies, stockCookies, clientes, onClose, onSave,
+  customLinhas, customDraft, setCustomDraft, onAddCustom, onRemoveCustom,
 }) {
   const boxPartial = pedidoBox && boxFilled > 0 && !boxReady
   const canSave = total > 0 && !boxPartial
@@ -1071,6 +1142,74 @@ function PedidoModal({
               )
             })}
           </div>
+        </div>
+
+        {/* Item personalizado */}
+        <div
+          className="rounded-xl p-3 space-y-3"
+          style={{ background: 'rgba(29,16,8,0.03)', border: '1.5px dashed rgba(154,59,28,0.25)' }}
+        >
+          <span className="bfy-label block">Item personalizado</span>
+          <p className="text-[10px] opacity-45 -mt-2" style={{ color: 'var(--color-text)' }}>
+            Para pedidos únicos (ex.: mini cookies de evento, preço especial para cliente).
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              className="bfy-input sm:col-span-2"
+              placeholder="Descrição (ex.: Mini cookies evento Ana Lúcia)"
+              value={customDraft.label}
+              onChange={(e) => setCustomDraft((d) => ({ ...d, label: e.target.value }))}
+            />
+            <input
+              className="bfy-input"
+              type="text"
+              inputMode="decimal"
+              placeholder="Preço €"
+              value={customDraft.price}
+              onChange={(e) => setCustomDraft((d) => ({ ...d, price: e.target.value }))}
+            />
+            <input
+              className="bfy-input"
+              type="number"
+              min="1"
+              placeholder="Qtd"
+              value={customDraft.qty}
+              onChange={(e) => setCustomDraft((d) => ({ ...d, qty: e.target.value }))}
+            />
+          </div>
+          <label className="flex items-start gap-2 cursor-pointer text-xs">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={customDraft.addToMenu}
+              onChange={(e) => setCustomDraft((d) => ({ ...d, addToMenu: e.target.checked }))}
+            />
+            <span style={{ color: 'var(--color-text)' }}>
+              Guardar também no cardápio (Config → Cardápio)
+            </span>
+          </label>
+          <button type="button" className="btn-ghost w-full text-xs py-2" onClick={onAddCustom}>
+            + Adicionar item personalizado
+          </button>
+          {customLinhas.length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              {customLinhas.map((l) => (
+                <div
+                  key={l.id}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs"
+                  style={{ background: 'rgba(154,59,28,0.08)' }}
+                >
+                  <span className="flex-1 font-semibold truncate" style={{ color: 'var(--color-text)' }}>
+                    {l.qty}× {l.label}
+                  </span>
+                  <span className="font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
+                    {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(l.preco * l.qty)}
+                  </span>
+                  <button type="button" className="opacity-40 hover:opacity-80" onClick={() => onRemoveCustom(l.id)}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Total */}

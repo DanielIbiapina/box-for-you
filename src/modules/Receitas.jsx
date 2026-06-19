@@ -3,6 +3,7 @@ import { useReceitas, CATEGORIAS } from '../stores/useReceitas'
 import { useEstoque } from '../stores/useEstoque'
 import { Modal } from '../components/Modal'
 import { SearchInput } from '../components/SearchInput'
+import { PrecificacaoPanel } from './Precificacao'
 
 // ─── constantes ──────────────────────────────────────────────────────────────
 
@@ -367,6 +368,7 @@ export function Receitas() {
   const [search, setSearch] = useState('')
   const [catFiltro, setCatFiltro] = useState('todas')
   const [modal, setModal] = useState(null)
+  const [finModal, setFinModal] = useState(false)
 
   const filtradas = receitas.filter((r) => {
     const matchSearch = r.nome.toLowerCase().includes(search.toLowerCase())
@@ -420,9 +422,14 @@ export function Receitas() {
             {totalClassico} clássica{totalClassico !== 1 ? 's' : ''} · {totalSazonal} sazonal/especial{totalSazonal !== 1 ? 'is' : ''}
           </p>
         </div>
-        <button className="btn-primary px-5 py-2.5 text-sm" onClick={openNew}>
-          + Nova Receita
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-ghost px-4 py-2.5 text-sm" onClick={() => setFinModal(true)}>
+            💶 Análise financeira
+          </button>
+          <button className="btn-primary px-5 py-2.5 text-sm" onClick={openNew}>
+            + Nova Receita
+          </button>
+        </div>
       </div>
 
       {/* ── Filtros ── */}
@@ -495,6 +502,15 @@ export function Receitas() {
             onSave={handleSave}
             onDelete={modal.id ? handleDelete : null}
             onClose={() => setModal(null)}
+          />
+        </Modal>
+      )}
+      {finModal && (
+        <Modal title="Análise financeira da receita" onClose={() => setFinModal(false)} size="lg">
+          <PrecificacaoPanel
+            embed
+            initialReceitaId={modal?.id ?? ''}
+            onClose={() => setFinModal(false)}
           />
         </Modal>
       )}

@@ -3,7 +3,6 @@ import { Home } from './modules/Home'
 import { Receitas } from './modules/Receitas'
 import { Estoque } from './modules/Estoque'
 import { Producao } from './modules/Producao'
-import { Precificacao } from './modules/Precificacao'
 import { Relatorios } from './modules/Relatorios'
 import { Feiras } from './modules/Feiras'
 import { Vendas } from './modules/Vendas'
@@ -60,7 +59,6 @@ const NAV = [
   { id: 'estoque',      label: 'Estoque',    icon: '/icons/nav-estoque.png' },
   { id: 'receitas',     label: 'Receitas',   icon: '/icons/nav-receitas.png' },
   { id: 'producao',     label: 'Produção',   icon: '/icons/nav-producao.png' },
-  { id: 'precificacao', label: 'Preços',     icon: '/icons/nav-precos.png' },
   { id: 'vendas',       label: 'Vendas',     icon: '/icons/nav-vendas.png' },
   { id: 'relatorios',   label: 'Relatórios', icon: '/icons/nav-relatorios.png' },
   { id: 'feiras',       label: 'Feiras',     icon: '/icons/nav-feiras.png' },
@@ -97,7 +95,6 @@ export default function App() {
       case 'receitas':     return <Receitas />
       case 'estoque':      return <Estoque />
       case 'producao':     return <Producao />
-      case 'precificacao': return <Precificacao />
       case 'vendas':       return <Vendas />
       case 'relatorios':   return <Relatorios />
       case 'feiras':       return <Feiras onPosModeChange={setFeirasPosMode} />

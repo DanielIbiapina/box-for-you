@@ -3,6 +3,15 @@ import { useEventos } from '../stores/useEventos'
 import { usePedidosVendas } from '../stores/usePedidosVendas'
 import { useClientes } from '../stores/useClientes'
 import { BarChart } from '../components/BarChart'
+import { Modal } from '../components/Modal'
+import { FeiraHistoricoPanel } from '../components/FeiraHistoricoPanel'
+import { readCookieCatalog } from '../lib/catalog'
+import {
+  describePosSale,
+  topFlavorsRanking,
+  aggregateCookieCounts,
+} from '../lib/salesAnalytics'
+import { summarizeEvent, formatEventDateRange } from '../lib/feiraHistory'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -10,7 +19,9 @@ function readFeirasPos() {
   try {
     const raw = localStorage.getItem('cookies-sales:v1')
     return raw ? JSON.parse(raw) : []
-  } catch { return [] }
+  } catch {
+    return []
+  }
 }
 
 function monthKey(date) {
@@ -26,6 +37,7 @@ const fmtDate = (iso) =>
 const fmtTime = (iso) =>
   new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
+const PAY_LABELS = { dinheiro: 'Dinheiro', mbway: 'MB WAY', multibanco: 'Multibanco', gratis: 'Grátis' }
 
 // ─── Ícones SVG ──────────────────────────────────────────────────────────────
 
@@ -75,29 +87,38 @@ function IconCalendar() {
   )
 }
 
-function IconTrash() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-    </svg>
-  )
-}
-
-function IconUser() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
-    </svg>
-  )
-}
-
 function IconTrend() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
       <path d="M3 17l5-5 4 4 9-9" />
       <path d="M15 7h5v5" />
     </svg>
+  )
+}
+
+function PosSaleRow({ sale, catalog }) {
+  const title = describePosSale(sale, catalog)
+
+  return (
+    <div
+      className="flex items-start gap-3 rounded-xl px-3 py-2.5"
+      style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.06)' }}
+    >
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold leading-snug" style={{ color: 'var(--color-text)' }}>
+          {title}
+        </p>
+        <p className="text-[10px] opacity-40 mt-0.5" style={{ color: 'var(--color-text)' }}>
+          {fmtDate(sale.createdAt)} · {fmtTime(sale.createdAt)}
+          {sale.paymentId && sale.paymentId !== 'gratis' && (
+            <span> · {PAY_LABELS[sale.paymentId] ?? sale.paymentId}</span>
+          )}
+        </p>
+      </div>
+      <span className="text-sm font-black tabular-nums shrink-0" style={{ color: 'var(--color-accent-dark)' }}>
+        {fmtEuro(sale.totalEur ?? 0)}
+      </span>
+    </div>
   )
 }
 
@@ -110,11 +131,13 @@ export function Relatorios() {
   const { pedidos: pedidosVendas } = usePedidosVendas()
   const { clientes } = useClientes()
   const salesPos = readFeirasPos()
+  const catalog = useMemo(() => readCookieCatalog(), [])
 
   const now = new Date()
   const [mesSelecionado, setMesSelecionado] = useState(monthKey(now))
-  const [tabVendas, setTabVendas] = useState('avulsas') // 'avulsas' | 'pos'
+  const [tabVendas, setTabVendas] = useState('avulsas')
   const [posVisiveis, setPosVisiveis] = useState(POS_INICIAL)
+  const [historicoEvent, setHistoricoEvent] = useState(null)
 
   useEffect(() => {
     setPosVisiveis(POS_INICIAL)
@@ -131,7 +154,6 @@ export function Relatorios() {
     }).reverse()
   }, [])
 
-  // Receita mensal combinada (POS + pedidos diretos) por mês — para o gráfico
   const chartData = useMemo(() => {
     return meses.slice().reverse().map((m) => {
       const posVal = salesPos
@@ -144,7 +166,6 @@ export function Relatorios() {
     })
   }, [salesPos, pedidosVendas, meses])
 
-  // Stats do mês selecionado
   const statsMes = useMemo(() => {
     const posVendas = salesPos.filter(
       (s) => (s.createdAt ?? '').startsWith(mesSelecionado) && (s.totalEur ?? 0) > 0,
@@ -153,48 +174,90 @@ export function Relatorios() {
     const demos = salesPos.filter(
       (s) => (s.createdAt ?? '').startsWith(mesSelecionado) && s.kind === 'demo',
     ).length
-    const diretasMes = pedidosVendas.filter((p) => p.criadoEm.startsWith(mesSelecionado) && p.status !== 'cancelado')
+    const diretasMes = pedidosVendas.filter(
+      (p) => p.criadoEm.startsWith(mesSelecionado) && p.status !== 'cancelado',
+    )
     const diretaReceita = diretasMes.reduce((sum, p) => sum + p.totalEur, 0)
+    const cookiesVendidos = Object.values(
+      aggregateCookieCounts(
+        salesPos.filter((s) => (s.createdAt ?? '').startsWith(mesSelecionado)),
+        catalog,
+      ),
+    ).reduce((a, b) => a + b, 0)
+
     return {
       totalReceita: posReceita + diretaReceita,
       posVendas: posVendas.length,
       diretasVendas: diretasMes.length,
       demos,
+      cookiesVendidos,
+      ticketMedio: posVendas.length ? posReceita / posVendas.length : 0,
     }
-  }, [salesPos, pedidosVendas, mesSelecionado])
+  }, [salesPos, pedidosVendas, mesSelecionado, catalog])
 
-  // Pedidos diretos do mês
+  const rankingSabores = useMemo(
+    () =>
+      topFlavorsRanking(
+        salesPos.filter((s) => (s.createdAt ?? '').startsWith(mesSelecionado)),
+        catalog,
+        15,
+      ),
+    [salesPos, mesSelecionado, catalog],
+  )
+
+  const rankingAllTime = useMemo(
+    () => topFlavorsRanking(salesPos, catalog, 10),
+    [salesPos, catalog],
+  )
+
+  const maxRank = Math.max(...rankingSabores.map((r) => r.qty), 1)
+
+  const insights = useMemo(() => {
+    const posMes = salesPos.filter(
+      (s) => (s.createdAt ?? '').startsWith(mesSelecionado) && (s.totalEur ?? 0) > 0,
+    )
+    const byDay = {}
+    const byPay = {}
+    for (const s of posMes) {
+      const day = (s.createdAt ?? '').slice(0, 10)
+      byDay[day] = (byDay[day] ?? 0) + (s.totalEur ?? 0)
+      const p = s.paymentId ?? 'outro'
+      byPay[p] = (byPay[p] ?? 0) + 1
+    }
+    const bestDay = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0]
+    const topPay = Object.entries(byPay).sort((a, b) => b[1] - a[1])[0]
+    const champion = rankingSabores[0]
+    return { bestDay, topPay, champion }
+  }, [salesPos, mesSelecionado, rankingSabores])
+
   const diretasDoMes = useMemo(
     () => pedidosVendas.filter((p) => p.criadoEm.startsWith(mesSelecionado) && p.status !== 'cancelado'),
     [pedidosVendas, mesSelecionado],
   )
 
-  // Últimas vendas POS do mês
   const posMes = useMemo(
     () => salesPos.filter((s) => (s.createdAt ?? '').startsWith(mesSelecionado) && (s.totalEur ?? 0) > 0),
     [salesPos, mesSelecionado],
   )
 
-  const posMesVisivel = useMemo(
-    () => posMes.slice(0, posVisiveis),
-    [posMes, posVisiveis],
-  )
-
+  const posMesVisivel = useMemo(() => posMes.slice(0, posVisiveis), [posMes, posVisiveis])
   const posRestantes = Math.max(0, posMes.length - posVisiveis)
 
   const porEvento = useMemo(() => {
-    return eventos.map((ev) => {
-      if (!ev.data) return { ...ev, receita: 0, vendas: 0 }
-      const dia = ev.data
-      const posDay    = salesPos.filter((s) => (s.createdAt ?? '').startsWith(dia) && (s.totalEur ?? 0) > 0)
-      const diretaDay = pedidosVendas.filter((p) => p.criadoEm.startsWith(dia) && p.status !== 'cancelado')
-      return {
-        ...ev,
-        receita: posDay.reduce((s, x) => s + (x.totalEur ?? 0), 0) + diretaDay.reduce((s, p) => s + p.totalEur, 0),
-        vendas: posDay.length + diretaDay.length,
-      }
-    })
-  }, [eventos, salesPos, pedidosVendas])
+    return [...eventos]
+      .sort((a, b) => (b.data || '').localeCompare(a.data || ''))
+      .map((ev) => {
+        const stats = summarizeEvent(salesPos, ev, catalog)
+        return {
+          ...ev,
+          dateLabel: formatEventDateRange(ev),
+          receita: stats.total,
+          vendas: stats.vendas,
+          cookies: Object.values(aggregateCookieCounts(stats.evSales, catalog)).reduce((a, b) => a + b, 0),
+          stats,
+        }
+      })
+  }, [eventos, salesPos, catalog])
 
   function exportarResumo() {
     const mesObj = meses.find((m) => m.key === mesSelecionado)
@@ -204,15 +267,13 @@ export function Relatorios() {
       `Gerado em: ${new Date().toLocaleString('pt-BR')}`,
       '',
       `Receita total: ${fmtEuro(statsMes.totalReceita)}`,
-      `Vendas POS (feiras): ${statsMes.posVendas}`,
+      `Vendas POS: ${statsMes.posVendas}`,
       `Vendas diretas: ${statsMes.diretasVendas}`,
-      `Demos registradas: ${statsMes.demos}`,
+      `Cookies vendidos (POS): ${statsMes.cookiesVendidos}`,
+      `Demos: ${statsMes.demos}`,
       '',
-      'Vendas diretas:',
-      ...diretasDoMes.map((p) => {
-        const c = clientes.find((x) => x.id === p.clienteId)
-        return `  ${fmtDate(p.criadoEm)} | ${c?.nome ?? '—'} | ${p.totalEur.toFixed(2)}€ | ${p.formaPagamento} | ${p.status}`
-      }),
+      'Top sabores:',
+      ...rankingSabores.slice(0, 10).map((r, i) => `  ${i + 1}. ${r.label} — ${r.qty}`),
     ]
     navigator.clipboard?.writeText(lines.join('\n'))
     alert('Resumo copiado!')
@@ -221,17 +282,16 @@ export function Relatorios() {
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto pb-10 space-y-5">
 
-      {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1
             className="text-3xl font-black"
             style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}
           >
-            Relatórios
+            Relatórios & Métricas
           </h1>
           <p className="text-sm mt-1 opacity-55" style={{ color: 'var(--color-text)' }}>
-            Feiras + vendas diretas combinadas
+            Feiras, vendas diretas e ranking de sabores
           </p>
         </div>
         <button className="btn-ghost text-xs px-4 py-2" onClick={exportarResumo}>
@@ -241,22 +301,17 @@ export function Relatorios() {
 
       {/* Gráfico */}
       <div className="bfy-card p-5">
-        <h2
-          className="text-xs font-bold uppercase tracking-widest mb-4 opacity-55"
-          style={{ color: 'var(--color-text)' }}
-        >
+        <h2 className="text-xs font-bold uppercase tracking-widest mb-4 opacity-55" style={{ color: 'var(--color-text)' }}>
           Receita total — últimos 6 meses (€)
         </h2>
         <BarChart data={chartData} height={110} />
       </div>
 
-      {/* Seletor de mês */}
+      {/* Seletor de mês + KPIs */}
       <div className="bfy-card p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-widest opacity-55" style={{ color: 'var(--color-text)' }}>
-            Relatório Mensal
-          </h2>
-        </div>
+        <h2 className="text-xs font-bold uppercase tracking-widest opacity-55" style={{ color: 'var(--color-text)' }}>
+          Relatório mensal
+        </h2>
 
         <div className="flex flex-wrap gap-2">
           {meses.map((m) => (
@@ -274,34 +329,22 @@ export function Relatorios() {
           ))}
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
+            { icon: <IconEuro />, value: fmtEuro(statsMes.totalReceita), label: 'Receita', accent: true },
+            { icon: <IconTrend />, value: statsMes.posVendas, label: 'Vendas POS' },
+            { icon: <IconReceipt />, value: statsMes.diretasVendas, label: 'Diretas' },
+            { icon: <IconCart />, value: statsMes.cookiesVendidos, label: 'Cookies POS' },
+            { icon: <IconStar />, value: statsMes.demos, label: 'Demos' },
             {
               icon: <IconEuro />,
-              value: fmtEuro(statsMes.totalReceita),
-              label: 'Receita total',
-              accent: true,
-            },
-            {
-              icon: <IconTrend />,
-              value: statsMes.posVendas,
-              label: 'Vendas (POS)',
-            },
-            {
-              icon: <IconReceipt />,
-              value: statsMes.diretasVendas,
-              label: 'Vendas diretas',
-            },
-            {
-              icon: <IconStar />,
-              value: statsMes.demos,
-              label: 'Demos',
+              value: statsMes.ticketMedio ? fmtEuro(statsMes.ticketMedio) : '—',
+              label: 'Ticket POS',
             },
           ].map((k, i) => (
             <div
               key={i}
-              className="rounded-2xl p-4 flex flex-col gap-2"
+              className="rounded-2xl p-3 flex flex-col gap-1.5"
               style={{
                 background: k.accent ? 'rgba(154,59,28,0.07)' : 'rgba(29,16,8,0.04)',
                 border: `1px solid ${k.accent ? 'rgba(154,59,28,0.18)' : 'rgba(29,16,8,0.07)'}`,
@@ -311,12 +354,15 @@ export function Relatorios() {
                 {k.icon}
               </div>
               <div
-                className="text-xl font-black tabular-nums leading-none"
-                style={{ fontFamily: 'var(--font-title)', color: k.accent ? 'var(--color-accent-dark)' : 'var(--color-text)' }}
+                className="text-lg font-black tabular-nums leading-none"
+                style={{
+                  fontFamily: 'var(--font-title)',
+                  color: k.accent ? 'var(--color-accent-dark)' : 'var(--color-text)',
+                }}
               >
                 {k.value}
               </div>
-              <div className="text-xs opacity-50 leading-tight" style={{ color: 'var(--color-text)' }}>
+              <div className="text-[10px] opacity-50 leading-tight" style={{ color: 'var(--color-text)' }}>
                 {k.label}
               </div>
             </div>
@@ -324,13 +370,134 @@ export function Relatorios() {
         </div>
       </div>
 
+      {/* Insights divertidos */}
+      <div className="grid sm:grid-cols-3 gap-3">
+        {insights.champion && (
+          <div
+            className="bfy-card p-4 rounded-2xl"
+            style={{ background: 'linear-gradient(135deg, rgba(194,75,41,0.12), rgba(242,181,160,0.2))' }}
+          >
+            <p className="text-2xl mb-1">{insights.champion.emoji}</p>
+            <p className="text-xs font-bold uppercase opacity-50" style={{ color: 'var(--color-text)' }}>
+              Campeão do mês
+            </p>
+            <p className="font-black text-lg" style={{ color: 'var(--color-accent-dark)' }}>
+              {insights.champion.label}
+            </p>
+            <p className="text-xs opacity-55" style={{ color: 'var(--color-text)' }}>
+              {insights.champion.qty} unidades vendidas
+            </p>
+          </div>
+        )}
+        {insights.bestDay && (
+          <div className="bfy-card p-4 rounded-2xl">
+            <p className="text-2xl mb-1">📅</p>
+            <p className="text-xs font-bold uppercase opacity-50" style={{ color: 'var(--color-text)' }}>
+              Melhor dia POS
+            </p>
+            <p className="font-black text-lg" style={{ color: 'var(--color-text)' }}>
+              {fmtDate(insights.bestDay[0] + 'T12:00:00')}
+            </p>
+            <p className="text-xs opacity-55" style={{ color: 'var(--color-text)' }}>
+              {fmtEuro(insights.bestDay[1])} no caixa
+            </p>
+          </div>
+        )}
+        {insights.topPay && (
+          <div className="bfy-card p-4 rounded-2xl">
+            <p className="text-2xl mb-1">💳</p>
+            <p className="text-xs font-bold uppercase opacity-50" style={{ color: 'var(--color-text)' }}>
+              Pagamento favorito
+            </p>
+            <p className="font-black text-lg" style={{ color: 'var(--color-text)' }}>
+              {PAY_LABELS[insights.topPay[0]] ?? insights.topPay[0]}
+            </p>
+            <p className="text-xs opacity-55" style={{ color: 'var(--color-text)' }}>
+              {insights.topPay[1]} vendas este mês
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Ranking sabores */}
+      <div className="bfy-card p-5 space-y-4">
+        <h2 className="text-xs font-bold uppercase tracking-widest opacity-55" style={{ color: 'var(--color-text)' }}>
+          🏆 Ranking de sabores — {meses.find((m) => m.key === mesSelecionado)?.label}
+        </h2>
+        {rankingSabores.length === 0 ? (
+          <p className="text-sm text-center py-6 opacity-40" style={{ color: 'var(--color-text)' }}>
+            Nenhum cookie vendido neste mês.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {rankingSabores.map((r, i) => (
+              <div key={r.id} className="flex items-center gap-3">
+                <span
+                  className="w-6 text-center text-xs font-black shrink-0"
+                  style={{ color: i < 3 ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.35)' }}
+                >
+                  {i + 1}
+                </span>
+                <span className="text-lg shrink-0">{r.emoji}</span>
+                <span className="w-28 sm:w-36 text-xs font-bold truncate" style={{ color: 'var(--color-text)' }}>
+                  {r.label}
+                </span>
+                <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ background: 'rgba(29,16,8,0.08)' }}>
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${(r.qty / maxRank) * 100}%`,
+                      background:
+                        i === 0
+                          ? 'var(--color-accent-dark)'
+                          : i === 1
+                            ? 'var(--color-accent)'
+                            : 'rgba(154,59,28,0.45)',
+                    }}
+                  />
+                </div>
+                <span className="w-8 text-right text-sm font-black tabular-nums" style={{ color: 'var(--color-text)' }}>
+                  {r.qty}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-[10px] opacity-40 pt-1" style={{ color: 'var(--color-text)' }}>
+          Inclui sabores atuais, históricos (ex. BOW) e vendas personalizadas.
+        </p>
+      </div>
+
+      {/* Hall da fama — all time */}
+      {rankingAllTime.length > 0 && (
+        <div className="bfy-card p-5">
+          <h2 className="text-xs font-bold uppercase tracking-widest mb-3 opacity-55" style={{ color: 'var(--color-text)' }}>
+            🌟 Hall da fama (desde sempre)
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {rankingAllTime.slice(0, 5).map((r, i) => (
+              <span
+                key={r.id}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
+                style={{
+                  background: 'rgba(29,16,8,0.06)',
+                  color: 'var(--color-text)',
+                }}
+              >
+                {r.emoji} {r.short ?? r.label}
+                <span className="opacity-45">×{r.qty}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Vendas do mês */}
       <div className="bfy-card p-5 space-y-3">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <h2 className="text-xs font-bold uppercase tracking-widest opacity-55" style={{ color: 'var(--color-text)' }}>
             Vendas do mês
           </h2>
-          {/* Tabs */}
           <div className="flex rounded-xl overflow-hidden" style={{ border: '1.5px solid rgba(29,16,8,0.12)' }}>
             {[
               { id: 'avulsas', label: `Diretas (${diretasDoMes.length})` },
@@ -355,14 +522,8 @@ export function Relatorios() {
           <>
             {diretasDoMes.length === 0 ? (
               <div className="py-8 text-center">
-                <div className="flex justify-center mb-3 opacity-20" style={{ color: 'var(--color-text)' }}>
-                  <IconReceipt />
-                </div>
                 <p className="text-sm opacity-45" style={{ color: 'var(--color-text)' }}>
                   Nenhuma venda direta neste mês.
-                </p>
-                <p className="text-xs opacity-35 mt-2" style={{ color: 'var(--color-text)' }}>
-                  Regista pedidos diretos em Vendas
                 </p>
               </div>
             ) : (
@@ -375,19 +536,15 @@ export function Relatorios() {
                       className="flex items-center gap-3 rounded-xl px-3 py-3"
                       style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.07)' }}
                     >
-                      <div className="opacity-30 shrink-0" style={{ color: 'var(--color-text)' }}>
-                        <IconReceipt />
-                      </div>
                       <div className="flex-1 min-w-0">
                         {c && (
-                          <span className="flex items-center gap-1 text-xs font-bold" style={{ color: 'var(--color-accent-dark)' }}>
-                            <IconUser /> {c.nome}
+                          <span className="text-xs font-bold" style={{ color: 'var(--color-accent-dark)' }}>
+                            {c.nome}
                           </span>
                         )}
                         <div className="flex gap-3 mt-0.5 text-xs opacity-45 flex-wrap" style={{ color: 'var(--color-text)' }}>
                           <span>{fmtDate(p.criadoEm)}</span>
                           <span>{p.formaPagamento}</span>
-                          <span>{p.status}</span>
                           {p.notas && <span className="truncate max-w-xs">{p.notas}</span>}
                         </div>
                       </div>
@@ -397,15 +554,6 @@ export function Relatorios() {
                     </div>
                   )
                 })}
-                <div
-                  className="flex justify-between items-center rounded-xl px-3 py-2 mt-1"
-                  style={{ background: 'rgba(154,59,28,0.07)', border: '1px solid rgba(154,59,28,0.15)' }}
-                >
-                  <span className="text-xs font-bold opacity-60" style={{ color: 'var(--color-text)' }}>Total diretas</span>
-                  <span className="font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
-                    {fmtEuro(diretasDoMes.reduce((s, p) => s + p.totalEur, 0))}
-                  </span>
-                </div>
               </div>
             )}
           </>
@@ -415,28 +563,12 @@ export function Relatorios() {
           <>
             {posMes.length === 0 ? (
               <p className="text-sm text-center py-8 opacity-40" style={{ color: 'var(--color-text)' }}>
-                Nenhuma venda POS registrada neste mês.
+                Nenhuma venda POS neste mês.
               </p>
             ) : (
               <div className="space-y-1.5">
                 {posMesVisivel.map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center gap-3 rounded-xl px-3 py-2"
-                    style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.06)' }}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-text)' }}>
-                        {s.kind === 'box' ? '📦 BOX' : s.kind === 'order' ? '🛍 Avulso' : s.kind}
-                      </p>
-                      <p className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
-                        {fmtDate(s.createdAt)} · {fmtTime(s.createdAt)}
-                      </p>
-                    </div>
-                    <span className="text-sm font-black tabular-nums shrink-0" style={{ color: 'var(--color-accent-dark)' }}>
-                      {fmtEuro(s.totalEur ?? 0)}
-                    </span>
-                  </div>
+                  <PosSaleRow key={s.id} sale={s} catalog={catalog} />
                 ))}
                 {posRestantes > 0 && (
                   <button
@@ -447,42 +579,35 @@ export function Relatorios() {
                     Ver mais ({posRestantes} restantes)
                   </button>
                 )}
-                {posVisiveis > POS_INICIAL && posRestantes === 0 && (
-                  <button
-                    type="button"
-                    className="btn-ghost w-full text-xs py-2.5 mt-1 opacity-60"
-                    onClick={() => setPosVisiveis(POS_INICIAL)}
-                  >
-                    Ver menos
-                  </button>
-                )}
               </div>
             )}
           </>
         )}
       </div>
 
-      {/* Por evento */}
+      {/* Por evento / feira */}
       <div className="bfy-card p-5 space-y-3">
         <div className="flex items-center gap-2">
           <div className="opacity-45" style={{ color: 'var(--color-text)' }}>
             <IconCalendar />
           </div>
           <h2 className="text-xs font-bold uppercase tracking-widest opacity-55" style={{ color: 'var(--color-text)' }}>
-            Por Evento / Feira
+            Por evento / feira
           </h2>
         </div>
 
         {porEvento.length === 0 ? (
           <p className="text-sm text-center py-6 opacity-40" style={{ color: 'var(--color-text)' }}>
-            Nenhum evento cadastrado. Adicione em Configurações.
+            Nenhum evento cadastrado.
           </p>
         ) : (
           <div className="space-y-2">
             {porEvento.map((ev) => (
-              <div
+              <button
                 key={ev.id}
-                className="flex items-center gap-4 rounded-xl px-4 py-3"
+                type="button"
+                onClick={() => setHistoricoEvent(ev)}
+                className="w-full flex items-center gap-4 rounded-xl px-4 py-3 text-left transition-all hover:bg-black/[0.02]"
                 style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.07)' }}
               >
                 <div className="flex-1 min-w-0">
@@ -490,12 +615,10 @@ export function Relatorios() {
                     {ev.nome}
                   </p>
                   <p className="text-xs opacity-50" style={{ color: 'var(--color-text)' }}>
-                    {ev.data
-                      ? new Date(ev.data + 'T12:00:00').toLocaleDateString('pt-BR', {
-                          day: '2-digit', month: '2-digit', year: 'numeric',
-                        })
-                      : '—'}
+                    {ev.dateLabel}
                     {ev.local ? ` · ${ev.local}` : ''}
+                    {ev.stats?.dayBreakdown?.length > 1 ? ` · ${ev.stats.dayBreakdown.length} dias` : ''}
+                    {ev.cookies > 0 ? ` · ${ev.cookies} cookies` : ''}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
@@ -506,12 +629,17 @@ export function Relatorios() {
                     {ev.vendas} venda{ev.vendas !== 1 ? 's' : ''}
                   </p>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
       </div>
 
+      {historicoEvent && (
+        <Modal title={historicoEvent.nome} onClose={() => setHistoricoEvent(null)} size="lg">
+          <FeiraHistoricoPanel evento={historicoEvent} sales={salesPos} catalog={catalog} />
+        </Modal>
+      )}
     </div>
   )
 }

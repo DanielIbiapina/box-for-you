@@ -2,13 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCookies } from '../stores/useCookies'
 import { useEstoqueCookies } from '../stores/useEstoqueCookies'
 import { Modal } from '../components/Modal'
+import { FeiraHistoricoPanel } from '../components/FeiraHistoricoPanel'
+import { FeiraCardapio } from '../components/FeiraCardapio'
+import { useEventos } from '../stores/useEventos'
+import { listFeirasWithStats, formatEventDateRange } from '../lib/feiraHistory'
 import { STORAGE_SYNC_EVENT } from '../lib/syncKeys'
 import { scheduleSync } from '../lib/syncService'
+import { menuCookies, MINI_BOX_ID } from '../lib/catalog'
+import { todayKey, filterSalesByDay, computePosMetrics, topFlavorsRanking } from '../lib/salesAnalytics'
+import { isSupabaseConfigured } from '../lib/supabase'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'cookies-sales:v1'
-const MINI_BOX_ID = 'mini-box'
 
 const PAYMENTS = [
   { id: 'dinheiro',    label: 'Dinheiro' },
@@ -67,14 +73,18 @@ function paymentLabel(id) {
   return PAYMENTS.find((p) => p.id === id)?.label ?? id
 }
 
-function productMeta(productId, cookies) {
+function productMeta(productId, cookies, line = null) {
+  if (line?.customLabel) {
+    return { nome: line.customLabel, short: line.customLabel, emoji: line.customEmoji ?? '✨', image: '' }
+  }
   const c = cookies.find((c) => c.id === productId)
   if (c) return { nome: c.nome, short: c.short, emoji: c.emoji, image: c.image }
   if (productId === MINI_BOX_ID) return { nome: 'Box Mini Cookies', short: 'Box Mini', emoji: '🍪', image: '' }
   return { nome: productId, short: productId, emoji: '❓', image: '' }
 }
 
-function getPrice(productId, cookies, miniBoxPrice) {
+function getPrice(productId, cookies, miniBoxPrice, line = null) {
+  if (line?.unitPrice != null) return line.unitPrice
   const c = cookies.find((c) => c.id === productId)
   if (c) return c.price
   if (productId === MINI_BOX_ID) return miniBoxPrice
@@ -85,15 +95,19 @@ function cartPieces(cart) {
   return Object.values(cart).reduce((acc, v) => acc + (v ?? 0), 0)
 }
 
-function buildCartLines(cart) {
+function buildCartLines(cart, customMeta = {}) {
   return Object.entries(cart)
     .filter(([, qty]) => qty > 0)
-    .map(([productId, qty]) => ({ productId, qty }))
+    .map(([productId, qty]) => ({
+      productId,
+      qty,
+      ...(customMeta[productId] ?? {}),
+    }))
 }
 
-function cartTotal(cart, cookies, miniBoxPrice) {
-  return buildCartLines(cart).reduce(
-    (sum, ln) => sum + getPrice(ln.productId, cookies, miniBoxPrice) * ln.qty,
+function cartTotal(cart, cookies, miniBoxPrice, customMeta = {}) {
+  return buildCartLines(cart, customMeta).reduce(
+    (sum, ln) => sum + getPrice(ln.productId, cookies, miniBoxPrice, ln) * ln.qty,
     0,
   )
 }
@@ -105,7 +119,7 @@ function saleDescription(s, cookies) {
   }
   if (s.kind === 'order') {
     return (s.lines ?? [])
-      .map((ln) => `${ln.qty}× ${productMeta(ln.productId, cookies).short}`)
+      .map((ln) => `${ln.qty}× ${productMeta(ln.productId, cookies, ln).short}`)
       .join(', ')
   }
   if (s.kind === 'box') {
@@ -123,23 +137,31 @@ function saleDescription(s, cookies) {
 export function Feiras({ onPosModeChange }) {
   const {
     cookies, boxConfig, miniBoxConfig,
-    addCookie, updateCookie, removeCookie,
     setBoxConfig, setMiniBoxConfig,
   } = useCookies()
 
   const { deductSale } = useEstoqueCookies()
 
-  const [view,    setView]    = useState('landing') // 'landing' | 'pos' | 'manage'
+  const { eventos } = useEventos()
+
+  const [view,    setView]    = useState('landing') // 'landing' | 'pos' | 'cardapio'
   const [sales,   setSales]   = useState(() => readSales())
   const [cart,    setCart]    = useState({})
   const [order,   setOrder]   = useState(null)
   const [payment, setPayment] = useState(null)
   const [toast,   setToast]   = useState(null)
+  const [historicoEvent, setHistoricoEvent] = useState(null)
   const toastRef = useRef(0)
+
+  const menuItems = useMemo(() => menuCookies(cookies), [cookies])
+  const dayKey = todayKey()
+  const todaySales = useMemo(() => filterSalesByDay(sales, dayKey), [sales, dayKey])
 
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sales))
+    const serialized = JSON.stringify(sales)
+    if (localStorage.getItem(STORAGE_KEY) === serialized) return
+    localStorage.setItem(STORAGE_KEY, serialized)
     scheduleSync(STORAGE_KEY)
   }, [sales])
 
@@ -159,37 +181,12 @@ export function Feiras({ onPosModeChange }) {
     return () => onPosModeChange?.(false)
   }, [view, onPosModeChange])
 
-  const metrics = useMemo(() => {
-    let total = 0
-    const byCookie  = Object.fromEntries(cookies.map((c) => [c.id, 0]))
-    const demoCount = { total: 0, byFlavor: Object.fromEntries(cookies.map((c) => [c.id, 0])) }
-    const byPayment = Object.fromEntries(PAYMENTS.map((p) => [p.id, { count: 0, eur: 0 }]))
-    let miniBoxCount = 0
-
-    for (const s of sales) {
-      total += s.totalEur ?? 0
-      if ((s.totalEur ?? 0) > 0 && s.paymentId && byPayment[s.paymentId]) {
-        byPayment[s.paymentId].count++
-        byPayment[s.paymentId].eur += s.totalEur ?? 0
-      }
-      if (s.kind === 'order') {
-        for (const ln of s.lines ?? []) {
-          if (byCookie[ln.productId] != null) byCookie[ln.productId] += ln.qty ?? 0
-          else if (ln.productId === MINI_BOX_ID)  miniBoxCount += ln.qty ?? 0
-        }
-      } else if (s.kind === 'demo') {
-        demoCount.total++
-        if (demoCount.byFlavor[s.demoFlavorId] != null) demoCount.byFlavor[s.demoFlavorId]++
-      } else if (s.kind === 'box') {
-        for (const fid of s.boxFlavors ?? []) {
-          if (byCookie[fid] != null) byCookie[fid]++
-        }
-      }
-    }
-
-    const revenueSales = sales.filter((s) => (s.totalEur ?? 0) > 0).length
-    return { total, byCookie, demoCount, byPayment, revenueSales, miniBoxCount }
-  }, [sales, cookies])
+  const metricsAll = useMemo(() => computePosMetrics(sales, cookies), [sales, cookies])
+  const metrics = useMemo(() => computePosMetrics(todaySales, cookies), [todaySales, cookies])
+  const feirasHistorico = useMemo(
+    () => listFeirasWithStats(sales, eventos, cookies),
+    [sales, eventos, cookies],
+  )
 
   function notify(msg) {
     setToast(msg)
@@ -217,11 +214,14 @@ export function Feiras({ onPosModeChange }) {
   }
 
   function startBox() {
-    setOrder({ kind: 'box', boxCounts: initialBoxCounts(cookies), demoFlavorId: null })
+    setOrder({ kind: 'box', boxCounts: initialBoxCounts(menuItems), demoFlavorId: null })
   }
 
   function startDemo() {
-    setCart((prev) => { if (cartPieces(prev) > 0) notify('Lista avulsa limpa.'); return {} })
+    setCart((prev) => {
+      if (cartPieces(prev) > 0) notify('Lista avulsa limpa.')
+      return {}
+    })
     setOrder({ kind: 'demo', boxCounts: initialBoxCounts(cookies), demoFlavorId: null })
     setPayment(null)
   }
@@ -258,6 +258,11 @@ export function Feiras({ onPosModeChange }) {
   }
 
   function confirmSale() {
+    if (isSupabaseConfigured && !navigator.onLine) {
+      notify('Sem internet — liga-te à rede para guardar na nuvem.')
+      return
+    }
+
     if (order?.kind === 'demo') {
       if (!order.demoFlavorId) { notify('Escolhe o sabor para a demonstração.'); return }
       setSales((prev) => [{
@@ -289,9 +294,12 @@ export function Feiras({ onPosModeChange }) {
         kind: 'order', lines: buildCartLines(cart),
         flavorId: null, boxFlavors: [], paymentId: payment,
         totalEur: cartTotal(cart, cookies, miniBoxConfig.price),
+        eventId: null,
       })
       for (const [productId, qty] of Object.entries(cart)) {
-        if (productId !== MINI_BOX_ID) deductItems.push({ cookieId: productId, qty })
+        if (productId !== MINI_BOX_ID && !productId.startsWith('custom-')) {
+          deductItems.push({ cookieId: productId, qty })
+        }
       }
     }
 
@@ -320,6 +328,11 @@ export function Feiras({ onPosModeChange }) {
     if (!sales.length) return
     if (!confirm('Excluir o último registo?')) return
     setSales((prev) => prev.slice(1))
+  }
+
+  function deleteSale(id) {
+    if (!confirm('Excluir este registo?')) return
+    setSales((prev) => prev.filter((s) => s.id !== id))
   }
 
   function clearAll() {
@@ -382,8 +395,9 @@ export function Feiras({ onPosModeChange }) {
     return 'Seleciona itens'
   }
 
-  const maxCookieBar = Math.max(...cookies.map((c) => metrics.byCookie[c.id] ?? 0), 1)
-  const maxDemoBar   = Math.max(...cookies.map((c) => metrics.demoCount.byFlavor[c.id] ?? 0), 1)
+  const todayRanking = useMemo(() => topFlavorsRanking(todaySales, cookies, 12), [todaySales, cookies])
+  const maxRankBar = Math.max(...todayRanking.map((r) => r.qty), 1)
+  const maxDemoBar = Math.max(...cookies.map((c) => metrics.demoCount.byFlavor[c.id] ?? 0), 1)
 
   // ── View: Landing ─────────────────────────────────────────────────────────
 
@@ -415,7 +429,7 @@ export function Feiras({ onPosModeChange }) {
           {/* Stats */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Total caixa', value: fmtEuro(metrics.total), accent: true },
+              { label: 'Caixa hoje', value: fmtEuro(metrics.total), accent: true },
               { label: 'Vendas pagas', value: metrics.revenueSales },
               { label: 'Demonstrações', value: metrics.demoCount.total },
             ].map(({ label, value, accent }) => (
@@ -431,9 +445,8 @@ export function Feiras({ onPosModeChange }) {
             ))}
           </div>
 
-          {/* Ações principais */}
+          {/* Ações */}
           <div className="grid sm:grid-cols-2 gap-4">
-            {/* Iniciar Caixa */}
             <button
               onClick={() => setView('pos')}
               className="group relative overflow-hidden rounded-2xl p-6 flex items-center gap-4 text-left transition-all hover:scale-[1.015] active:scale-[0.99]"
@@ -442,10 +455,7 @@ export function Feiras({ onPosModeChange }) {
                 boxShadow: '0 6px 24px rgba(90,158,133,0.35)',
               }}
             >
-              <div
-                className="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
-                style={{ background: 'rgba(255,255,255,0.2)' }}
-              >
+              <div className="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'rgba(255,255,255,0.2)' }}>
                 🛒
               </div>
               <div className="min-w-0">
@@ -453,40 +463,30 @@ export function Feiras({ onPosModeChange }) {
                   Iniciar Caixa
                 </p>
                 <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.72)' }}>
-                  Abrir o sistema de vendas
+                  Vendas de hoje
                 </p>
               </div>
-              <svg className="ml-auto shrink-0 opacity-40 group-hover:opacity-70 transition-opacity" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
             </button>
 
-            {/* Gerenciar Cardápio */}
             <button
-              onClick={() => setView('manage')}
+              onClick={() => setView('cardapio')}
               className="group relative overflow-hidden rounded-2xl p-6 flex items-center gap-4 text-left transition-all hover:scale-[1.015] active:scale-[0.99]"
               style={{
                 background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%)',
                 boxShadow: '0 6px 24px rgba(194,75,41,0.30)',
               }}
             >
-              <div
-                className="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-3xl"
-                style={{ background: 'rgba(255,255,255,0.18)' }}
-              >
+              <div className="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'rgba(255,255,255,0.18)' }}>
                 🍪
               </div>
               <div className="min-w-0">
                 <p className="font-black text-xl leading-tight" style={{ fontFamily: 'var(--font-title)', color: '#fff' }}>
-                  Gerir Cardápio
+                  Cardápio do caixa
                 </p>
                 <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.72)' }}>
-                  Produtos, preços e imagens
+                  Sabores visíveis e preços
                 </p>
               </div>
-              <svg className="ml-auto shrink-0 opacity-40 group-hover:opacity-70 transition-opacity" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
             </button>
           </div>
 
@@ -496,7 +496,7 @@ export function Feiras({ onPosModeChange }) {
               Cardápio atual
             </p>
             <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-              {cookies.map((c) => (
+              {menuItems.map((c) => (
                 <div key={c.id} className="flex flex-col items-center gap-1">
                   <div
                     className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center"
@@ -521,6 +521,47 @@ export function Feiras({ onPosModeChange }) {
             </div>
           </div>
 
+          {/* Histórico de feiras */}
+          <div className="bfy-card p-4 space-y-3">
+            <p className="text-xs font-black uppercase tracking-widest opacity-50" style={{ color: 'var(--color-text)' }}>
+              Histórico de feiras
+            </p>
+            {feirasHistorico.length === 0 ? (
+              <p className="text-sm opacity-45 py-4 text-center" style={{ color: 'var(--color-text)' }}>
+                Ainda não há feiras com vendas registadas.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {feirasHistorico.map(({ ev, stats }) => (
+                  <button
+                    key={ev.id}
+                    type="button"
+                    onClick={() => setHistoricoEvent(ev)}
+                    className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left transition-all hover:bg-black/[0.03]"
+                    style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.06)' }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm truncate" style={{ color: 'var(--color-text)' }}>{ev.nome}</p>
+                      <p className="text-[10px] opacity-45 mt-0.5" style={{ color: 'var(--color-text)' }}>
+                        {formatEventDateRange(ev)}
+                        {ev.local ? ` · ${ev.local}` : ''}
+                        {stats.dayBreakdown.length > 1 ? ` · ${stats.dayBreakdown.length} dias` : ''}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
+                        {fmtEuro(stats.total)}
+                      </p>
+                      <p className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
+                        {stats.vendas} venda{stats.vendas !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           {sales.length > 0 && (
             <div className="text-center">
               <button
@@ -535,27 +576,22 @@ export function Feiras({ onPosModeChange }) {
         </div>
 
         {toast && <Toast msg={toast} />}
+
+        {historicoEvent && (
+          <Modal title={historicoEvent.nome} onClose={() => setHistoricoEvent(null)} size="lg">
+            <FeiraHistoricoPanel evento={historicoEvent} sales={sales} catalog={cookies} />
+          </Modal>
+        )}
       </div>
     )
   }
 
-  // ── View: Gerenciar ───────────────────────────────────────────────────────
-
-  if (view === 'manage') {
+  if (view === 'cardapio') {
     return (
-      <ManageView
-        cookies={cookies}
-        boxConfig={boxConfig}
-        miniBoxConfig={miniBoxConfig}
-        addCookie={addCookie}
-        updateCookie={updateCookie}
-        removeCookie={removeCookie}
-        setBoxConfig={setBoxConfig}
-        setMiniBoxConfig={setMiniBoxConfig}
-        onBack={() => setView('landing')}
-        notify={notify}
-        toast={toast}
-      />
+      <>
+        <FeiraCardapio onBack={() => setView('landing')} notify={notify} />
+        {toast && <Toast msg={toast} />}
+      </>
     )
   }
 
@@ -587,7 +623,7 @@ export function Feiras({ onPosModeChange }) {
         </div>
         <div className="flex items-center gap-4 shrink-0">
           <div className="text-right">
-            <div className="text-[10px] opacity-45 uppercase tracking-wide" style={{ color: 'var(--color-text-light)' }}>Caixa</div>
+            <div className="text-[10px] opacity-45 uppercase tracking-wide" style={{ color: 'var(--color-text-light)' }}>Caixa hoje</div>
             <div className="text-base font-black tabular-nums" style={{ color: 'var(--color-accent)' }}>
               {fmtEuro(metrics.total)}
             </div>
@@ -608,7 +644,7 @@ export function Feiras({ onPosModeChange }) {
 
         {/* ── Cardápio ── */}
         <section
-          className="flex min-h-0 flex-col px-3 py-3 sm:px-4 lg:border-r max-lg:max-h-[min(54dvh,540px)] max-lg:flex-none max-lg:overflow-y-auto lg:max-h-none lg:flex-[1.4]"
+          className="flex min-h-0 flex-col px-3 py-3 sm:px-4 lg:border-r max-lg:max-h-[min(54dvh,540px)] max-lg:flex-none max-lg:overflow-y-auto lg:max-h-none lg:flex-[1.4] lg:overflow-y-auto"
           style={{ borderColor: 'rgba(29,16,8,0.1)' }}
         >
           <div className="shrink-0 flex items-center justify-between mb-3">
@@ -620,10 +656,10 @@ export function Feiras({ onPosModeChange }) {
             </span>
           </div>
 
-          <div className="flex flex-col gap-2.5 flex-1">
+          <div className="flex flex-col gap-2.5 flex-1 min-h-0 overflow-y-auto lg:overflow-y-auto">
             {/* Grid de cookies */}
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-              {cookies.map((c) => {
+              {menuItems.map((c) => {
                 const n  = cart[c.id] ?? 0
                 const on = n > 0
                 return (
@@ -823,7 +859,7 @@ export function Feiras({ onPosModeChange }) {
                         ✕
                       </button>
                     </div>
-                    {cookies.map((c) => {
+                    {menuItems.map((c) => {
                       const n = order.boxCounts[c.id] ?? 0
                       return (
                         <div
@@ -853,7 +889,7 @@ export function Feiras({ onPosModeChange }) {
                     })}
                     {boxFilled > 0 && (
                       <div className="text-[10px] opacity-40 pt-0.5" style={{ color: 'var(--color-text)' }}>
-                        {formatBoxCountsSummary(order.boxCounts, cookies)}
+                        {formatBoxCountsSummary(order.boxCounts, menuItems)}
                       </div>
                     )}
                   </div>
@@ -870,7 +906,7 @@ export function Feiras({ onPosModeChange }) {
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-1.5">
-                      {cookies.map((c) => {
+                      {menuItems.map((c) => {
                         const on = order.demoFlavorId === c.id
                         return (
                           <button
@@ -902,8 +938,8 @@ export function Feiras({ onPosModeChange }) {
                       Lista · {nCart} {nCart === 1 ? 'item' : 'itens'}
                     </div>
                     {buildCartLines(cart).map((ln) => {
-                      const meta  = productMeta(ln.productId, cookies)
-                      const price = getPrice(ln.productId, cookies, miniBoxConfig.price)
+                      const meta  = productMeta(ln.productId, cookies, ln)
+                      const price = getPrice(ln.productId, cookies, miniBoxConfig.price, ln)
                       return (
                         <div
                           key={ln.productId}
@@ -1028,7 +1064,7 @@ export function Feiras({ onPosModeChange }) {
         >
           <div className="p-3 space-y-3">
             <div className="grid grid-cols-3 gap-2">
-              <StatCard label="Caixa" value={fmtEuro(metrics.total)} accent />
+              <StatCard label="Caixa hoje" value={fmtEuro(metrics.total)} accent />
               <StatCard label="Demos" value={metrics.demoCount.total} />
               <StatCard
                 label="Ticket"
@@ -1036,22 +1072,23 @@ export function Feiras({ onPosModeChange }) {
               />
             </div>
 
-            <SideBlock title="Cookies vendidos">
-              {cookies.map((c) => {
-                const qty = metrics.byCookie[c.id] ?? 0
-                return (
-                  <div key={c.id} className="flex items-center gap-2 text-xs">
-                    <span className="w-24 font-semibold truncate" style={{ color: 'var(--color-text)' }}>{c.short}</span>
-                    <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: 'rgba(29,16,8,0.1)' }}>
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${(qty / maxCookieBar) * 100}%`, background: 'var(--color-accent)' }}
-                      />
-                    </div>
-                    <span className="w-5 text-right font-black tabular-nums" style={{ color: 'var(--color-text)' }}>{qty}</span>
+            <SideBlock title="Cookies vendidos hoje">
+              {todayRanking.length === 0 ? (
+                <div className="text-xs opacity-35 py-1" style={{ color: 'var(--color-text)' }}>Nenhum cookie vendido hoje.</div>
+              ) : todayRanking.map((r) => (
+                <div key={r.id} className="flex items-center gap-2 text-xs">
+                  <span className="w-24 font-semibold truncate" style={{ color: 'var(--color-text)' }}>
+                    {r.emoji} {r.short ?? r.label}
+                  </span>
+                  <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: 'rgba(29,16,8,0.1)' }}>
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${(r.qty / maxRankBar) * 100}%`, background: 'var(--color-accent)' }}
+                    />
                   </div>
-                )
-              })}
+                  <span className="w-5 text-right font-black tabular-nums" style={{ color: 'var(--color-text)' }}>{r.qty}</span>
+                </div>
+              ))}
             </SideBlock>
 
             <SideBlock title="Demonstrações por sabor">
@@ -1112,11 +1149,11 @@ export function Feiras({ onPosModeChange }) {
                 </div>
               }
             >
-              {sales.length === 0 ? (
-                <div className="text-xs opacity-35 py-2" style={{ color: 'var(--color-text)' }}>Nada ainda.</div>
+              {todaySales.length === 0 ? (
+                <div className="text-xs opacity-35 py-2" style={{ color: 'var(--color-text)' }}>Nada registado hoje.</div>
               ) : (
                 <div className="space-y-1 max-h-[220px] overflow-y-auto">
-                  {sales.slice(0, 20).map((s) => (
+                  {todaySales.slice(0, 20).map((s) => (
                     <div
                       key={s.id}
                       className="rounded-lg px-2 py-1.5"
@@ -1144,243 +1181,6 @@ export function Feiras({ onPosModeChange }) {
           </div>
         </aside>
       </main>
-
-      {toast && <Toast msg={toast} />}
-    </div>
-  )
-}
-
-// ─── View de Gerenciamento ────────────────────────────────────────────────────
-
-const EMPTY_COOKIE_FORM = { nome: '', short: '', emoji: '🍪', price: 3.50, image: '' }
-
-function ManageView({
-  cookies, boxConfig, miniBoxConfig,
-  addCookie, updateCookie, removeCookie,
-  setBoxConfig, setMiniBoxConfig,
-  onBack, notify, toast,
-}) {
-  const [modal, setModal] = useState(null) // null | 'new' | id
-  const [form,  setForm]  = useState(EMPTY_COOKIE_FORM)
-
-  function openAdd() {
-    setForm({ ...EMPTY_COOKIE_FORM })
-    setModal('new')
-  }
-
-  function openEdit(c) {
-    setForm({ nome: c.nome, short: c.short, emoji: c.emoji, price: c.price, image: c.image ?? '' })
-    setModal(c.id)
-  }
-
-  function handleSave(e) {
-    e.preventDefault()
-    const data = {
-      nome:  form.nome.trim(),
-      short: form.short.trim() || form.nome.trim(),
-      emoji: form.emoji || '🍪',
-      price: parseFloat(form.price) || 0,
-      image: form.image.trim(),
-    }
-    if (!data.nome) return
-    modal === 'new' ? addCookie(data) : updateCookie(modal, data)
-    setModal(null)
-  }
-
-  return (
-    <div className="h-full overflow-y-auto" style={{ background: 'var(--color-bg)' }}>
-      <div className="max-w-2xl mx-auto p-4 md:p-6 pb-10 space-y-5">
-
-        <div className="flex items-center gap-3">
-          <button className="btn-ghost text-sm px-4 py-2" onClick={onBack}>← Voltar</button>
-          <h1 className="text-2xl font-black" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}>
-            Gerenciar Cardápio
-          </h1>
-        </div>
-
-        {/* Lista de cookies */}
-        <div className="bfy-card p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}>
-              Cookies Individuais
-            </h2>
-            <button className="btn-accent text-xs px-4 py-2" onClick={openAdd}>+ Novo cookie</button>
-          </div>
-
-          <div className="space-y-2">
-            {cookies.map((c) => (
-              <div
-                key={c.id}
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-                style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.07)' }}
-              >
-                <div
-                  className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
-                  style={{ background: 'rgba(29,16,8,0.06)' }}
-                >
-                  {c.image
-                    ? <img src={c.image} alt={c.nome} className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none' }} />
-                    : <span className="text-xl">{c.emoji}</span>
-                  }
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold truncate" style={{ color: 'var(--color-text)' }}>{c.nome}</p>
-                  <p className="text-xs opacity-50" style={{ color: 'var(--color-text)' }}>
-                    {c.short} · {fmtEuro(c.price)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button className="btn-ghost text-xs px-3 py-1.5" onClick={() => openEdit(c)}>Editar</button>
-                  <button
-                    className="text-xs font-semibold opacity-35 hover:opacity-75 transition-opacity"
-                    style={{ color: '#e57373' }}
-                    onClick={() => {
-                      if (cookies.length <= 1) { notify('Precisa ter pelo menos 1 cookie.'); return }
-                      if (confirm(`Remover "${c.nome}"?`)) removeCookie(c.id)
-                    }}
-                  >✕</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* BOX config */}
-        <div className="bfy-card p-5 space-y-3">
-          <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}>
-            Configuração da BOX
-          </h2>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="bfy-label">Nº de cookies na BOX</span>
-              <input
-                className="bfy-input"
-                type="number"
-                min="1"
-                max="12"
-                value={boxConfig.size}
-                onChange={(e) => setBoxConfig((p) => ({ ...p, size: parseInt(e.target.value) || 4 }))}
-              />
-            </label>
-            <label className="block">
-              <span className="bfy-label">Preço da BOX (€)</span>
-              <input
-                className="bfy-input"
-                type="number"
-                min="0"
-                step="0.5"
-                value={boxConfig.price}
-                onChange={(e) => setBoxConfig((p) => ({ ...p, price: parseFloat(e.target.value) || 0 }))}
-              />
-            </label>
-          </div>
-        </div>
-
-        {/* Mini box config */}
-        <div className="bfy-card p-5 space-y-3">
-          <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}>
-            Box Mini Cookies
-          </h2>
-          <label className="block max-w-xs">
-            <span className="bfy-label">Preço (€)</span>
-            <input
-              className="bfy-input"
-              type="number"
-              min="0"
-              step="0.5"
-              value={miniBoxConfig.price}
-              onChange={(e) => setMiniBoxConfig((p) => ({ ...p, price: parseFloat(e.target.value) || 0 }))}
-            />
-          </label>
-        </div>
-      </div>
-
-      {/* Modal add/edit */}
-      {modal !== null && (
-        <Modal
-          title={modal === 'new' ? 'Novo Cookie' : 'Editar Cookie'}
-          onClose={() => setModal(null)}
-          size="sm"
-        >
-          <form onSubmit={handleSave} className="space-y-4">
-            <label className="block">
-              <span className="bfy-label">Nome completo *</span>
-              <input
-                className="bfy-input"
-                required
-                value={form.nome}
-                onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
-                placeholder="Ex: Chocolate Triplo"
-              />
-            </label>
-            <label className="block">
-              <span className="bfy-label">Nome curto (no cardápio)</span>
-              <input
-                className="bfy-input"
-                value={form.short}
-                onChange={(e) => setForm((f) => ({ ...f, short: e.target.value }))}
-                placeholder="Igual ao nome se vazio"
-              />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="bfy-label">Emoji (fallback)</span>
-                <input
-                  className="bfy-input"
-                  value={form.emoji}
-                  onChange={(e) => setForm((f) => ({ ...f, emoji: e.target.value }))}
-                  placeholder="🍪"
-                />
-              </label>
-              <label className="block">
-                <span className="bfy-label">Preço (€) *</span>
-                <input
-                  className="bfy-input"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  required
-                  value={form.price}
-                  onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                />
-              </label>
-            </div>
-            <label className="block">
-              <span className="bfy-label">URL da imagem (opcional)</span>
-              <input
-                className="bfy-input"
-                value={form.image}
-                onChange={(e) => setForm((f) => ({ ...f, image: e.target.value }))}
-                placeholder="https://... ou /imagens/cookie.png"
-              />
-              {form.image && (
-                <img
-                  src={form.image}
-                  alt="preview"
-                  className="mt-2 w-16 h-16 rounded-xl object-cover"
-                  onError={(e) => { e.target.style.display = 'none' }}
-                />
-              )}
-            </label>
-            <div className="flex gap-3 pt-2">
-              {modal !== 'new' && (
-                <button
-                  type="button"
-                  className="btn-ghost text-xs px-4"
-                  style={{ color: '#e57373', borderColor: '#e57373' }}
-                  onClick={() => {
-                    if (confirm('Excluir este cookie?')) { removeCookie(modal); setModal(null) }
-                  }}
-                >
-                  Excluir
-                </button>
-              )}
-              <button type="button" className="btn-ghost flex-1" onClick={() => setModal(null)}>Cancelar</button>
-              <button type="submit" className="btn-primary flex-1">Salvar</button>
-            </div>
-          </form>
-        </Modal>
-      )}
 
       {toast && <Toast msg={toast} />}
     </div>

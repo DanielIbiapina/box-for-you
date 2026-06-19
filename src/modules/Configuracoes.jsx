@@ -6,6 +6,7 @@ import { isSupabaseConfigured } from '../lib/supabase'
 import { pushToCloud, pullFromCloud } from '../lib/syncService'
 import { isAppLockEnabled, lock } from '../lib/appLock'
 import { Modal } from '../components/Modal'
+import { CardapioAdmin } from '../components/CardapioAdmin'
 
 function Field({ label, children }) {
   return (
@@ -19,13 +20,13 @@ function Field({ label, children }) {
 const EMPTY_EVENTO = { nome: '', local: '', data: '', status: 'planejada' }
 
 const SYNC_LABELS = {
-  idle: 'Sincronizado em tempo real',
-  pulling: 'Baixando da nuvem…',
-  pulled: 'Dados atualizados',
-  syncing: 'Enviando para a nuvem…',
-  synced: 'Guardado na nuvem',
-  merged: 'Dados fundidos com a nuvem',
-  offline: 'Sem internet — alterações em fila',
+  idle: 'Sincronizado',
+  pulling: 'A atualizar…',
+  pulled: 'Atualizado',
+  syncing: 'A guardar…',
+  synced: 'Guardado',
+  merged: 'Dados atualizados',
+  offline: 'Sem internet — liga-te à rede para guardar',
   error: 'Erro na sincronização',
 }
 
@@ -250,6 +251,17 @@ export function Configuracoes() {
           {saved ? '✓ Salvo!' : 'Salvar Configurações'}
         </button>
       </form>
+
+      {/* Cardápio global */}
+      <div className="bfy-card p-6 mb-5">
+        <h2
+          className="text-base font-bold mb-4"
+          style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}
+        >
+          Cardápio & Sabores
+        </h2>
+        <CardapioAdmin />
+      </div>
 
       {/* Eventos / Feiras */}
       <div className="bfy-card p-6">

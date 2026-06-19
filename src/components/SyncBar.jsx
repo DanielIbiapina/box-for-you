@@ -1,14 +1,9 @@
 import { useSyncStatus } from '../stores/useSyncStatus'
 import { isSupabaseConfigured } from '../lib/supabase'
 
+/** Só avisos importantes — sync normal é silencioso (sem mexer o layout). */
 const LABELS = {
-  idle: null,
-  pulling: 'A carregar dados da nuvem…',
-  pulled: null,
-  syncing: 'A guardar na nuvem…',
-  synced: null,
-  merged: null,
-  offline: 'Sem internet — as alterações serão enviadas quando voltar a ligar',
+  offline: 'Sem internet — liga-te à rede para guardar alterações',
   error: 'Erro ao sincronizar — verifica a ligação',
 }
 
@@ -21,7 +16,7 @@ export function SyncBar() {
     ? LABELS.offline
     : status === 'error'
       ? (message ? `${LABELS.error}: ${message}` : LABELS.error)
-      : LABELS[status]
+      : null
 
   if (!label) return null
 

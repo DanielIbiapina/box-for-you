@@ -17,7 +17,9 @@ export function useStorage(key, defaultValue) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(key, JSON.stringify(value))
+      const serialized = JSON.stringify(value)
+      if (localStorage.getItem(key) === serialized) return
+      localStorage.setItem(key, serialized)
       if (!isApplyingRemoteSync()) scheduleSync(key)
     } catch {
       // storage full or disabled
@@ -27,7 +29,11 @@ export function useStorage(key, defaultValue) {
   useEffect(() => {
     function onRemoteSync(e) {
       if (e.detail?.key !== key) return
-      setValue(readKey(key, defaultValue))
+      const next = readKey(key, defaultValue)
+      setValue((prev) => {
+        if (JSON.stringify(prev) === JSON.stringify(next)) return prev
+        return next
+      })
     }
     window.addEventListener(STORAGE_SYNC_EVENT, onRemoteSync)
     return () => window.removeEventListener(STORAGE_SYNC_EVENT, onRemoteSync)
