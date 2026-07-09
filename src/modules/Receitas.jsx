@@ -13,6 +13,7 @@ const EMPTY = {
   nome: '',
   descricao: '',
   categoria: 'classico',
+  ehReceitaBase: false,
   emoji: '🍪',
   cookieDoMes: false,
   rendimento: 12,
@@ -22,10 +23,17 @@ const EMPTY = {
   ingredientes: [],
 }
 
+const BASE_GRADIENT = 'linear-gradient(135deg,#5D4037 0%,#8D6E63 100%)'
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function catById(id) {
   return CATEGORIAS.find((c) => c.id === id) ?? CATEGORIAS[0]
+}
+
+function catForReceita(r) {
+  if (r.ehReceitaBase) return { gradient: BASE_GRADIENT, label: 'Massa Base' }
+  return catById(r.categoria)
 }
 
 function SecTitle({ children }) {
@@ -44,7 +52,7 @@ const Divider = () => (
 )
 
 function ReceitaCard({ receita, onClick }) {
-  const cat = catById(receita.categoria)
+  const cat = catForReceita(receita)
   const totalMin = (receita.tempoPreparo ?? 0) + (receita.tempoForno ?? 0)
 
   return (
@@ -64,11 +72,21 @@ function ReceitaCard({ receita, onClick }) {
       >
         {/* Emoji da receita */}
         <span style={{ fontSize: '3rem', lineHeight: 1, filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.18))' }}>
-          {receita.emoji ?? '🍪'}
+          {receita.emoji ?? (receita.ehReceitaBase ? '🧱' : '🍪')}
         </span>
 
+        {/* Badge "Massa Base" */}
+        {receita.ehReceitaBase && (
+          <span
+            className="absolute top-2 left-2 text-[10px] font-black px-2 py-0.5 rounded-full"
+            style={{ background: 'rgba(0,0,0,0.4)', color: '#fff', letterSpacing: '0.04em' }}
+          >
+            BASE
+          </span>
+        )}
+
         {/* Badge "Cookie do Mês" */}
-        {receita.cookieDoMes && (
+        {receita.cookieDoMes && !receita.ehReceitaBase && (
           <span
             className="absolute top-2 right-2 text-[10px] font-black px-2 py-0.5 rounded-full"
             style={{ background: '#fff', color: 'var(--color-accent-dark)', letterSpacing: '0.04em' }}
@@ -83,7 +101,7 @@ function ReceitaCard({ receita, onClick }) {
         {/* Categoria */}
         <span
           className="inline-block text-[10px] font-black uppercase tracking-widest mb-2"
-          style={{ color: 'var(--color-accent-dark)', opacity: 0.75 }}
+          style={{ color: receita.ehReceitaBase ? '#8D6E63' : 'var(--color-accent-dark)', opacity: 0.85 }}
         >
           {cat.label}
         </span>
@@ -133,8 +151,10 @@ function ReceitaCard({ receita, onClick }) {
 
 function ReceitaForm({ initial, onSave, onDelete, onClose }) {
   const { ingredientes: ingEstoque } = useEstoque()
+  const { receitas } = useReceitas()
+  const baseReceitas = receitas.filter((r) => r.ehReceitaBase && r.id !== initial?.id)
   const [form, setForm] = useState({ ...EMPTY, ...initial, ingredientes: initial?.ingredientes ?? [] })
-  const [novoIng, setNovoIng] = useState({ nome: '', ingredienteId: '', quantidade: '', unidade: 'g' })
+  const [novoIng, setNovoIng] = useState({ tipo: 'ingrediente', nome: '', ingredienteId: '', receitaBaseId: '', quantidade: '', unidade: 'g' })
 
   function set(key, val) {
     setForm((f) => ({ ...f, [key]: val }))
@@ -143,14 +163,27 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
   function addIngrediente() {
     const qtd = parseFloat(novoIng.quantidade)
     if (!qtd || qtd <= 0) return
-    let ing = { ...novoIng, quantidade: qtd }
-    if (ing.ingredienteId) {
-      const found = ingEstoque.find((i) => i.id === ing.ingredienteId)
-      if (found) { ing.nome = found.nome; ing.unidade = found.unidade }
+    if (novoIng.tipo === 'base') {
+      if (!novoIng.receitaBaseId) return
+      const base = baseReceitas.find((r) => r.id === novoIng.receitaBaseId)
+      if (!base) return
+      set('ingredientes', [...form.ingredientes, {
+        tipo: 'base',
+        receitaBaseId: novoIng.receitaBaseId,
+        nome: base.nome,
+        quantidade: qtd,
+        unidade: novoIng.unidade,
+      }])
+    } else {
+      let ing = { ...novoIng, quantidade: qtd }
+      if (ing.ingredienteId) {
+        const found = ingEstoque.find((i) => i.id === ing.ingredienteId)
+        if (found) { ing.nome = found.nome; ing.unidade = found.unidade }
+      }
+      if (!ing.nome.trim() && !ing.ingredienteId) return
+      set('ingredientes', [...form.ingredientes, ing])
     }
-    if (!ing.nome.trim() && !ing.ingredienteId) return
-    set('ingredientes', [...form.ingredientes, ing])
-    setNovoIng({ nome: '', ingredienteId: '', quantidade: '', unidade: 'g' })
+    setNovoIng({ tipo: novoIng.tipo, nome: '', ingredienteId: '', receitaBaseId: '', quantidade: '', unidade: 'g' })
   }
 
   function removeIng(idx) {
@@ -207,7 +240,30 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
         </div>
       </div>
 
-      {form.categoria === 'sazonal' && (
+      {/* Toggle: Receita Base */}
+      <div
+        className="flex items-center justify-between p-3 rounded-xl mb-4 cursor-pointer select-none"
+        style={{ background: form.ehReceitaBase ? 'rgba(93,64,55,0.1)' : 'rgba(29,16,8,0.05)' }}
+        onClick={() => set('ehReceitaBase', !form.ehReceitaBase)}
+      >
+        <div>
+          <p className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>🧱 Massa Base</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--color-text)', opacity: 0.5 }}>
+            Massa reutilizável como ingrediente em outras receitas
+          </p>
+        </div>
+        <div
+          className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
+          style={{ background: form.ehReceitaBase ? '#8D6E63' : 'rgba(29,16,8,0.2)' }}
+        >
+          <span
+            className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all"
+            style={{ left: form.ehReceitaBase ? '1.25rem' : '0.125rem' }}
+          />
+        </div>
+      </div>
+
+      {form.categoria === 'sazonal' && !form.ehReceitaBase && (
         <div
           className="flex items-center justify-between p-3 rounded-xl mb-4 cursor-pointer select-none"
           style={{ background: 'rgba(29,16,8,0.05)' }}
@@ -270,11 +326,20 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
         <div className="mb-3 space-y-1.5">
           {form.ingredientes.map((ing, idx) => (
             <div key={idx} className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-              style={{ background: 'rgba(29,16,8,0.05)' }}>
-              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-accent)' }} />
+              style={{ background: ing.tipo === 'base' ? 'rgba(93,64,55,0.07)' : 'rgba(29,16,8,0.05)' }}>
+              {ing.tipo === 'base'
+                ? <span className="text-base flex-shrink-0">🧱</span>
+                : <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-accent)' }} />
+              }
               <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
                 {ing.nome || '—'}
               </span>
+              {ing.tipo === 'base' && (
+                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full"
+                  style={{ background: 'rgba(141,110,99,0.2)', color: '#8D6E63' }}>
+                  base
+                </span>
+              )}
               <span className="text-sm tabular-nums" style={{ color: 'var(--color-text)', opacity: 0.55 }}>
                 {ing.quantidade} {ing.unidade}
               </span>
@@ -295,31 +360,70 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
           Adicionar ingrediente
         </p>
 
-        {ingEstoque.length > 0 ? (
-          <select className="bfy-input" value={novoIng.ingredienteId}
-            onChange={(e) => setNovoIng((n) => ({ ...n, ingredienteId: e.target.value, nome: '' }))}>
-            <option value="">— Escolher do estoque (opcional) —</option>
-            {ingEstoque.map((i) => (
-              <option key={i.id} value={i.id}>{i.nome} ({i.unidade})</option>
-            ))}
-          </select>
-        ) : (
-          <p className="text-xs" style={{ color: 'var(--color-text)', opacity: 0.45 }}>
-            💡 Cadastre ingredientes no Estoque para vinculá-los aqui
-          </p>
-        )}
+        {/* Tabs: Ingrediente vs Massa Base */}
+        <div className="flex gap-1 rounded-xl p-1" style={{ background: 'rgba(29,16,8,0.07)' }}>
+          {[
+            { id: 'ingrediente', label: 'Ingrediente' },
+            { id: 'base', label: '🧱 Massa Base' },
+          ].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setNovoIng((n) => ({ ...n, tipo: t.id, ingredienteId: '', receitaBaseId: '', nome: '' }))}
+              className="flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              style={{
+                background: novoIng.tipo === t.id ? 'var(--color-surface)' : 'transparent',
+                color: novoIng.tipo === t.id ? 'var(--color-accent-dark)' : 'var(--color-text)',
+                fontWeight: novoIng.tipo === t.id ? 700 : 500,
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-        {!novoIng.ingredienteId && (
-          <input className="bfy-input" placeholder="Ou digite o nome do ingrediente"
-            value={novoIng.nome}
-            onChange={(e) => setNovoIng((n) => ({ ...n, nome: e.target.value }))} />
+        {novoIng.tipo === 'base' ? (
+          baseReceitas.length > 0 ? (
+            <select className="bfy-input" value={novoIng.receitaBaseId}
+              onChange={(e) => setNovoIng((n) => ({ ...n, receitaBaseId: e.target.value }))}>
+              <option value="">— Selecionar massa base —</option>
+              {baseReceitas.map((r) => (
+                <option key={r.id} value={r.id}>{r.emoji ?? '🧱'} {r.nome}</option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-xs" style={{ color: 'var(--color-text)', opacity: 0.45 }}>
+              💡 Crie uma receita e ative "Massa Base" para usá-la aqui
+            </p>
+          )
+        ) : (
+          <>
+            {ingEstoque.length > 0 ? (
+              <select className="bfy-input" value={novoIng.ingredienteId}
+                onChange={(e) => setNovoIng((n) => ({ ...n, ingredienteId: e.target.value, nome: '' }))}>
+                <option value="">— Escolher do estoque (opcional) —</option>
+                {ingEstoque.map((i) => (
+                  <option key={i.id} value={i.id}>{i.nome} ({i.unidade})</option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs" style={{ color: 'var(--color-text)', opacity: 0.45 }}>
+                💡 Cadastre ingredientes no Estoque para vinculá-los aqui
+              </p>
+            )}
+            {!novoIng.ingredienteId && (
+              <input className="bfy-input" placeholder="Ou digite o nome do ingrediente"
+                value={novoIng.nome}
+                onChange={(e) => setNovoIng((n) => ({ ...n, nome: e.target.value }))} />
+            )}
+          </>
         )}
 
         <div className="flex gap-2">
           <input className="bfy-input flex-1" type="number" min="0.01" step="0.1"
             placeholder="Quantidade" value={novoIng.quantidade}
             onChange={(e) => setNovoIng((n) => ({ ...n, quantidade: e.target.value }))} />
-          {!novoIng.ingredienteId && (
+          {(novoIng.tipo === 'base' || !novoIng.ingredienteId) && (
             <select className="bfy-input" style={{ width: 130 }} value={novoIng.unidade}
               onChange={(e) => setNovoIng((n) => ({ ...n, unidade: e.target.value }))}>
               {UNIDADES_ING.map((u) => <option key={u} value={u}>{u}</option>)}
@@ -372,12 +476,16 @@ export function Receitas() {
 
   const filtradas = receitas.filter((r) => {
     const matchSearch = r.nome.toLowerCase().includes(search.toLowerCase())
-    const matchCat = catFiltro === 'todas' || r.categoria === catFiltro
+    const matchCat = catFiltro === 'todas'
+      || (catFiltro === 'base' && r.ehReceitaBase)
+      || (catFiltro !== 'base' && !r.ehReceitaBase && r.categoria === catFiltro)
     return matchSearch && matchCat
   })
 
-  // Sazonal primeiro, depois clássico; "cookie do mês" sempre no topo
+  // Bases primeiro, depois "cookie do mês", depois restante
   const ordenadas = [...filtradas].sort((a, b) => {
+    if (a.ehReceitaBase && !b.ehReceitaBase) return -1
+    if (!a.ehReceitaBase && b.ehReceitaBase) return 1
     if (a.cookieDoMes && !b.cookieDoMes) return -1
     if (!a.cookieDoMes && b.cookieDoMes) return 1
     return 0
@@ -403,8 +511,9 @@ export function Receitas() {
   }
 
   // Totais por categoria para o header
-  const totalClassico = receitas.filter((r) => r.categoria === 'classico').length
-  const totalSazonal  = receitas.filter((r) => r.categoria === 'sazonal').length
+  const totalClassico = receitas.filter((r) => r.categoria === 'classico' && !r.ehReceitaBase).length
+  const totalSazonal  = receitas.filter((r) => r.categoria === 'sazonal' && !r.ehReceitaBase).length
+  const totalBase     = receitas.filter((r) => r.ehReceitaBase).length
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto pb-10">
@@ -419,7 +528,8 @@ export function Receitas() {
             Receitas
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text)', opacity: 0.55 }}>
-            {totalClassico} clássica{totalClassico !== 1 ? 's' : ''} · {totalSazonal} sazonal/especial{totalSazonal !== 1 ? 'is' : ''}
+            {totalClassico} clássica{totalClassico !== 1 ? 's' : ''} · {totalSazonal} sazonal{totalSazonal !== 1 ? 'is' : ''}
+            {totalBase > 0 && ` · ${totalBase} base${totalBase !== 1 ? 's' : ''}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -446,6 +556,7 @@ export function Receitas() {
         <div className="flex gap-1 rounded-2xl p-1" style={{ background: 'rgba(61,43,31,0.12)' }}>
           {[
             { id: 'todas', label: 'Todas' },
+            { id: 'base', label: '🧱 Base' },
             ...CATEGORIAS,
           ].map((cat) => (
             <button

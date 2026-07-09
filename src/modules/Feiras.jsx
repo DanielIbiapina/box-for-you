@@ -151,6 +151,8 @@ export function Feiras({ onPosModeChange }) {
   const [payment, setPayment] = useState(null)
   const [toast,   setToast]   = useState(null)
   const [historicoEvent, setHistoricoEvent] = useState(null)
+  const [desconto,       setDesconto]       = useState(0)
+  const [pedidoData,     setPedidoData]     = useState('')
   const toastRef = useRef(0)
 
   const menuItems = useMemo(() => menuCookies(cookies), [cookies])
@@ -247,10 +249,14 @@ export function Feiras({ onPosModeChange }) {
     if (order?.kind === 'box' || order?.kind === 'demo') {
       setOrder(null)
       setPayment(null)
+      setDesconto(0)
+      setPedidoData('')
       return
     }
     setCart({})
     setPayment(null)
+    setDesconto(0)
+    setPedidoData('')
   }
 
   function cancelBox() {
@@ -263,15 +269,19 @@ export function Feiras({ onPosModeChange }) {
       return
     }
 
+    const saleDate = pedidoData
+      ? new Date(pedidoData + 'T12:00:00').toISOString()
+      : new Date().toISOString()
+
     if (order?.kind === 'demo') {
       if (!order.demoFlavorId) { notify('Escolhe o sabor para a demonstração.'); return }
       setSales((prev) => [{
-        id: uid(), createdAt: new Date().toISOString(),
+        id: uid(), createdAt: saleDate,
         kind: 'demo', demoFlavorId: order.demoFlavorId,
         flavorId: null, boxFlavors: [], paymentId: 'gratis', totalEur: 0,
       }, ...prev])
       deductSale([{ cookieId: order.demoFlavorId, qty: 1 }])
-      setOrder(null); setPayment(null)
+      setOrder(null); setPayment(null); setPedidoData('')
       notify('Demonstração registada ✓')
       return
     }
@@ -289,26 +299,32 @@ export function Feiras({ onPosModeChange }) {
     const deductItems = []
 
     if (nCart > 0) {
+      const rawCartTotal = cartTotal(cart, cookies, miniBoxConfig.price)
+      const descontoCart = boxReady ? 0 : desconto
       newSales.push({
-        id: uid(), createdAt: new Date().toISOString(),
+        id: uid(), createdAt: saleDate,
         kind: 'order', lines: buildCartLines(cart),
         flavorId: null, boxFlavors: [], paymentId: payment,
-        totalEur: cartTotal(cart, cookies, miniBoxConfig.price),
+        totalEur: Math.max(0, rawCartTotal - descontoCart),
+        ...(descontoCart > 0 && { discountEur: descontoCart }),
         eventId: null,
       })
       for (const [productId, qty] of Object.entries(cart)) {
-        if (productId !== MINI_BOX_ID && !productId.startsWith('custom-')) {
+        if (!productId.startsWith('custom-')) {
           deductItems.push({ cookieId: productId, qty })
         }
       }
     }
 
     if (boxReady) {
+      const descontoBox = nCart > 0 ? 0 : desconto
       newSales.push({
-        id: uid(), createdAt: new Date().toISOString(),
+        id: uid(), createdAt: saleDate,
         kind: 'box', flavorId: null,
         boxFlavors: flattenBoxToArray(order.boxCounts),
-        paymentId: payment, totalEur: boxConfig.price,
+        paymentId: payment,
+        totalEur: Math.max(0, boxConfig.price - descontoBox),
+        ...(descontoBox > 0 && { discountEur: descontoBox }),
       })
       for (const [flavorId, qty] of Object.entries(order.boxCounts)) {
         if (qty > 0) deductItems.push({ cookieId: flavorId, qty })
@@ -320,6 +336,8 @@ export function Feiras({ onPosModeChange }) {
     setCart({})
     setOrder(null)
     setPayment(null)
+    setDesconto(0)
+    setPedidoData('')
     notify(newSales.length > 1 ? 'Vendas registadas ✓' : 'Venda registada ✓')
   }
 
@@ -377,6 +395,7 @@ export function Feiras({ onPosModeChange }) {
   const boxReady   = order?.kind === 'box' && boxFilled === boxConfig.size
   const cartTotalEur = cartTotal(cart, cookies, miniBoxConfig.price)
   const checkoutTotal = cartTotalEur + (boxReady ? boxConfig.price : 0)
+  const finalTotal = Math.max(0, checkoutTotal - desconto)
 
   const canConfirm = order?.kind === 'demo'
     ? !!order.demoFlavorId
@@ -389,9 +408,9 @@ export function Feiras({ onPosModeChange }) {
     if (order?.kind === 'box') {
       if (boxFilled < boxConfig.size) return `Faltam ${boxConfig.size - boxFilled} cookie(s) na BOX`
       if (!payment) return 'Escolhe o pagamento'
-      return `✓ Confirmar ${fmtEuro(checkoutTotal)}`
+      return `✓ Confirmar ${fmtEuro(finalTotal)}`
     }
-    if (nCart > 0) return payment ? `✓ Confirmar ${fmtEuro(cartTotalEur)}` : 'Escolhe o pagamento'
+    if (nCart > 0) return payment ? `✓ Confirmar ${fmtEuro(finalTotal)}` : 'Escolhe o pagamento'
     return 'Seleciona itens'
   }
 
@@ -982,13 +1001,27 @@ export function Feiras({ onPosModeChange }) {
                     })}
                     {order?.kind !== 'box' && (
                       <div
-                        className="flex justify-between items-center rounded-xl px-3 py-2"
+                        className="rounded-xl px-3 py-2 space-y-1"
                         style={{ background: 'rgba(154,59,28,0.07)', border: '1.5px solid rgba(154,59,28,0.18)' }}
                       >
-                        <span className="text-sm font-bold" style={{ color: 'var(--color-accent-dark)' }}>Total</span>
-                        <span className="text-lg font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
-                          {fmtEuro(cartTotalEur)}
-                        </span>
+                        {desconto > 0 && (
+                          <>
+                            <div className="flex justify-between text-xs" style={{ color: 'var(--color-text)', opacity: 0.55 }}>
+                              <span>Subtotal</span>
+                              <span className="tabular-nums">{fmtEuro(cartTotalEur)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs font-semibold" style={{ color: 'var(--color-success)' }}>
+                              <span>Desconto</span>
+                              <span className="tabular-nums">−{fmtEuro(desconto)}</span>
+                            </div>
+                          </>
+                        )}
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-bold" style={{ color: 'var(--color-accent-dark)' }}>Total</span>
+                          <span className="text-lg font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
+                            {fmtEuro(Math.max(0, cartTotalEur - desconto))}
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -997,15 +1030,29 @@ export function Feiras({ onPosModeChange }) {
                 {/* Total combinado (lista + BOX) */}
                 {order?.kind === 'box' && (nCart > 0 || boxReady) && (
                   <div
-                    className="flex justify-between items-center rounded-xl px-3 py-2.5"
+                    className="rounded-xl px-3 py-2.5 space-y-1"
                     style={{ background: 'rgba(154,59,28,0.07)', border: '1.5px solid rgba(154,59,28,0.18)' }}
                   >
-                    <span className="text-sm font-bold" style={{ color: 'var(--color-accent-dark)' }}>
-                      Total{boxReady ? '' : ' (completa a BOX)'}
-                    </span>
-                    <span className="text-lg font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
-                      {fmtEuro(checkoutTotal)}
-                    </span>
+                    {desconto > 0 && (
+                      <>
+                        <div className="flex justify-between text-xs" style={{ color: 'var(--color-text)', opacity: 0.55 }}>
+                          <span>Subtotal</span>
+                          <span className="tabular-nums">{fmtEuro(checkoutTotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs font-semibold" style={{ color: 'var(--color-success)' }}>
+                          <span>Desconto</span>
+                          <span className="tabular-nums">−{fmtEuro(desconto)}</span>
+                        </div>
+                      </>
+                    )}
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-sm font-bold" style={{ color: 'var(--color-accent-dark)' }}>
+                        Total{boxReady ? '' : ' (completa a BOX)'}
+                      </span>
+                      <span className="text-lg font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
+                        {fmtEuro(finalTotal)}
+                      </span>
+                    </div>
                   </div>
                 )}
 
@@ -1030,6 +1077,44 @@ export function Feiras({ onPosModeChange }) {
                         {p.label}
                       </button>
                     ))}
+                  </div>
+                )}
+
+                {/* Desconto */}
+                {order?.kind !== 'demo' && (nCart > 0 || boxReady) && (
+                  <div className="bfy-card p-3 space-y-1.5">
+                    <div className="text-[11px] font-black uppercase tracking-widest opacity-45" style={{ color: 'var(--color-text)' }}>
+                      Desconto (€)
+                    </div>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      className="bfy-input"
+                      placeholder="0,00"
+                      value={desconto || ''}
+                      onChange={(e) => setDesconto(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                )}
+
+                {/* Data do pedido */}
+                {order?.kind !== 'demo' && (nCart > 0 || boxReady) && (
+                  <div className="bfy-card p-3 space-y-1.5">
+                    <div className="text-[11px] font-black uppercase tracking-widest opacity-45" style={{ color: 'var(--color-text)' }}>
+                      Data do pedido
+                    </div>
+                    <input
+                      type="date"
+                      className="bfy-input"
+                      value={pedidoData}
+                      onChange={(e) => setPedidoData(e.target.value)}
+                    />
+                    {pedidoData && (
+                      <p className="text-[10px] opacity-55" style={{ color: 'var(--color-text)' }}>
+                        📅 Agendado para {new Date(pedidoData + 'T12:00:00').toLocaleDateString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </p>
+                    )}
                   </div>
                 )}
 
