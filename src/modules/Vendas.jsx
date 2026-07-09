@@ -11,11 +11,15 @@ import { SearchInput } from '../components/SearchInput'
 const fmtEuro = (v) =>
   new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(v ?? 0)
 
+function parseDate(iso) {
+  return iso?.length === 10 ? new Date(iso + 'T12:00:00') : new Date(iso)
+}
+
 const fmtDate = (iso) =>
-  new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  parseDate(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
 
 const fmtDateFull = (iso) =>
-  new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+  parseDate(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
 
 const PAGAMENTOS = ['Dinheiro', 'MB WAY', 'Multibanco', 'Transferência', 'Outro']
 
@@ -83,7 +87,7 @@ function restorePedidoStock(linhas, box, adjustCookies) {
 }
 
 const EMPTY_CLIENTE = { nome: '', telefone: '', instagram: '', email: '', notas: '' }
-const EMPTY_PEDIDO  = { clienteId: '', status: 'pendente', formaPagamento: 'Dinheiro', notas: '' }
+const EMPTY_PEDIDO  = { clienteId: '', status: 'pendente', formaPagamento: 'Dinheiro', notas: '', dataPedido: '', desconto: 0 }
 
 // ─── Ícones SVG ──────────────────────────────────────────────────────────────
 
@@ -232,7 +236,7 @@ export function Vendas() {
   // ── Handlers pedidos ──────────────────────────────────────────────────────
 
   function openNewPedido(clienteId = '') {
-    setPedidoForm({ ...EMPTY_PEDIDO, clienteId })
+    setPedidoForm({ ...EMPTY_PEDIDO, clienteId, dataPedido: new Date().toISOString().slice(0, 10) })
     setPedidoCart({})
     setPedidoCustom([])
     setCustomDraft({ label: '', price: '', qty: '1', addToMenu: false })
@@ -246,6 +250,8 @@ export function Vendas() {
       status: p.status,
       formaPagamento: p.formaPagamento,
       notas: p.notas,
+      dataPedido: p.dataPedido?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+      desconto: p.desconto ?? 0,
     })
     const cart = {}
     const custom = []
@@ -354,11 +360,14 @@ export function Vendas() {
       ? { counts: { ...pedidoBox.boxCounts }, priceEur: boxConfig.price }
       : null
 
+    const desconto = pedidoForm.desconto ?? 0
     const dados = {
       clienteId: pedidoForm.clienteId || null,
       linhas,
       box: boxData,
-      totalEur: pedidoCartTotal,
+      totalEur: Math.max(0, pedidoCartTotal - desconto),
+      desconto,
+      dataPedido: pedidoForm.dataPedido || new Date().toISOString().slice(0, 10),
       formaPagamento: pedidoForm.formaPagamento,
       status: pedidoForm.status,
       notas: pedidoForm.notas,
@@ -709,7 +718,7 @@ export function Vendas() {
                           {fmtEuro(p.totalEur)}
                         </p>
                         <p className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
-                          {fmtDate(p.criadoEm)}
+                          {fmtDate(p.dataPedido ?? p.criadoEm)}
                         </p>
                       </div>
                       <button
@@ -874,7 +883,7 @@ function PedidoCard({ pedido, cookies, st, onEdit, onDelete }) {
             {st.label}
           </span>
           <span className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
-            {new Date(pedido.criadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+            {parseDate(pedido.dataPedido ?? pedido.criadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
             · {pedido.formaPagamento}
           </span>
         </div>
@@ -1212,18 +1221,68 @@ function PedidoModal({
           )}
         </div>
 
-        {/* Total */}
+        {/* Desconto + Total */}
         {total > 0 && (
-          <div
-            className="flex justify-between items-center rounded-xl px-4 py-2.5"
-            style={{ background: 'rgba(154,59,28,0.07)', border: '1px solid rgba(154,59,28,0.18)' }}
-          >
-            <span className="text-sm font-bold opacity-60" style={{ color: 'var(--color-text)' }}>Total</span>
-            <span className="font-black text-lg tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
-              {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(total)}
-            </span>
+          <div className="space-y-2">
+            <label className="block">
+              <span className="bfy-label">Desconto (€)</span>
+              <input
+                className="bfy-input"
+                type="number"
+                min="0"
+                step="0.5"
+                placeholder="0,00 — sem desconto"
+                value={form.desconto || ''}
+                onChange={(e) => setForm((f) => ({ ...f, desconto: parseFloat(e.target.value) || 0 }))}
+              />
+            </label>
+            <div
+              className="rounded-xl px-4 py-3 space-y-1.5"
+              style={{ background: 'rgba(154,59,28,0.07)', border: '1px solid rgba(154,59,28,0.18)' }}
+            >
+              {(form.desconto ?? 0) > 0 && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="opacity-60" style={{ color: 'var(--color-text)' }}>Subtotal</span>
+                    <span className="tabular-nums" style={{ color: 'var(--color-text)' }}>
+                      {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(total)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold">
+                    <span style={{ color: 'var(--color-success)' }}>Desconto</span>
+                    <span className="tabular-nums" style={{ color: 'var(--color-success)' }}>
+                      −{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(form.desconto)}
+                    </span>
+                  </div>
+                  <div style={{ borderTop: '1px solid rgba(154,59,28,0.18)', paddingTop: '6px' }} className="flex justify-between items-center">
+                    <span className="text-sm font-bold opacity-60" style={{ color: 'var(--color-text)' }}>Total</span>
+                    <span className="font-black text-lg tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
+                      {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(Math.max(0, total - form.desconto))}
+                    </span>
+                  </div>
+                </>
+              )}
+              {!(form.desconto ?? 0) && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold opacity-60" style={{ color: 'var(--color-text)' }}>Total</span>
+                  <span className="font-black text-lg tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
+                    {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(total)}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         )}
+
+        <label className="block">
+          <span className="bfy-label">Data do pedido</span>
+          <input
+            type="date"
+            className="bfy-input"
+            value={form.dataPedido || ''}
+            onChange={(e) => setForm((f) => ({ ...f, dataPedido: e.target.value }))}
+          />
+        </label>
 
         <div className="grid grid-cols-2 gap-3">
           {/* Pagamento */}

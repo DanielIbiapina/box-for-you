@@ -21,35 +21,61 @@ export function Producao() {
 
   const receita = receitas.find((r) => r.id === receitaId)
 
+  // Expande ingredientes de uma receita, substituindo referências de massa base
+  // pelos sub-ingredientes da base, proporcionalmente.
+  function expandirIngredientes(ings, fator) {
+    const resultado = []
+    for (const ing of ings) {
+      if (ing.tipo === 'base' && ing.receitaBaseId) {
+        const base = receitas.find((r) => r.id === ing.receitaBaseId)
+        if (base && base.rendimento > 0) {
+          const proporcao = (ing.quantidade ?? 0) / base.rendimento * fator
+          for (const baseIng of base.ingredientes ?? []) {
+            if (baseIng.tipo === 'base') continue // sem aninhamento duplo
+            resultado.push({ ...baseIng, quantidade: (baseIng.quantidade ?? 0) * proporcao, _daBase: base.nome })
+          }
+        } else {
+          // Base não encontrada — mostra como item simples
+          resultado.push({ nome: ing.nome, quantidade: (ing.quantidade ?? 0) * fator, unidade: ing.unidade, ingredienteId: null, _daBase: ing.nome })
+        }
+      } else {
+        resultado.push({ ...ing, quantidade: (ing.quantidade ?? 0) * fator })
+      }
+    }
+    return resultado
+  }
+
   const pesoMassaTotal = useMemo(() => {
     if (!receita) return 0
-    const totalPorBatch = (receita.ingredientes ?? [])
+    const fator = quantidade / (receita.rendimento || 1)
+    const expandidos = expandirIngredientes(receita.ingredientes ?? [], fator)
+    const totalPorBatch = expandidos
       .filter((i) => ['g', 'ml', 'kg', 'L'].includes(i.unidade))
       .reduce((sum, i) => {
         const mult = i.unidade === 'kg' || i.unidade === 'L' ? 1000 : 1
         return sum + (i.quantidade ?? 0) * mult
       }, 0)
-    return totalPorBatch * (quantidade / (receita.rendimento || 1))
-  }, [receita, quantidade])
+    return totalPorBatch
+  }, [receita, quantidade, receitas])
 
   const ingredientesNecessarios = useMemo(() => {
     if (!receita) return []
     const fator = quantidade / (receita.rendimento || 1)
-    return (receita.ingredientes ?? []).map((ing) => {
-      const qtd = (ing.quantidade ?? 0) * fator
+    const expandidos = expandirIngredientes(receita.ingredientes ?? [], fator)
+    return expandidos.map((ing) => {
       const ingEstoque = ing.ingredienteId
         ? ingredientes.find((i) => i.id === ing.ingredienteId)
         : null
       return {
-        nome: ing.nome || ingEstoque?.nome || '?',
+        nome: ing._daBase ? `${ing.nome || ingEstoque?.nome || '?'} (${ing._daBase})` : ing.nome || ingEstoque?.nome || '?',
         ingredienteId: ing.ingredienteId || null,
-        quantidade: qtd,
+        quantidade: ing.quantidade,
         unidade: ing.unidade,
         estoqueAtual: ingEstoque?.estoqueAtual ?? null,
-        suficiente: ingEstoque ? ingEstoque.estoqueAtual >= qtd : null,
+        suficiente: ingEstoque ? ingEstoque.estoqueAtual >= ing.quantidade : null,
       }
     })
-  }, [receita, quantidade, ingredientes])
+  }, [receita, quantidade, ingredientes, receitas])
 
   const listaUnificada = useMemo(() => {
     const mapa = {}
@@ -57,12 +83,13 @@ export function Producao() {
       const r = receitas.find((x) => x.id === item.receitaId)
       if (!r) continue
       const fator = item.quantidade / (r.rendimento || 1)
-      for (const ing of r.ingredientes ?? []) {
-        const key = `${ing.ingredienteId || ''}_${ing.nome}_${ing.unidade}`
+      const expandidos = expandirIngredientes(r.ingredientes ?? [], fator)
+      for (const ing of expandidos) {
         const ingEstoque = ing.ingredienteId
           ? ingredientes.find((i) => i.id === ing.ingredienteId)
           : null
         const nome = ing.nome || ingEstoque?.nome || '?'
+        const key = `${ing.ingredienteId || ''}_${nome}_${ing.unidade}`
         if (!mapa[key]) {
           mapa[key] = {
             nome,
@@ -72,7 +99,7 @@ export function Producao() {
             estoqueAtual: ingEstoque?.estoqueAtual ?? null,
           }
         }
-        mapa[key].total += (ing.quantidade ?? 0) * fator
+        mapa[key].total += ing.quantidade
       }
     }
     return Object.values(mapa).map((item) => ({

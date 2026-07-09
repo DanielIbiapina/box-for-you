@@ -27,6 +27,8 @@ export function usePedidosVendas() {
       linhas: dados.linhas ?? [],       // [{ cookieId, qty, preco }]
       box: dados.box ?? null,           // { counts, priceEur } | null
       totalEur: dados.totalEur ?? 0,
+      desconto: dados.desconto ?? 0,
+      dataPedido: dados.dataPedido ?? null,
       formaPagamento: dados.formaPagamento ?? '',
       status: dados.status ?? 'pendente',
       notas: dados.notas?.trim() ?? '',
