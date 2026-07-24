@@ -6,6 +6,7 @@ import { Producao } from './modules/Producao'
 import { Relatorios } from './modules/Relatorios'
 import { Feiras } from './modules/Feiras'
 import { Vendas } from './modules/Vendas'
+import { Financeiro } from './modules/Financeiro'
 import { Configuracoes } from './modules/Configuracoes'
 import { SyncBar } from './components/SyncBar'
 
@@ -45,6 +46,15 @@ function VendasNavSvg(props) {
   )
 }
 
+function FinanceiroNavSvg(props) {
+  return (
+    <NavSvgIcon {...props}>
+      <path d="M12 1v22" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </NavSvgIcon>
+  )
+}
+
 function ConfigNavSvg(props) {
   return (
     <NavSvgIcon {...props}>
@@ -55,19 +65,21 @@ function ConfigNavSvg(props) {
 }
 
 const NAV = [
-  { id: 'home',         label: 'Início',     icon: '/icons/nav-inicio.png' },
-  { id: 'estoque',      label: 'Estoque',    icon: '/icons/nav-estoque.png' },
-  { id: 'receitas',     label: 'Receitas',   icon: '/icons/nav-receitas.png' },
-  { id: 'producao',     label: 'Produção',   icon: '/icons/nav-producao.png' },
-  { id: 'vendas',       label: 'Vendas',     icon: '/icons/nav-vendas.png' },
-  { id: 'relatorios',   label: 'Relatórios', icon: '/icons/nav-relatorios.png' },
-  { id: 'feiras',       label: 'Feiras',     icon: '/icons/nav-feiras.png' },
-  { id: 'config',       label: 'Config',     svg: 'config' },
+  { id: 'home',         label: 'Início',           icon: '/icons/nav-inicio.png' },
+  { id: 'estoque',      label: 'Estoque',          icon: '/icons/nav-estoque.png' },
+  { id: 'receitas',     label: 'Receitas',         icon: '/icons/nav-receitas.png' },
+  { id: 'producao',     label: 'Produção',         icon: '/icons/nav-producao.png' },
+  { id: 'vendas',       label: 'Vendas',           icon: '/icons/nav-vendas.png' },
+  { id: 'financeiro',   label: 'Entradas/Saídas',  svg: 'financeiro' },
+  { id: 'relatorios',   label: 'Relatórios',       icon: '/icons/nav-relatorios.png' },
+  { id: 'feiras',       label: 'Feiras',           icon: '/icons/nav-feiras.png' },
+  { id: 'config',       label: 'Config',           svg: 'config' },
 ]
 
 function NavIcon({ item, size = 28, active = false }) {
   if (item.svg === 'config') return <ConfigNavSvg size={size} active={active} />
   if (item.svg === 'vendas') return <VendasNavSvg size={size} active={active} />
+  if (item.svg === 'financeiro') return <FinanceiroNavSvg size={size} active={active} />
   return (
     <span
       aria-hidden="true"
@@ -96,6 +108,7 @@ export default function App() {
       case 'estoque':      return <Estoque />
       case 'producao':     return <Producao />
       case 'vendas':       return <Vendas />
+      case 'financeiro':   return <Financeiro />
       case 'relatorios':   return <Relatorios />
       case 'feiras':       return <Feiras onPosModeChange={setFeirasPosMode} />
       case 'config':       return <Configuracoes />

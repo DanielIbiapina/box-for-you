@@ -149,6 +149,8 @@ export function Feiras({ onPosModeChange }) {
   const [cart,    setCart]    = useState({})
   const [order,   setOrder]   = useState(null)
   const [payment, setPayment] = useState(null)
+  const [desconto, setDesconto] = useState(0)
+  const [paymentFilter, setPaymentFilter] = useState('all') // 'all' | payment id | 'gratis'
   const [toast,   setToast]   = useState(null)
   const [historicoEvent, setHistoricoEvent] = useState(null)
   const toastRef = useRef(0)
@@ -224,6 +226,7 @@ export function Feiras({ onPosModeChange }) {
     })
     setOrder({ kind: 'demo', boxCounts: initialBoxCounts(cookies), demoFlavorId: null })
     setPayment(null)
+    setDesconto(0)
   }
 
   function changeBoxCount(flavorId, delta) {
@@ -247,10 +250,12 @@ export function Feiras({ onPosModeChange }) {
     if (order?.kind === 'box' || order?.kind === 'demo') {
       setOrder(null)
       setPayment(null)
+      setDesconto(0)
       return
     }
     setCart({})
     setPayment(null)
+    setDesconto(0)
   }
 
   function cancelBox() {
@@ -271,7 +276,7 @@ export function Feiras({ onPosModeChange }) {
         flavorId: null, boxFlavors: [], paymentId: 'gratis', totalEur: 0,
       }, ...prev])
       deductSale([{ cookieId: order.demoFlavorId, qty: 1 }])
-      setOrder(null); setPayment(null)
+      setOrder(null); setPayment(null); setDesconto(0)
       notify('Demonstração registada ✓')
       return
     }
@@ -287,13 +292,16 @@ export function Feiras({ onPosModeChange }) {
 
     const newSales = []
     const deductItems = []
+    const disc = Math.max(0, Number(desconto) || 0)
 
     if (nCart > 0) {
+      const full = cartTotal(cart, cookies, miniBoxConfig.price)
       newSales.push({
         id: uid(), createdAt: new Date().toISOString(),
         kind: 'order', lines: buildCartLines(cart),
         flavorId: null, boxFlavors: [], paymentId: payment,
-        totalEur: cartTotal(cart, cookies, miniBoxConfig.price),
+        totalEur: full,
+        desconto: 0,
         eventId: null,
       })
       for (const [productId, qty] of Object.entries(cart)) {
@@ -309,9 +317,20 @@ export function Feiras({ onPosModeChange }) {
         kind: 'box', flavorId: null,
         boxFlavors: flattenBoxToArray(order.boxCounts),
         paymentId: payment, totalEur: boxConfig.price,
+        desconto: 0,
       })
       for (const [flavorId, qty] of Object.entries(order.boxCounts)) {
         if (qty > 0) deductItems.push({ cookieId: flavorId, qty })
+      }
+    }
+
+    // Alocar desconto inteiro na primeira venda paga
+    if (disc > 0 && newSales.length > 0) {
+      const applied = Math.min(disc, newSales[0].totalEur)
+      newSales[0] = {
+        ...newSales[0],
+        desconto: applied,
+        totalEur: Math.max(0, newSales[0].totalEur - applied),
       }
     }
 
@@ -320,6 +339,7 @@ export function Feiras({ onPosModeChange }) {
     setCart({})
     setOrder(null)
     setPayment(null)
+    setDesconto(0)
     notify(newSales.length > 1 ? 'Vendas registadas ✓' : 'Venda registada ✓')
   }
 
@@ -358,9 +378,10 @@ export function Feiras({ onPosModeChange }) {
       }),
       '',
       'Últimos 50 registos:',
-      ...sales.slice(0, 50).map((s) =>
-        `  ${fmtTime(s.createdAt)} | ${saleDescription(s, cookies)} | ${paymentLabel(s.paymentId)} | ${fmtEuro(s.totalEur ?? 0)}`
-      ),
+      ...sales.slice(0, 50).map((s) => {
+        const disc = (s.desconto ?? 0) > 0 ? ` (−${fmtEuro(s.desconto)})` : ''
+        return `  ${fmtTime(s.createdAt)} | ${saleDescription(s, cookies)} | ${paymentLabel(s.paymentId)} | ${fmtEuro(s.totalEur ?? 0)}${disc}`
+      }),
     ]
     const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
     const a = Object.assign(document.createElement('a'), {
@@ -377,6 +398,8 @@ export function Feiras({ onPosModeChange }) {
   const boxReady   = order?.kind === 'box' && boxFilled === boxConfig.size
   const cartTotalEur = cartTotal(cart, cookies, miniBoxConfig.price)
   const checkoutTotal = cartTotalEur + (boxReady ? boxConfig.price : 0)
+  const descontoAplicado = Math.min(Math.max(0, Number(desconto) || 0), checkoutTotal)
+  const totalFinal = Math.max(0, checkoutTotal - descontoAplicado)
 
   const canConfirm = order?.kind === 'demo'
     ? !!order.demoFlavorId
@@ -389,15 +412,21 @@ export function Feiras({ onPosModeChange }) {
     if (order?.kind === 'box') {
       if (boxFilled < boxConfig.size) return `Faltam ${boxConfig.size - boxFilled} cookie(s) na BOX`
       if (!payment) return 'Escolhe o pagamento'
-      return `✓ Confirmar ${fmtEuro(checkoutTotal)}`
+      return `✓ Confirmar ${fmtEuro(totalFinal)}`
     }
-    if (nCart > 0) return payment ? `✓ Confirmar ${fmtEuro(cartTotalEur)}` : 'Escolhe o pagamento'
+    if (nCart > 0) return payment ? `✓ Confirmar ${fmtEuro(totalFinal)}` : 'Escolhe o pagamento'
     return 'Seleciona itens'
   }
 
   const todayRanking = useMemo(() => topFlavorsRanking(todaySales, cookies, 12), [todaySales, cookies])
   const maxRankBar = Math.max(...todayRanking.map((r) => r.qty), 1)
   const maxDemoBar = Math.max(...cookies.map((c) => metrics.demoCount.byFlavor[c.id] ?? 0), 1)
+
+  const filteredTodaySales = useMemo(() => {
+    if (paymentFilter === 'all') return todaySales
+    if (paymentFilter === 'gratis') return todaySales.filter((s) => s.kind === 'demo' || s.paymentId === 'gratis')
+    return todaySales.filter((s) => s.paymentId === paymentFilter && (s.totalEur ?? 0) > 0)
+  }, [todaySales, paymentFilter])
 
   // ── View: Landing ─────────────────────────────────────────────────────────
 
@@ -1031,6 +1060,56 @@ export function Feiras({ onPosModeChange }) {
                         {p.label}
                       </button>
                     ))}
+
+                    {(nCart > 0 || boxReady) && (
+                      <div className="pt-2 space-y-2" style={{ borderTop: '1px solid rgba(29,16,8,0.08)' }}>
+                        <div className="text-[11px] font-black uppercase tracking-widest opacity-45" style={{ color: 'var(--color-text)' }}>
+                          Desconto
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <button
+                            type="button"
+                            onClick={() => setDesconto((d) => (Number(d) === 0.5 ? 0 : 0.5))}
+                            className="rounded-xl px-3 py-2 text-sm font-bold shrink-0 transition-all"
+                            style={{
+                              background: descontoAplicado === 0.5 ? 'var(--color-success)' : 'rgba(29,16,8,0.04)',
+                              color: descontoAplicado === 0.5 ? '#fff' : 'var(--color-text)',
+                              border: descontoAplicado === 0.5
+                                ? '2px solid var(--color-success)'
+                                : '1.5px solid rgba(29,16,8,0.1)',
+                            }}
+                          >
+                            −€0,50
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            inputMode="decimal"
+                            placeholder="Outro valor"
+                            value={desconto || ''}
+                            onChange={(e) => setDesconto(Math.max(0, parseFloat(e.target.value) || 0))}
+                            className="bfy-input flex-1 py-2 text-sm"
+                          />
+                        </div>
+                        {descontoAplicado > 0 && (
+                          <div className="flex justify-between text-xs font-semibold px-1">
+                            <span style={{ color: 'var(--color-success)' }}>Desconto</span>
+                            <span className="tabular-nums" style={{ color: 'var(--color-success)' }}>
+                              −{fmtEuro(descontoAplicado)}
+                            </span>
+                          </div>
+                        )}
+                        {descontoAplicado > 0 && (
+                          <div className="flex justify-between items-center text-sm font-bold px-1">
+                            <span style={{ color: 'var(--color-accent-dark)' }}>A pagar</span>
+                            <span className="tabular-nums text-base font-black" style={{ color: 'var(--color-accent-dark)' }}>
+                              {fmtEuro(totalFinal)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1150,11 +1229,35 @@ export function Feiras({ onPosModeChange }) {
                 </div>
               }
             >
-              {todaySales.length === 0 ? (
-                <div className="text-xs opacity-35 py-2" style={{ color: 'var(--color-text)' }}>Nada registado hoje.</div>
+              <div className="flex flex-wrap gap-1 mb-2">
+                {[
+                  { id: 'all', label: 'Todos' },
+                  ...PAYMENTS,
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPaymentFilter(p.id)}
+                    className="rounded-lg px-2 py-1 text-[10px] font-bold transition-all"
+                    style={{
+                      background: paymentFilter === p.id ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.05)',
+                      color: paymentFilter === p.id ? '#fff' : 'var(--color-text)',
+                      border: paymentFilter === p.id
+                        ? '1.5px solid var(--color-accent-dark)'
+                        : '1px solid rgba(29,16,8,0.1)',
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              {filteredTodaySales.length === 0 ? (
+                <div className="text-xs opacity-35 py-2" style={{ color: 'var(--color-text)' }}>
+                  {todaySales.length === 0 ? 'Nada registado hoje.' : 'Nenhum registo com este pagamento.'}
+                </div>
               ) : (
                 <div className="space-y-1 max-h-[220px] overflow-y-auto">
-                  {todaySales.slice(0, 20).map((s) => (
+                  {filteredTodaySales.slice(0, 50).map((s) => (
                     <div
                       key={s.id}
                       className="rounded-lg px-2 py-1.5"
@@ -1168,7 +1271,10 @@ export function Feiras({ onPosModeChange }) {
                       </div>
                       <div className="flex justify-between items-baseline mt-0.5">
                         <span className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
-                          {(s.totalEur ?? 0) > 0 ? paymentLabel(s.paymentId) : 'Prova grátis'}
+                          {(s.totalEur ?? 0) > 0 || (s.desconto ?? 0) > 0
+                            ? paymentLabel(s.paymentId)
+                            : 'Prova grátis'}
+                          {(s.desconto ?? 0) > 0 ? ` · −${fmtEuro(s.desconto)}` : ''}
                         </span>
                         <span className="text-xs font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
                           {fmtEuro(s.totalEur ?? 0)}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useConfiguracoes } from '../stores/useConfiguracoes'
 import { useEventos, STATUS_EVENTO } from '../stores/useEventos'
+import { useFinanceiro } from '../stores/useFinanceiro'
 import { useSyncStatus } from '../stores/useSyncStatus'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { pushToCloud, pullFromCloud } from '../lib/syncService'
@@ -17,7 +18,7 @@ function Field({ label, children }) {
   )
 }
 
-const EMPTY_EVENTO = { nome: '', local: '', data: '', status: 'planejada' }
+const EMPTY_EVENTO = { nome: '', local: '', data: '', status: 'planejada', taxaInscricao: '' }
 
 const SYNC_LABELS = {
   idle: 'Sincronizado',
@@ -33,6 +34,7 @@ const SYNC_LABELS = {
 export function Configuracoes() {
   const { config, update } = useConfiguracoes()
   const { eventos, adicionar, atualizar, remover } = useEventos()
+  const { syncInscricaoEvento, removerDespesasPorEvento } = useFinanceiro()
   const { status: syncStatus, online: syncOnline } = useSyncStatus()
   const [saved, setSaved] = useState(false)
   const [syncBusy, setSyncBusy] = useState(false)
@@ -64,18 +66,41 @@ export function Configuracoes() {
   }
 
   function openEvento(ev) {
-    setEventoForm(ev ?? EMPTY_EVENTO)
+    setEventoForm(
+      ev
+        ? {
+            nome: ev.nome ?? '',
+            local: ev.local ?? '',
+            data: ev.data ?? '',
+            status: ev.status ?? 'planejada',
+            taxaInscricao: ev.taxaInscricao != null && ev.taxaInscricao !== ''
+              ? String(ev.taxaInscricao)
+              : '',
+          }
+        : EMPTY_EVENTO,
+    )
     setEventoModal(ev?.id ?? 'new')
   }
 
   function saveEvento(e) {
     e.preventDefault()
     if (!eventoForm.nome.trim() || !eventoForm.data) return
-    if (eventoModal === 'new') {
-      adicionar(eventoForm)
-    } else {
-      atualizar(eventoModal, eventoForm)
+    const taxa = parseFloat(eventoForm.taxaInscricao) || 0
+    const payload = {
+      nome: eventoForm.nome,
+      local: eventoForm.local,
+      data: eventoForm.data,
+      status: eventoForm.status,
+      taxaInscricao: taxa,
     }
+    let savedEv
+    if (eventoModal === 'new') {
+      savedEv = adicionar(payload)
+    } else {
+      atualizar(eventoModal, payload)
+      savedEv = { id: eventoModal, ...payload }
+    }
+    syncInscricaoEvento(savedEv)
     setEventoModal(null)
   }
 
@@ -307,6 +332,9 @@ export function Configuracoes() {
                           })
                         : '—'}{' '}
                       {ev.local ? `· ${ev.local}` : ''}
+                      {(Number(ev.taxaInscricao) || 0) > 0
+                        ? ` · inscrição ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(ev.taxaInscricao)}`
+                        : ''}
                     </p>
                   </div>
                   <span
@@ -324,7 +352,11 @@ export function Configuracoes() {
                   <button
                     className="text-xs font-semibold opacity-40 hover:opacity-80 shrink-0"
                     style={{ color: '#e57373' }}
-                    onClick={() => confirm('Excluir este evento?') && remover(ev.id)}
+                    onClick={() => {
+                      if (!confirm('Excluir este evento?')) return
+                      removerDespesasPorEvento(ev.id)
+                      remover(ev.id)
+                    }}
                   >
                     ✕
                   </button>
@@ -378,6 +410,20 @@ export function Configuracoes() {
                   </option>
                 ))}
               </select>
+            </Field>
+            <Field label="Taxa de inscrição (€)">
+              <input
+                className="bfy-input"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0,00"
+                value={eventoForm.taxaInscricao}
+                onChange={(e) => setEventoForm((f) => ({ ...f, taxaInscricao: e.target.value }))}
+              />
+              <span className="text-[11px] opacity-45 mt-1 block" style={{ color: 'var(--color-text)' }}>
+                Entra automaticamente em Entradas e Saídas
+              </span>
             </Field>
             <div className="flex gap-3 pt-2">
               <button type="button" className="btn-ghost flex-1" onClick={() => setEventoModal(null)}>

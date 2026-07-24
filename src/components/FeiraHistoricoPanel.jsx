@@ -1,6 +1,21 @@
 import { useMemo, useState } from 'react'
 import { summarizeEvent, formatEventDateRange } from '../lib/feiraHistory'
-import { describePosSale } from '../lib/salesAnalytics'
+import { describePosSale, topFlavorsRanking } from '../lib/salesAnalytics'
+
+const PAYMENT_FILTERS = [
+  { id: 'all', label: 'Todos' },
+  { id: 'dinheiro', label: 'Dinheiro' },
+  { id: 'mbway', label: 'MB WAY' },
+  { id: 'multibanco', label: 'Multibanco' },
+  { id: 'gratis', label: 'Provas' },
+]
+
+const PAYMENT_LABELS = {
+  dinheiro: 'Dinheiro',
+  mbway: 'MB WAY',
+  multibanco: 'Multibanco',
+  gratis: 'Prova grátis',
+}
 
 const fmtEuro = (v) =>
   new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(v ?? 0)
@@ -23,6 +38,10 @@ const fmtDayShort = (day) =>
 const fmtTime = (iso) =>
   new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
+function paymentLabel(id) {
+  return PAYMENT_LABELS[id] ?? id ?? '—'
+}
+
 export function FeiraHistoricoPanel({ evento, sales, catalog }) {
   const { total, vendas, demos, dayBreakdown, evSales } = summarizeEvent(
     sales,
@@ -32,6 +51,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
 
   const isMultiDay = dayBreakdown.length > 1
   const [selectedDay, setSelectedDay] = useState('all')
+  const [paymentFilter, setPaymentFilter] = useState('all')
 
   const dayStats = useMemo(() => {
     if (selectedDay === 'all') return { total, vendas, demos }
@@ -41,11 +61,25 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
       : { total: 0, vendas: 0, demos: 0 }
   }, [selectedDay, total, vendas, demos, dayBreakdown])
 
-  const filteredSales = useMemo(() => {
-    const list = evSales.filter((s) => (s.totalEur ?? 0) > 0 || s.kind === 'demo')
+  const dayScopedSales = useMemo(() => {
+    const list = evSales.filter((s) => (s.totalEur ?? 0) > 0 || s.kind === 'demo' || (s.desconto ?? 0) > 0)
     if (selectedDay === 'all') return list
     return list.filter((s) => (s.createdAt ?? '').slice(0, 10) === selectedDay)
   }, [evSales, selectedDay])
+
+  const filteredSales = useMemo(() => {
+    if (paymentFilter === 'all') return dayScopedSales
+    if (paymentFilter === 'gratis') {
+      return dayScopedSales.filter((s) => s.kind === 'demo' || s.paymentId === 'gratis')
+    }
+    return dayScopedSales.filter((s) => s.paymentId === paymentFilter)
+  }, [dayScopedSales, paymentFilter])
+
+  const flavorRanking = useMemo(
+    () => topFlavorsRanking(dayScopedSales, catalog, 12),
+    [dayScopedSales, catalog],
+  )
+  const maxRankBar = Math.max(...flavorRanking.map((r) => r.qty), 1)
 
   return (
     <div className="space-y-4">
@@ -149,35 +183,101 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
         </p>
       )}
 
-      {filteredSales.length > 0 && (
-        <div className="space-y-1.5 max-h-[min(52vh,520px)] overflow-y-auto">
+      {flavorRanking.length > 0 && (
+        <div className="space-y-2">
           <p
             className="text-[11px] font-black uppercase tracking-widest opacity-45"
             style={{ color: 'var(--color-text)' }}
           >
-            Registos{selectedDay !== 'all' ? ` · ${filteredSales.length}` : ''}
+            Cookies vendidos{selectedDay !== 'all' ? ' · dia' : ''}
           </p>
-          {filteredSales.map((s) => (
-            <div
-              key={s.id}
-              className="rounded-lg px-2.5 py-2 text-xs"
-              style={{ background: 'rgba(29,16,8,0.03)', border: '1px solid rgba(29,16,8,0.05)' }}
-            >
-              <div className="flex justify-between gap-2">
-                <span className="opacity-45 shrink-0">
-                  {isMultiDay && selectedDay === 'all'
-                    ? `${(s.createdAt ?? '').slice(8, 10)}/${(s.createdAt ?? '').slice(5, 7)} · ${fmtTime(s.createdAt)}`
-                    : fmtTime(s.createdAt)}
+          <div className="space-y-1.5">
+            {flavorRanking.map((r) => (
+              <div key={r.id} className="flex items-center gap-2 text-xs">
+                <span className="w-28 font-semibold truncate" style={{ color: 'var(--color-text)' }}>
+                  {r.emoji} {r.short ?? r.label}
                 </span>
-                <span className="font-black tabular-nums shrink-0" style={{ color: 'var(--color-accent-dark)' }}>
-                  {fmtEuro(s.totalEur ?? 0)}
+                <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: 'rgba(29,16,8,0.1)' }}>
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${(r.qty / maxRankBar) * 100}%`, background: 'var(--color-accent)' }}
+                  />
+                </div>
+                <span className="w-5 text-right font-black tabular-nums" style={{ color: 'var(--color-text)' }}>
+                  {r.qty}
                 </span>
               </div>
-              <p className="opacity-65 mt-0.5 truncate" style={{ color: 'var(--color-text)' }}>
-                {describePosSale(s, catalog)}
-              </p>
-            </div>
-          ))}
+            ))}
+          </div>
+        </div>
+      )}
+
+      {dayScopedSales.length > 0 && (
+        <div className="space-y-1.5 max-h-[min(52vh,520px)] overflow-y-auto">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p
+              className="text-[11px] font-black uppercase tracking-widest opacity-45"
+              style={{ color: 'var(--color-text)' }}
+            >
+              Registos{filteredSales.length !== dayScopedSales.length
+                ? ` · ${filteredSales.length}/${dayScopedSales.length}`
+                : selectedDay !== 'all'
+                  ? ` · ${filteredSales.length}`
+                  : ''}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1 mb-1">
+            {PAYMENT_FILTERS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPaymentFilter(p.id)}
+                className="rounded-lg px-2 py-1 text-[10px] font-bold transition-all"
+                style={{
+                  background: paymentFilter === p.id ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.05)',
+                  color: paymentFilter === p.id ? '#fff' : 'var(--color-text)',
+                  border: paymentFilter === p.id
+                    ? '1.5px solid var(--color-accent-dark)'
+                    : '1px solid rgba(29,16,8,0.1)',
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {filteredSales.length === 0 ? (
+            <p className="text-xs opacity-40 py-2" style={{ color: 'var(--color-text)' }}>
+              Nenhum registo com este filtro.
+            </p>
+          ) : (
+            filteredSales.map((s) => (
+              <div
+                key={s.id}
+                className="rounded-lg px-2.5 py-2 text-xs"
+                style={{ background: 'rgba(29,16,8,0.03)', border: '1px solid rgba(29,16,8,0.05)' }}
+              >
+                <div className="flex justify-between gap-2">
+                  <span className="opacity-45 shrink-0">
+                    {isMultiDay && selectedDay === 'all'
+                      ? `${(s.createdAt ?? '').slice(8, 10)}/${(s.createdAt ?? '').slice(5, 7)} · ${fmtTime(s.createdAt)}`
+                      : fmtTime(s.createdAt)}
+                  </span>
+                  <span className="font-black tabular-nums shrink-0" style={{ color: 'var(--color-accent-dark)' }}>
+                    {fmtEuro(s.totalEur ?? 0)}
+                  </span>
+                </div>
+                <p className="opacity-65 mt-0.5 truncate" style={{ color: 'var(--color-text)' }}>
+                  {describePosSale(s, catalog)}
+                </p>
+                <p className="opacity-40 mt-0.5" style={{ color: 'var(--color-text)' }}>
+                  {s.kind === 'demo' || s.paymentId === 'gratis'
+                    ? 'Prova grátis'
+                    : paymentLabel(s.paymentId)}
+                  {(s.desconto ?? 0) > 0 ? ` · desconto −${fmtEuro(s.desconto)}` : ''}
+                </p>
+              </div>
+            ))
+          )}
         </div>
       )}
 

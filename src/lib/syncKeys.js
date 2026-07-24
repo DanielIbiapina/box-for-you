@@ -14,6 +14,8 @@ export const SYNC_KEYS = [
   'bfy:estoque-massa',
   'bfy:clientes',
   'bfy:pedidos-vendas',
+  'bfy:despesas',
+  'bfy:custos-fixos',
 ]
 
 /** Arrays que são unidos por id ao sincronizar (evita perder vendas/pedidos simultâneos) */
@@ -27,6 +29,8 @@ export const ARRAY_SYNC_KEYS = new Set([
   'bfy:vendas-avulsas',
   'bfy:clientes',
   'bfy:pedidos-vendas',
+  'bfy:despesas',
+  'bfy:custos-fixos',
 ])
 
 export const STORAGE_SYNC_EVENT = 'bfy:storage-sync'
