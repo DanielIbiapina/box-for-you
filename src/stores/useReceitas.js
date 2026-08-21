@@ -1,9 +1,4 @@
-import { useStorage } from './useStorage'
-
-const uid = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+import { useData } from './DataProvider'
 
 export const CATEGORIAS = [
   { id: 'classico', label: 'Clássico',         gradient: 'linear-gradient(135deg,#C24B29 0%,#E07B5A 100%)' },
@@ -11,25 +6,12 @@ export const CATEGORIAS = [
 ]
 
 export function useReceitas() {
-  const [receitas, setReceitas] = useStorage('bfy:receitas', [])
+  const { receitas, createRow, updateRow, removeRow } = useData()
 
-  function adicionar(dados) {
-    const nova = {
-      ...dados,
-      id: uid(),
-      criadaEm: new Date().toISOString(),
-    }
-    setReceitas(prev => [nova, ...prev])
-    return nova
+  return {
+    receitas,
+    adicionar: (dados) => createRow('receitas', { ...dados, criadaEm: new Date().toISOString() }),
+    atualizar: (id, changes) => updateRow('receitas', id, changes),
+    remover: (id) => removeRow('receitas', id),
   }
-
-  function atualizar(id, changes) {
-    setReceitas(prev => prev.map(r => (r.id === id ? { ...r, ...changes } : r)))
-  }
-
-  function remover(id) {
-    setReceitas(prev => prev.filter(r => r.id !== id))
-  }
-
-  return { receitas, adicionar, atualizar, remover }
 }

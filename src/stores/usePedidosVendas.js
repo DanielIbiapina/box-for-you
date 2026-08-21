@@ -1,9 +1,4 @@
-import { useStorage } from './useStorage'
-
-const uid = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+import { useData } from './DataProvider'
 
 // linhas: [{ cookieId, qty, preco }]
 // box: opcional { counts: { cookieId: qty }, priceEur }
@@ -17,35 +12,27 @@ export const STATUS_PEDIDO = [
 ]
 
 export function usePedidosVendas() {
-  const [pedidos, setPedidos] = useStorage('bfy:pedidos-vendas', [])
+  const { pedidos, createRow, updateRow, removeRow } = useData()
 
   function adicionar(dados) {
-    const novo = {
-      id: uid(),
+    return createRow('pedidos', {
       criadoEm: new Date().toISOString(),
       clienteId: dados.clienteId ?? null,
-      linhas: dados.linhas ?? [],       // [{ cookieId, qty, preco }]
-      box: dados.box ?? null,           // { counts, priceEur } | null
+      linhas: dados.linhas ?? [],
+      box: dados.box ?? null,
       totalEur: dados.totalEur ?? 0,
       desconto: dados.desconto ?? 0,
       dataPedido: dados.dataPedido ?? null,
       formaPagamento: dados.formaPagamento ?? '',
       status: dados.status ?? 'pendente',
       notas: dados.notas?.trim() ?? '',
-    }
-    setPedidos((prev) => [novo, ...prev])
-    return novo
+    })
   }
 
-  function atualizar(id, changes) {
-    setPedidos((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...changes } : p)),
-    )
+  return {
+    pedidos,
+    adicionar,
+    atualizar: (id, changes) => updateRow('pedidos', id, changes),
+    remover: (id) => removeRow('pedidos', id),
   }
-
-  function remover(id) {
-    setPedidos((prev) => prev.filter((p) => p.id !== id))
-  }
-
-  return { pedidos, adicionar, atualizar, remover }
 }

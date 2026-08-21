@@ -1,4 +1,4 @@
-import { useStorage } from './useStorage'
+import { useData } from './DataProvider'
 
 const DEFAULT = {
   nomeNegocio: 'Box for You',
@@ -9,15 +9,11 @@ const DEFAULT = {
 }
 
 export function useConfiguracoes() {
-  const [config, setConfig] = useStorage('bfy:configuracoes', DEFAULT)
+  const { config, updateConfig } = useData()
 
-  function update(changes) {
-    setConfig(prev => ({ ...prev, ...changes }))
+  return {
+    config: { ...DEFAULT, ...config },
+    update: (changes) => updateConfig(changes),
+    reset: () => updateConfig(DEFAULT),
   }
-
-  function reset() {
-    setConfig(DEFAULT)
-  }
-
-  return { config, update, reset }
 }

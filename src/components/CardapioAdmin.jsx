@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useCookies } from '../stores/useCookies'
 import { Modal } from './Modal'
+import { Icon } from './Icon'
 
 const fmtEuro = (v) =>
   new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(v)
@@ -51,17 +52,17 @@ export function CardapioAdmin() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm opacity-55" style={{ color: 'var(--color-text)' }}>
+      <p className="text-sm ink-3">
         Sabores, preços e visibilidade no caixa da feira. Ocultar um sabor mantém estatísticas (ex.: BOW).
       </p>
 
       <div className="bfy-card p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}>
+          <h3 className="text-sm font-bold bfy-card-title">
             Cookies
           </h3>
           <button type="button" className="btn-accent text-xs px-4 py-2" onClick={openAdd}>
-            + Novo cookie
+            <Icon name="mais" size={15} /> Novo cookie
           </button>
         </div>
 
@@ -70,11 +71,11 @@ export function CardapioAdmin() {
             <div
               key={c.id}
               className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-              style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.07)' }}
+              style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
             >
               <div
                 className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
-                style={{ background: 'rgba(29,16,8,0.06)' }}
+                style={{ background: 'var(--color-surface-sunk)' }}
               >
                 {c.image
                   ? <img src={c.image} alt={c.nome} className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none' }} />
@@ -82,7 +83,7 @@ export function CardapioAdmin() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold truncate" style={{ color: 'var(--color-text)' }}>{c.nome}</p>
-                <p className="text-xs opacity-50" style={{ color: 'var(--color-text)' }}>
+                <p className="text-xs ink-3">
                   {c.short} · {fmtEuro(c.price)}
                   {c.ativoNoCardapio === false && (
                     <span className="ml-1.5 font-bold" style={{ color: 'var(--color-accent-dark)' }}>· oculto no caixa</span>
@@ -92,25 +93,26 @@ export function CardapioAdmin() {
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
-                  className="text-[10px] font-bold px-2 py-1 rounded-lg"
+                  className="text-[11px] font-bold px-2 py-1 rounded-lg"
                   style={{
-                    background: c.ativoNoCardapio !== false ? 'rgba(90,158,133,0.15)' : 'rgba(29,16,8,0.06)',
+                    background: c.ativoNoCardapio !== false ? 'rgba(90,158,133,0.15)' : 'var(--color-surface-sunk)',
                     color: c.ativoNoCardapio !== false ? 'var(--color-success)' : 'rgba(29,16,8,0.45)',
                   }}
                   onClick={() => toggleCardapio(c.id)}
                 >
                   {c.ativoNoCardapio !== false ? 'Visível' : 'Oculto'}
                 </button>
-                <button type="button" className="btn-ghost text-xs px-3 py-1.5" onClick={() => openEdit(c)}>Editar</button>
+                <button type="button" className="btn-ghost btn-sm" onClick={() => openEdit(c)}>Editar</button>
                 <button
                   type="button"
-                  className="text-xs font-semibold opacity-35 hover:opacity-75"
-                  style={{ color: '#e57373' }}
+                  className="btn-icon btn-icon-danger"
+                  title={`Remover ${c.nome}`}
+                  aria-label={`Remover ${c.nome}`}
                   onClick={() => {
                     if (cookies.length <= 1) { notify('Precisa ter pelo menos 1 cookie.'); return }
                     if (confirm(`Remover "${c.nome}" da plataforma? (perde estatísticas)`)) removeCookie(c.id)
                   }}
-                >✕</button>
+                ><Icon name="lixo" size={15} /></button>
               </div>
             </div>
           ))}
@@ -118,7 +120,7 @@ export function CardapioAdmin() {
       </div>
 
       <div className="bfy-card p-5 space-y-3">
-        <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}>
+        <h3 className="text-sm font-bold bfy-card-title">
           BOX na feira
         </h3>
         <div className="grid grid-cols-2 gap-3">
@@ -148,7 +150,7 @@ export function CardapioAdmin() {
       </div>
 
       <div className="bfy-card p-5 space-y-3">
-        <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}>
+        <h3 className="text-sm font-bold bfy-card-title">
           Box Mini Cookies
         </h3>
         <label className="block max-w-xs">

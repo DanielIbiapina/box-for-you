@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useReceitas } from '../stores/useReceitas'
 import { useEstoque } from '../stores/useEstoque'
+import { Icon } from '../components/Icon'
 
 function fmtBRL(v) {
   return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(v)
@@ -76,33 +77,28 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
   ]
 
   return (
-    <div className={embed ? 'space-y-4' : 'p-4 md:p-6 max-w-3xl mx-auto pb-10'}>
+    <div className={embed ? 'space-y-4' : 'bfy-page bfy-page-flow'}>
       {!embed && (
         <>
-          <h1
-            className="text-3xl font-black mb-2"
-            style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}
-          >
+          <h1 className="bfy-page-title mb-2">
             Análise financeira
           </h1>
-          <p className="text-sm mb-6 opacity-55" style={{ color: 'var(--color-text)' }}>
+          <p className="text-sm mb-6 ink-3">
             Calcula custo real por cookie a partir da receita, embalagem e taxas de feira.
           </p>
         </>
       )}
 
       {embed && (
-        <p className="text-sm opacity-60 -mt-1 mb-2" style={{ color: 'var(--color-text)' }}>
+        <p className="text-sm -mt-1 mb-2 ink-3">
           Simula quanto custa produzir e vender cada cookie desta receita.
         </p>
       )}
 
       {receitas.length === 0 ? (
-        <div className="bfy-card p-10 text-center">
-          <span className="text-5xl block mb-3">📚</span>
-          <p className="text-base font-semibold" style={{ color: 'var(--color-text)', opacity: 0.6 }}>
-            Cadastre receitas e ingredientes com custo no estoque.
-          </p>
+        <div className="bfy-card bfy-empty">
+          <Icon name="receitas" size={30} />
+          <p style={{ fontSize: 'var(--text-md)' }}>Cadastre receitas e ingredientes com custo no estoque.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -128,12 +124,11 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
             <>
               <div className="bfy-card p-5 space-y-3">
                 <h2
-                  className="text-sm font-bold"
-                  style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}
+                  className="text-sm font-bold bfy-card-title"
                 >
                   Custos extra (além dos ingredientes)
                 </h2>
-                <p className="text-xs opacity-50 -mt-1" style={{ color: 'var(--color-text)' }}>
+                <p className="text-xs -mt-1 ink-3">
                   Valores por cookie, exceto a taxa de feira que se divide pelo rendimento da receita.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -159,8 +154,7 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
 
               <div className="bfy-card p-5">
                 <h2
-                  className="text-sm font-bold mb-4"
-                  style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}
+                  className="text-sm font-bold mb-4 bfy-card-title"
                 >
                   Margem de lucro desejada
                 </h2>
@@ -205,8 +199,7 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
 
               <div className="bfy-card p-5 overflow-x-auto">
                 <h2
-                  className="text-sm font-bold mb-4"
-                  style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}
+                  className="text-sm font-bold mb-4 bfy-card-title"
                 >
                   Resumo
                 </h2>
@@ -217,7 +210,7 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
                         key={i}
                         style={{
                           borderBottom:
-                            i < rows.length - 1 ? '1px solid rgba(61,43,31,0.08)' : 'none',
+                            i < rows.length - 1 ? '1px solid var(--color-surface-sunk)' : 'none',
                           background: row.accent ? 'rgba(242,181,160,0.15)' : 'transparent',
                         }}
                       >
@@ -254,12 +247,14 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
                       margemReal >= 30 ? 'rgba(139,184,168,0.2)' : 'rgba(232,201,154,0.3)',
                   }}
                 >
-                  <span className="text-3xl">{margemReal >= 30 ? '🎉' : '⚠️'}</span>
+                  <span style={{ color: margemReal >= 30 ? 'var(--color-success)' : 'var(--color-warning)' }}>
+                    <Icon name={margemReal >= 30 ? 'check' : 'alerta'} size={24} strokeWidth={2} />
+                  </span>
                   <div>
                     <p className="font-black text-lg" style={{ color: 'var(--color-text)' }}>
                       Margem real: {margemReal.toFixed(1)}%
                     </p>
-                    <p className="text-sm" style={{ color: 'var(--color-text)', opacity: 0.7 }}>
+                    <p className="text-sm" style={{ color: 'var(--ink-2)' }}>
                       {margemReal >= 30
                         ? 'Ótima margem para vender!'
                         : margemReal > 0

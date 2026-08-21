@@ -1,5 +1,6 @@
 import { resolveProductMeta, lineUnitPrice, MINI_BOX_ID } from './catalog'
 
+/** Dia civil local (YYYY-MM-DD) — evita desalinhamento UTC vs feira no fuso local */
 export function todayKey(date = new Date()) {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -7,8 +8,17 @@ export function todayKey(date = new Date()) {
   return `${y}-${m}-${d}`
 }
 
+/** Dia civil local da venda a partir de createdAt (ISO) */
+export function saleDayKey(sale) {
+  const iso = sale?.createdAt
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10)
+  return todayKey(d)
+}
+
 export function isSaleOnDay(sale, dayKey) {
-  return (sale.createdAt ?? '').startsWith(dayKey)
+  return saleDayKey(sale) === dayKey
 }
 
 export function filterSalesByDay(sales, dayKey) {

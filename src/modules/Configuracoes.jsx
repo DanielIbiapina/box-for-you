@@ -2,10 +2,8 @@ import { useState } from 'react'
 import { useConfiguracoes } from '../stores/useConfiguracoes'
 import { useEventos, STATUS_EVENTO } from '../stores/useEventos'
 import { useFinanceiro } from '../stores/useFinanceiro'
-import { useSyncStatus } from '../stores/useSyncStatus'
-import { isSupabaseConfigured } from '../lib/supabase'
-import { pushToCloud, pullFromCloud } from '../lib/syncService'
-import { isAppLockEnabled, lock } from '../lib/appLock'
+import { supabase } from '../lib/supabase'
+import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
 import { CardapioAdmin } from '../components/CardapioAdmin'
 
@@ -20,24 +18,11 @@ function Field({ label, children }) {
 
 const EMPTY_EVENTO = { nome: '', local: '', data: '', status: 'planejada', taxaInscricao: '' }
 
-const SYNC_LABELS = {
-  idle: 'Sincronizado',
-  pulling: 'A atualizar…',
-  pulled: 'Atualizado',
-  syncing: 'A guardar…',
-  synced: 'Guardado',
-  merged: 'Dados atualizados',
-  offline: 'Sem internet — liga-te à rede para guardar',
-  error: 'Erro na sincronização',
-}
-
 export function Configuracoes() {
   const { config, update } = useConfiguracoes()
   const { eventos, adicionar, atualizar, remover } = useEventos()
   const { syncInscricaoEvento, removerDespesasPorEvento } = useFinanceiro()
-  const { status: syncStatus, online: syncOnline } = useSyncStatus()
   const [saved, setSaved] = useState(false)
-  const [syncBusy, setSyncBusy] = useState(false)
   const [form, setForm] = useState({ ...config })
   const [pagamento, setPagamento] = useState('')
   const [eventoModal, setEventoModal] = useState(null)
@@ -104,97 +89,37 @@ export function Configuracoes() {
     setEventoModal(null)
   }
 
-  async function handlePushToCloud() {
-    setSyncBusy(true)
-    await pushToCloud()
-    setSyncBusy(false)
-  }
-
-  async function handlePullFromCloud() {
-    setSyncBusy(true)
-    await pullFromCloud()
-    setSyncBusy(false)
-  }
-
-  function handleLockApp() {
-    lock()
-    window.location.reload()
+  async function handleLogout() {
+    if (!confirm('Sair da conta neste dispositivo?')) return
+    await supabase.auth.signOut()
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-2xl mx-auto pb-10">
-      <h1
-        className="text-3xl font-black mb-6"
-        style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text-light)' }}
-      >
-        ⚙️ Configurações
+    <div className="bfy-page bfy-page-form">
+      <h1 className="bfy-page-title mb-6">
+        Definições
       </h1>
 
-      {/* Backup na nuvem */}
+      {/* Conta & sincronização */}
       <div className="bfy-card p-6 mb-5 space-y-4">
         <h2
-          className="text-base font-bold mb-1"
-          style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}
+          className="text-base font-bold mb-1 bfy-card-title"
         >
-          Backup na Nuvem
+          Conta & Sincronização
         </h2>
-        <p className="text-sm opacity-60" style={{ color: 'var(--color-text)' }}>
-          Sincronização em tempo real com o Supabase. Quando você ou outra pessoa altera algo, os dados atualizam automaticamente nos dois dispositivos.
+        <p className="text-sm ink-3">
+          Os dados ficam no Supabase e sincronizam <strong>em tempo real</strong> entre todos os dispositivos —
+          quando alguém altera algo, aparece automaticamente para os outros. Não é preciso enviar nem baixar nada.
         </p>
-
-        {!isSupabaseConfigured ? (
-          <p
-            className="text-sm rounded-xl px-4 py-3"
-            style={{ background: 'rgba(232,192,128,0.25)', color: 'var(--color-text)' }}
-          >
-            Supabase não configurado. Copie <code className="text-xs">.env.example</code> para{' '}
-            <code className="text-xs">.env</code> e preencha as credenciais.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            <div
-              className="flex items-center gap-3 rounded-xl px-4 py-3"
-              style={{ background: 'rgba(90,158,133,0.12)' }}
-            >
-              <span className="text-xl">☁️</span>
-              <p className="text-xs opacity-60" style={{ color: 'var(--color-text)' }}>
-                {SYNC_LABELS[syncStatus] ?? syncStatus}
-                {!syncOnline && ' · sem ligação'}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="btn-ghost text-xs px-4 py-2"
-                disabled={syncBusy}
-                onClick={handlePushToCloud}
-              >
-                {syncBusy ? '…' : '↑ Enviar agora'}
-              </button>
-              <button
-                type="button"
-                className="btn-ghost text-xs px-4 py-2"
-                disabled={syncBusy}
-                onClick={handlePullFromCloud}
-              >
-                {syncBusy ? '…' : '↓ Baixar da nuvem'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {isAppLockEnabled && (
-          <button type="button" className="btn-ghost w-full py-2 text-sm" onClick={handleLockApp}>
-            🔒 Bloquear app (pedir senha de novo)
-          </button>
-        )}
+        <button type="button" className="btn-ghost w-full py-2 text-sm" onClick={handleLogout}>
+          Sair da conta
+        </button>
       </div>
 
       {/* Dados do negócio */}
       <form onSubmit={handleSave} className="bfy-card p-6 mb-5 space-y-4">
         <h2
-          className="text-base font-bold mb-1"
-          style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}
+          className="text-base font-bold mb-1 bfy-card-title"
         >
           Dados do Negócio
         </h2>
@@ -267,21 +192,20 @@ export function Configuracoes() {
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addPagamento())}
             />
             <button type="button" className="btn-ghost px-4" onClick={addPagamento}>
-              + Add
+              <Icon name="mais" size={15} /> Add
             </button>
           </div>
         </div>
 
         <button type="submit" className="btn-primary w-full py-3">
-          {saved ? '✓ Salvo!' : 'Salvar Configurações'}
+          {saved ? 'Guardado' : 'Salvar configurações'}
         </button>
       </form>
 
       {/* Cardápio global */}
       <div className="bfy-card p-6 mb-5">
         <h2
-          className="text-base font-bold mb-4"
-          style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}
+          className="text-base font-bold mb-4 bfy-card-title"
         >
           Cardápio & Sabores
         </h2>
@@ -292,20 +216,19 @@ export function Configuracoes() {
       <div className="bfy-card p-6">
         <div className="flex items-center justify-between mb-4">
           <h2
-            className="text-base font-bold"
-            style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}
+            className="text-base font-bold bfy-card-title"
           >
             Eventos & Feiras
           </h2>
           <button className="btn-accent text-xs px-4 py-2" onClick={() => openEvento(null)}>
-            + Novo evento
+            <Icon name="mais" size={15} /> Novo evento
           </button>
         </div>
 
         {eventos.length === 0 ? (
           <div className="text-center py-8">
-            <span className="text-5xl block mb-2">🗓️</span>
-            <p className="text-sm" style={{ color: 'var(--color-text)', opacity: 0.5 }}>
+            <span className="ink-4 inline-block mb-2"><Icon name="calendario" size={30} /></span>
+            <p className="text-sm" style={{ color: 'var(--ink-3)' }}>
               Nenhum evento cadastrado
             </p>
           </div>
@@ -317,13 +240,13 @@ export function Configuracoes() {
                 <div
                   key={ev.id}
                   className="flex items-center gap-3 rounded-xl p-3"
-                  style={{ background: 'rgba(61,43,31,0.05)' }}
+                  style={{ background: 'var(--color-surface-sunk)' }}
                 >
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-sm truncate" style={{ color: 'var(--color-text)' }}>
                       {ev.nome}
                     </p>
-                    <p className="text-xs opacity-60" style={{ color: 'var(--color-text)' }}>
+                    <p className="text-xs ink-3">
                       {ev.data
                         ? new Date(ev.data + 'T12:00:00').toLocaleDateString('pt-BR', {
                             day: 'numeric',
@@ -339,7 +262,7 @@ export function Configuracoes() {
                   </div>
                   <span
                     className="text-xs font-semibold px-2 py-0.5 rounded-lg shrink-0"
-                    style={{ background: 'rgba(61,43,31,0.1)', color: 'var(--color-text)' }}
+                    style={{ background: 'var(--line-2)', color: 'var(--color-text)' }}
                   >
                     {statusObj?.label ?? ev.status}
                   </span>
@@ -350,15 +273,16 @@ export function Configuracoes() {
                     Editar
                   </button>
                   <button
-                    className="text-xs font-semibold opacity-40 hover:opacity-80 shrink-0"
-                    style={{ color: '#e57373' }}
+                    className="btn-icon btn-icon-danger shrink-0"
+                    aria-label={`Excluir evento ${ev.nome}`}
+                    title="Excluir evento"
                     onClick={() => {
-                      if (!confirm('Excluir este evento?')) return
+                      if (!confirm(`Excluir o evento "${ev.nome}"? As vendas desse dia mantêm-se.`)) return
                       removerDespesasPorEvento(ev.id)
                       remover(ev.id)
                     }}
                   >
-                    ✕
+                    <Icon name="lixo" size={15} />
                   </button>
                 </div>
               )
@@ -421,7 +345,7 @@ export function Configuracoes() {
                 value={eventoForm.taxaInscricao}
                 onChange={(e) => setEventoForm((f) => ({ ...f, taxaInscricao: e.target.value }))}
               />
-              <span className="text-[11px] opacity-45 mt-1 block" style={{ color: 'var(--color-text)' }}>
+              <span className="text-[11px] mt-1 block ink-3">
                 Entra automaticamente em Entradas e Saídas
               </span>
             </Field>

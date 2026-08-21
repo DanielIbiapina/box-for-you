@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useReceitas, CATEGORIAS } from '../stores/useReceitas'
 import { useEstoque } from '../stores/useEstoque'
 import { Modal } from '../components/Modal'
+import { Icon } from '../components/Icon'
 import { SearchInput } from '../components/SearchInput'
 import { PrecificacaoPanel } from './Precificacao'
 
@@ -48,7 +49,7 @@ function SecTitle({ children }) {
 }
 
 const Divider = () => (
-  <hr style={{ border: 'none', borderTop: '1.5px solid rgba(29,16,8,0.08)', margin: '1.25rem 0' }} />
+  <hr style={{ border: 'none', borderTop: '1.5px solid var(--line-1)', margin: '1.25rem 0' }} />
 )
 
 function ReceitaCard({ receita, onClick }) {
@@ -78,7 +79,7 @@ function ReceitaCard({ receita, onClick }) {
         {/* Badge "Massa Base" */}
         {receita.ehReceitaBase && (
           <span
-            className="absolute top-2 left-2 text-[10px] font-black px-2 py-0.5 rounded-full"
+            className="absolute top-2 left-2 text-[11px] font-black px-2 py-0.5 rounded-full"
             style={{ background: 'rgba(0,0,0,0.4)', color: '#fff', letterSpacing: '0.04em' }}
           >
             BASE
@@ -88,7 +89,7 @@ function ReceitaCard({ receita, onClick }) {
         {/* Badge "Cookie do Mês" */}
         {receita.cookieDoMes && !receita.ehReceitaBase && (
           <span
-            className="absolute top-2 right-2 text-[10px] font-black px-2 py-0.5 rounded-full"
+            className="absolute top-2 right-2 text-[11px] font-black px-2 py-0.5 rounded-full"
             style={{ background: '#fff', color: 'var(--color-accent-dark)', letterSpacing: '0.04em' }}
           >
             ★ Do Mês
@@ -100,7 +101,7 @@ function ReceitaCard({ receita, onClick }) {
       <div className="p-4">
         {/* Categoria */}
         <span
-          className="inline-block text-[10px] font-black uppercase tracking-widest mb-2"
+          className="inline-block text-[11px] font-black uppercase tracking-widest mb-2"
           style={{ color: receita.ehReceitaBase ? '#8D6E63' : 'var(--color-accent-dark)', opacity: 0.85 }}
         >
           {cat.label}
@@ -108,8 +109,7 @@ function ReceitaCard({ receita, onClick }) {
 
         {/* Nome */}
         <h3
-          className="font-black text-base leading-snug mb-1"
-          style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}
+          className="font-black text-base leading-snug mb-1 bfy-title"
         >
           {receita.nome}
         </h3>
@@ -118,7 +118,7 @@ function ReceitaCard({ receita, onClick }) {
         {receita.descricao && (
           <p
             className="text-xs leading-relaxed mb-3 line-clamp-2"
-            style={{ color: 'var(--color-text)', opacity: 0.55 }}
+            style={{ color: 'var(--ink-3)' }}
           >
             {receita.descricao}
           </p>
@@ -127,17 +127,17 @@ function ReceitaCard({ receita, onClick }) {
         {/* Stats */}
         <div className="flex items-center gap-3 mt-auto">
           {receita.rendimento > 0 && (
-            <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text)', opacity: 0.5 }}>
-              🍪 {receita.rendimento} un.
+            <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-3)' }}>
+              rende {receita.rendimento} un.
             </span>
           )}
           {totalMin > 0 && (
-            <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text)', opacity: 0.5 }}>
+            <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-3)' }}>
               ⏱ {totalMin} min
             </span>
           )}
           {(receita.ingredientes ?? []).length > 0 && (
-            <span className="text-[11px] font-semibold" style={{ color: 'var(--color-text)', opacity: 0.5 }}>
+            <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-3)' }}>
               {(receita.ingredientes).length} ing.
             </span>
           )}
@@ -231,7 +231,7 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
               style={{
                 background: form.categoria === cat.id ? cat.gradient : 'transparent',
                 color: form.categoria === cat.id ? '#fff' : 'var(--color-text)',
-                border: `2px solid ${form.categoria === cat.id ? 'transparent' : 'rgba(29,16,8,0.15)'}`,
+                border: `2px solid ${form.categoria === cat.id ? 'transparent' : 'var(--line-2)'}`,
               }}
             >
               {cat.label}
@@ -243,12 +243,12 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
       {/* Toggle: Receita Base */}
       <div
         className="flex items-center justify-between p-3 rounded-xl mb-4 cursor-pointer select-none"
-        style={{ background: form.ehReceitaBase ? 'rgba(93,64,55,0.1)' : 'rgba(29,16,8,0.05)' }}
+        style={{ background: form.ehReceitaBase ? 'rgba(93,64,55,0.1)' : 'var(--color-surface-sunk)' }}
         onClick={() => set('ehReceitaBase', !form.ehReceitaBase)}
       >
         <div>
-          <p className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>🧱 Massa Base</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--color-text)', opacity: 0.5 }}>
+          <p className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>Massa base</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--ink-3)' }}>
             Massa reutilizável como ingrediente em outras receitas
           </p>
         </div>
@@ -266,12 +266,12 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
       {form.categoria === 'sazonal' && !form.ehReceitaBase && (
         <div
           className="flex items-center justify-between p-3 rounded-xl mb-4 cursor-pointer select-none"
-          style={{ background: 'rgba(29,16,8,0.05)' }}
+          style={{ background: 'var(--color-surface-sunk)' }}
           onClick={() => set('cookieDoMes', !form.cookieDoMes)}
         >
           <div>
             <p className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>★ Cookie do Mês</p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--color-text)', opacity: 0.5 }}>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--ink-3)' }}>
               Destaca este sabor no dashboard
             </p>
           </div>
@@ -326,28 +326,28 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
         <div className="mb-3 space-y-1.5">
           {form.ingredientes.map((ing, idx) => (
             <div key={idx} className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-              style={{ background: ing.tipo === 'base' ? 'rgba(93,64,55,0.07)' : 'rgba(29,16,8,0.05)' }}>
+              style={{ background: ing.tipo === 'base' ? 'rgba(93,64,55,0.07)' : 'var(--color-surface-sunk)' }}>
               {ing.tipo === 'base'
-                ? <span className="text-base flex-shrink-0">🧱</span>
+                ? <span className="flex-shrink-0" style={{ color: '#6D4C41' }}><Icon name="massa" size={16} /></span>
                 : <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-accent)' }} />
               }
               <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
                 {ing.nome || '—'}
               </span>
               {ing.tipo === 'base' && (
-                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full"
+                <span className="text-[11px] font-black uppercase px-1.5 py-0.5 rounded-full"
                   style={{ background: 'rgba(141,110,99,0.2)', color: '#8D6E63' }}>
                   base
                 </span>
               )}
-              <span className="text-sm tabular-nums" style={{ color: 'var(--color-text)', opacity: 0.55 }}>
+              <span className="text-sm tabular-nums" style={{ color: 'var(--ink-3)' }}>
                 {ing.quantidade} {ing.unidade}
               </span>
               <button
                 type="button"
                 onClick={() => removeIng(idx)}
                 className="w-6 h-6 flex items-center justify-center rounded-full text-base leading-none transition-all hover:bg-red-50"
-                style={{ color: '#e57373' }}
+                style={{ color: 'var(--color-danger)' }}
               >×</button>
             </div>
           ))}
@@ -355,16 +355,16 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
       )}
 
       <div className="rounded-xl p-3.5 space-y-2.5"
-        style={{ background: 'rgba(29,16,8,0.04)', border: '1.5px dashed rgba(29,16,8,0.14)' }}>
+        style={{ background: 'var(--color-surface-sunk)', border: '1.5px dashed var(--line-2)' }}>
         <p className="text-xs font-bold" style={{ color: 'var(--color-accent-dark)', opacity: 0.85 }}>
           Adicionar ingrediente
         </p>
 
         {/* Tabs: Ingrediente vs Massa Base */}
-        <div className="flex gap-1 rounded-xl p-1" style={{ background: 'rgba(29,16,8,0.07)' }}>
+        <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--color-surface-sunk)' }}>
           {[
             { id: 'ingrediente', label: 'Ingrediente' },
-            { id: 'base', label: '🧱 Massa Base' },
+            { id: 'base', label: 'Massa base' },
           ].map((t) => (
             <button
               key={t.id}
@@ -392,8 +392,8 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
               ))}
             </select>
           ) : (
-            <p className="text-xs" style={{ color: 'var(--color-text)', opacity: 0.45 }}>
-              💡 Crie uma receita e ative "Massa Base" para usá-la aqui
+            <p className="text-xs" style={{ color: 'var(--ink-3)' }}>
+              Cria uma receita e ativa "Massa base" para a usares aqui
             </p>
           )
         ) : (
@@ -407,8 +407,8 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
                 ))}
               </select>
             ) : (
-              <p className="text-xs" style={{ color: 'var(--color-text)', opacity: 0.45 }}>
-                💡 Cadastre ingredientes no Estoque para vinculá-los aqui
+              <p className="text-xs" style={{ color: 'var(--ink-3)' }}>
+                Cadastra ingredientes no Estoque para os vincular aqui
               </p>
             )}
             {!novoIng.ingredienteId && (
@@ -430,7 +430,7 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
             </select>
           )}
           <button type="button" className="btn-primary px-5 whitespace-nowrap" onClick={addIngrediente}>
-            + Add
+            <Icon name="mais" size={15} /> Add
           </button>
         </div>
       </div>
@@ -453,7 +453,7 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
       <div className="flex gap-3 pt-5">
         {onDelete && (
           <button type="button" className="btn-ghost px-4 text-sm"
-            style={{ color: '#e57373', borderColor: '#e57373' }}
+            style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
             onClick={onDelete}>
             Excluir
           </button>
@@ -516,28 +516,25 @@ export function Receitas() {
   const totalBase     = receitas.filter((r) => r.ehReceitaBase).length
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto pb-10">
+    <div className="bfy-page">
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1
-            className="text-3xl font-black leading-none"
-            style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}
-          >
+          <h1 className="bfy-page-title leading-none">
             Receitas
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--color-text)', opacity: 0.55 }}>
+          <p className="text-sm mt-1" style={{ color: 'var(--ink-3)' }}>
             {totalClassico} clássica{totalClassico !== 1 ? 's' : ''} · {totalSazonal} sazonal{totalSazonal !== 1 ? 'is' : ''}
             {totalBase > 0 && ` · ${totalBase} base${totalBase !== 1 ? 's' : ''}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button className="btn-ghost px-4 py-2.5 text-sm" onClick={() => setFinModal(true)}>
-            💶 Análise financeira
+            <Icon name="financeiro" size={15} /> Análise financeira
           </button>
           <button className="btn-primary px-5 py-2.5 text-sm" onClick={openNew}>
-            + Nova Receita
+            <Icon name="mais" size={15} /> Nova Receita
           </button>
         </div>
       </div>
@@ -553,10 +550,10 @@ export function Receitas() {
         />
 
         {/* Tabs de categoria */}
-        <div className="flex gap-1 rounded-2xl p-1" style={{ background: 'rgba(61,43,31,0.12)' }}>
+        <div className="flex gap-1 rounded-2xl p-1" style={{ background: 'var(--line-2)' }}>
           {[
             { id: 'todas', label: 'Todas' },
-            { id: 'base', label: '🧱 Base' },
+            { id: 'base', label: 'Massa base' },
             ...CATEGORIAS,
           ].map((cat) => (
             <button
@@ -578,18 +575,18 @@ export function Receitas() {
       {/* ── Grid de receitas ── */}
       {ordenadas.length === 0 ? (
         <div className="bfy-card p-16 text-center">
-          <p className="text-5xl mb-4">🍪</p>
+          <p className="mb-4 ink-4"><Icon name="receitas" size={32} /></p>
           <p className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)', opacity: 0.55 }}>
             {receitas.length === 0 ? 'Nenhuma receita ainda' : 'Sem resultados'}
           </p>
-          <p className="text-sm mb-5" style={{ color: 'var(--color-text)', opacity: 0.4 }}>
+          <p className="text-sm mb-5" style={{ color: 'var(--ink-3)' }}>
             {receitas.length === 0
               ? 'Adicione seus 4 sabores clássicos e o cookie do mês!'
               : 'Tente outro filtro ou busca'}
           </p>
           {receitas.length === 0 && (
             <button className="btn-primary px-6 py-2.5" onClick={openNew}>
-              + Adicionar primeira receita
+              <Icon name="mais" size={15} /> Adicionar primeira receita
             </button>
           )}
         </div>

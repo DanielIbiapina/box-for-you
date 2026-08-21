@@ -26,7 +26,7 @@ export function BarChart({ data, height = 110, color = 'var(--color-accent-dark)
               width={barW}
               height={bh}
               rx={5}
-              fill={d.value > 0 ? color : 'rgba(61,43,31,0.08)'}
+              fill={d.value > 0 ? color : 'var(--color-surface-sunk)'}
             />
             {d.value > 0 && (
               <text

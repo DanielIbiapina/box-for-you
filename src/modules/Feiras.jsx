@@ -2,19 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCookies } from '../stores/useCookies'
 import { useEstoqueCookies } from '../stores/useEstoqueCookies'
 import { Modal } from '../components/Modal'
+import { Icon } from '../components/Icon'
 import { FeiraHistoricoPanel } from '../components/FeiraHistoricoPanel'
 import { FeiraCardapio } from '../components/FeiraCardapio'
 import { useEventos } from '../stores/useEventos'
+import { useVendas } from '../stores/useVendas'
 import { listFeirasWithStats, formatEventDateRange } from '../lib/feiraHistory'
-import { STORAGE_SYNC_EVENT } from '../lib/syncKeys'
-import { scheduleSync } from '../lib/syncService'
 import { menuCookies, MINI_BOX_ID } from '../lib/catalog'
 import { todayKey, filterSalesByDay, computePosMetrics, topFlavorsRanking } from '../lib/salesAnalytics'
 import { isSupabaseConfigured } from '../lib/supabase'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
-
-const STORAGE_KEY = 'cookies-sales:v1'
 
 const PAYMENTS = [
   { id: 'dinheiro',    label: 'Dinheiro' },
@@ -35,15 +33,6 @@ const uid = () =>
 
 const fmtTime = (iso) =>
   new Date(iso).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })
-
-function readSales() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch { return [] }
-}
 
 function initialBoxCounts(cookies) {
   return Object.fromEntries(cookies.map((c) => [c.id, 0]))
@@ -144,8 +133,9 @@ export function Feiras({ onPosModeChange }) {
 
   const { eventos } = useEventos()
 
+  const { sales, addSale, removeSale } = useVendas()
+
   const [view,    setView]    = useState('landing') // 'landing' | 'pos' | 'cardapio'
-  const [sales,   setSales]   = useState(() => readSales())
   const [cart,    setCart]    = useState({})
   const [order,   setOrder]   = useState(null)
   const [payment, setPayment] = useState(null)
@@ -160,22 +150,6 @@ export function Feiras({ onPosModeChange }) {
   const todaySales = useMemo(() => filterSalesByDay(sales, dayKey), [sales, dayKey])
 
 
-  useEffect(() => {
-    const serialized = JSON.stringify(sales)
-    if (localStorage.getItem(STORAGE_KEY) === serialized) return
-    localStorage.setItem(STORAGE_KEY, serialized)
-    scheduleSync(STORAGE_KEY)
-  }, [sales])
-
-  useEffect(() => {
-    function onRemoteSync(e) {
-      if (e.detail?.key !== STORAGE_KEY) return
-      setSales(readSales())
-    }
-    window.addEventListener(STORAGE_SYNC_EVENT, onRemoteSync)
-    return () => window.removeEventListener(STORAGE_SYNC_EVENT, onRemoteSync)
-  }, [])
-
   useEffect(() => () => clearTimeout(toastRef.current), [])
 
   useEffect(() => {
@@ -188,6 +162,12 @@ export function Feiras({ onPosModeChange }) {
   const feirasHistorico = useMemo(
     () => listFeirasWithStats(sales, eventos, cookies),
     [sales, eventos, cookies],
+  )
+
+  /** Evento agendado para hoje — as vendas do caixa serão atribuídas a ele */
+  const feiraDeHoje = useMemo(
+    () => eventos.find((e) => e.data === dayKey) ?? null,
+    [eventos, dayKey],
   )
 
   function notify(msg) {
@@ -270,14 +250,13 @@ export function Feiras({ onPosModeChange }) {
 
     if (order?.kind === 'demo') {
       if (!order.demoFlavorId) { notify('Escolhe o sabor para a demonstração.'); return }
-      setSales((prev) => [{
-        id: uid(), createdAt: new Date().toISOString(),
+      addSale({
         kind: 'demo', demoFlavorId: order.demoFlavorId,
         flavorId: null, boxFlavors: [], paymentId: 'gratis', totalEur: 0,
-      }, ...prev])
+      })
       deductSale([{ cookieId: order.demoFlavorId, qty: 1 }])
       setOrder(null); setPayment(null); setDesconto(0)
-      notify('Demonstração registada ✓')
+      notify('Demonstração registada')
       return
     }
 
@@ -334,31 +313,27 @@ export function Feiras({ onPosModeChange }) {
       }
     }
 
-    setSales((prev) => [...newSales, ...prev])
+    newSales.forEach((s) => addSale(s))
     deductSale(deductItems)
     setCart({})
     setOrder(null)
     setPayment(null)
     setDesconto(0)
-    notify(newSales.length > 1 ? 'Vendas registadas ✓' : 'Venda registada ✓')
+    notify(newSales.length > 1 ? 'Vendas registadas' : 'Venda registada')
   }
 
 
   function deleteLastSale() {
     if (!sales.length) return
     if (!confirm('Excluir o último registo?')) return
-    setSales((prev) => prev.slice(1))
+    removeSale(sales[0].id)
   }
 
   function deleteSale(id) {
     if (!confirm('Excluir este registo?')) return
-    setSales((prev) => prev.filter((s) => s.id !== id))
+    removeSale(id)
   }
 
-  function clearAll() {
-    if (!confirm('Limpar todos os registos? Esta ação não pode ser desfeita.')) return
-    setSales([])
-  }
 
   function exportTxt() {
     const lines = [
@@ -408,13 +383,13 @@ export function Feiras({ onPosModeChange }) {
       : nCart > 0 && !!payment
 
   function confirmBtnText() {
-    if (order?.kind === 'demo') return order.demoFlavorId ? '✓ Confirmar demonstração' : 'Escolhe o sabor'
+    if (order?.kind === 'demo') return order.demoFlavorId ? 'Confirmar prova grátis' : 'Escolhe o sabor'
     if (order?.kind === 'box') {
       if (boxFilled < boxConfig.size) return `Faltam ${boxConfig.size - boxFilled} cookie(s) na BOX`
       if (!payment) return 'Escolhe o pagamento'
-      return `✓ Confirmar ${fmtEuro(totalFinal)}`
+      return `Confirmar ${fmtEuro(totalFinal)}`
     }
-    if (nCart > 0) return payment ? `✓ Confirmar ${fmtEuro(totalFinal)}` : 'Escolhe o pagamento'
+    if (nCart > 0) return payment ? `Confirmar ${fmtEuro(totalFinal)}` : 'Escolhe o pagamento'
     return 'Seleciona itens'
   }
 
@@ -433,133 +408,115 @@ export function Feiras({ onPosModeChange }) {
   if (view === 'landing') {
     return (
       <div className="h-full overflow-y-auto" style={{ background: 'var(--color-bg)' }}>
-        <div className="max-w-2xl mx-auto p-4 md:p-6 pb-10 space-y-5">
+        <div className="bfy-page space-y-5">
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1
-                className="text-3xl font-black"
-                style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}
-              >
-                Feiras
-              </h1>
-              <p className="text-sm mt-1 opacity-55" style={{ color: 'var(--color-text)' }}>
-                {cookies.length} produtos · sistema de venda
+            <div className="min-w-0">
+              <h1 className="bfy-page-title">Feiras</h1>
+              <p className="ink-3 mt-1" style={{ fontSize: 'var(--text-md)' }}>
+                Caixa e histórico das feiras
               </p>
             </div>
-            <button
-              className="btn-ghost text-xs px-4 py-2"
-              disabled={!sales.length}
-              onClick={exportTxt}
-            >
-              Exportar .TXT
+            <button className="btn-ghost btn-sm shrink-0" disabled={!sales.length} onClick={exportTxt}>
+              <Icon name="descarregar" size={15} /> Exportar
             </button>
           </div>
 
-          {/* Stats */}
+          {/* A que feira as vendas de hoje pertencem (a ligação é pela data) */}
+          {feiraDeHoje && (
+            <div
+              className="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5"
+              style={{ background: 'var(--color-accent-soft)', border: '1px solid rgba(154,59,28,0.2)' }}
+            >
+              <span style={{ color: 'var(--color-accent-dark)' }}><Icon name="feiras" size={17} /></span>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-accent-dark)' }}>
+                Hoje é <strong>{feiraDeHoje.nome}</strong> — as vendas entram nesta feira
+              </p>
+            </div>
+          )}
+
+          {/* Caixa de hoje */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Caixa hoje', value: fmtEuro(metrics.total), accent: true },
-              { label: 'Vendas pagas', value: metrics.revenueSales },
-              { label: 'Demonstrações', value: metrics.demoCount.total },
-            ].map(({ label, value, accent }) => (
+              { label: 'Caixa hoje', value: fmtEuro(metrics.total), destaque: true },
+              { label: 'Vendas', value: metrics.revenueSales },
+              { label: 'Provas', value: metrics.demoCount.total },
+            ].map(({ label, value, destaque }) => (
               <div key={label} className="bfy-card p-4 text-center">
                 <p
-                  className="text-xl font-black tabular-nums"
-                  style={{ color: accent ? 'var(--color-accent-dark)' : 'var(--color-text)', fontFamily: 'var(--font-title)' }}
+                  className="bfy-title bfy-num"
+                  style={{ fontSize: 'var(--text-xl)', color: destaque ? 'var(--color-accent-dark)' : 'var(--ink-1)' }}
                 >
                   {value}
                 </p>
-                <p className="text-xs mt-1 opacity-50" style={{ color: 'var(--color-text)' }}>{label}</p>
+                <p className="ink-3 mt-1" style={{ fontSize: 'var(--text-xs)' }}>{label}</p>
               </div>
             ))}
           </div>
 
-          {/* Ações */}
-          <div className="grid sm:grid-cols-2 gap-4">
-            <button
-              onClick={() => setView('pos')}
-              className="group relative overflow-hidden rounded-2xl p-6 flex items-center gap-4 text-left transition-all hover:scale-[1.015] active:scale-[0.99]"
-              style={{
-                background: 'linear-gradient(135deg, var(--color-success) 0%, #3a9e7a 100%)',
-                boxShadow: '0 6px 24px rgba(90,158,133,0.35)',
-              }}
+          {/* Ação principal */}
+          <button
+            onClick={() => setView('pos')}
+            className="w-full rounded-2xl p-6 flex items-center gap-4 text-left transition-transform active:scale-[0.99]"
+            style={{ background: 'var(--color-primary)' }}
+          >
+            <span
+              className="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center"
+              style={{ background: 'var(--color-accent)', color: '#fff' }}
             >
-              <div className="shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center text-3xl" style={{ background: 'rgba(255,255,255,0.2)' }}>
-                🛒
-              </div>
-              <div className="min-w-0">
-                <p className="font-black text-xl leading-tight" style={{ fontFamily: 'var(--font-title)', color: '#fff' }}>
-                  Iniciar Caixa
-                </p>
-                <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.72)' }}>
-                  Vendas de hoje
-                </p>
-              </div>
-            </button>
+              <Icon name="carrinho" size={26} strokeWidth={2} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="bfy-title block" style={{ fontSize: 'var(--text-xl)', color: 'var(--ink-on-dark)' }}>
+                Abrir caixa
+              </span>
+              <span className="block mt-0.5" style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-on-dark-2)' }}>
+                Registar as vendas de hoje
+              </span>
+            </span>
+            <span style={{ color: 'var(--ink-on-dark-3)' }}><Icon name="avancar" size={20} /></span>
+          </button>
 
-
-            <button
-              onClick={() => setView('cardapio')}
-              className="group relative overflow-hidden rounded-2xl p-5 flex items-center gap-4 text-left transition-all hover:scale-[1.015] active:scale-[0.99]"
-              style={{
-                background: 'linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%)',
-                boxShadow: '0 6px 24px rgba(194,75,41,0.20)',
-              }}
-            >
-              <div className="shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl" style={{ background: 'rgba(255,255,255,0.18)' }}>
-                🍪
-              </div>
-              <div className="min-w-0">
-                <p className="font-black text-lg leading-tight" style={{ fontFamily: 'var(--font-title)', color: '#fff' }}>
-                  Cardápio do caixa
-                </p>
-                <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.72)' }}>
-                  Sabores visíveis e preços
-                </p>
-              </div>
-            </button>
-          </div>
-
-          {/* Preview do cardápio */}
+          {/* Cardápio */}
           <div className="bfy-card p-4">
-            <p className="text-xs font-black uppercase tracking-widest mb-3 opacity-50" style={{ color: 'var(--color-text)' }}>
-              Cardápio atual
-            </p>
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h2 className="bfy-eyebrow">Cardápio do caixa</h2>
+              <button className="btn-ghost btn-sm" onClick={() => setView('cardapio')}>
+                <Icon name="editar" size={14} /> Gerir
+              </button>
+            </div>
             <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
               {menuItems.map((c) => (
                 <div key={c.id} className="flex flex-col items-center gap-1">
                   <div
                     className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center"
-                    style={{ background: 'rgba(29,16,8,0.05)' }}
+                    style={{ background: 'var(--color-surface-sunk)' }}
                   >
                     {c.image
-                      ? <img src={c.image} alt={c.nome} className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none' }} />
-                      : <span className="text-2xl">{c.emoji}</span>
+                      ? <img src={c.image} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none' }} />
+                      : <span style={{ fontSize: '1.4rem' }}>{c.emoji}</span>
                     }
                   </div>
-                  <p className="text-[10px] font-bold text-center leading-tight" style={{ color: 'var(--color-text)' }}>{c.short}</p>
-                  <p className="text-[10px] font-black" style={{ color: 'var(--color-accent-dark)' }}>{fmtEuro(c.price)}</p>
+                  <p className="font-bold text-center leading-tight ink-2" style={{ fontSize: 'var(--text-2xs)' }}>{c.short}</p>
+                  <p className="bfy-num font-bold" style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-accent-dark)' }}>
+                    {fmtEuro(c.price)}
+                  </p>
                 </div>
               ))}
             </div>
-            <div
-              className="mt-3 pt-3 flex flex-wrap gap-3 text-xs"
-              style={{ borderTop: '1px solid rgba(29,16,8,0.08)', color: 'var(--color-text)' }}
-            >
-              <span className="opacity-55">📦 BOX {boxConfig.size} cookies — {fmtEuro(boxConfig.price)}</span>
-              <span className="opacity-55">🍪 Box Mini — {fmtEuro(miniBoxConfig.price)}</span>
+            <div className="mt-3 pt-3 flex flex-wrap gap-2" style={{ borderTop: '1px solid var(--line-1)' }}>
+              <span className="bfy-chip">BOX {boxConfig.size} cookies · {fmtEuro(boxConfig.price)}</span>
+              <span className="bfy-chip">Box Mini · {fmtEuro(miniBoxConfig.price)}</span>
             </div>
           </div>
 
-          {/* Histórico de feiras */}
+          {/* Histórico */}
           <div className="bfy-card p-4 space-y-3">
-            <p className="text-xs font-black uppercase tracking-widest opacity-50" style={{ color: 'var(--color-text)' }}>
-              Histórico de feiras
-            </p>
+            <h2 className="bfy-eyebrow">Histórico de feiras</h2>
             {feirasHistorico.length === 0 ? (
-              <p className="text-sm opacity-45 py-4 text-center" style={{ color: 'var(--color-text)' }}>
-                Ainda não há feiras com vendas registadas.
-              </p>
+              <div className="bfy-empty">
+                <Icon name="feiras" size={28} />
+                <p style={{ fontSize: 'var(--text-md)' }}>Ainda não há feiras com vendas</p>
+              </div>
             ) : (
               <div className="space-y-2">
                 {feirasHistorico.map(({ ev, stats }) => (
@@ -567,42 +524,31 @@ export function Feiras({ onPosModeChange }) {
                     key={ev.id}
                     type="button"
                     onClick={() => setHistoricoEvent(ev)}
-                    className="w-full flex items-center gap-3 rounded-xl px-3 py-3 text-left transition-all hover:bg-black/[0.03]"
-                    style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.06)' }}
+                    className="bfy-sunk w-full flex items-center gap-3 px-3 py-3 text-left transition-colors"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm truncate" style={{ color: 'var(--color-text)' }}>{ev.nome}</p>
-                      <p className="text-[10px] opacity-45 mt-0.5" style={{ color: 'var(--color-text)' }}>
+                      <p className="font-bold truncate ink-1" style={{ fontSize: 'var(--text-md)' }}>{ev.nome}</p>
+                      <p className="ink-3 mt-0.5" style={{ fontSize: 'var(--text-xs)' }}>
                         {formatEventDateRange(ev)}
                         {ev.local ? ` · ${ev.local}` : ''}
                         {stats.dayBreakdown.length > 1 ? ` · ${stats.dayBreakdown.length} dias` : ''}
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
+                      <p className="bfy-num font-bold" style={{ color: 'var(--color-accent-dark)', fontSize: 'var(--text-md)' }}>
                         {fmtEuro(stats.total)}
                       </p>
-                      <p className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
+                      <p className="ink-4" style={{ fontSize: 'var(--text-2xs)' }}>
                         {stats.vendas} venda{stats.vendas !== 1 ? 's' : ''}
                       </p>
                     </div>
+                    <span className="ink-4"><Icon name="avancar" size={16} /></span>
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          {sales.length > 0 && (
-            <div className="text-center">
-              <button
-                className="text-xs opacity-35 hover:opacity-60 transition-opacity"
-                style={{ color: '#e57373' }}
-                onClick={clearAll}
-              >
-                Limpar todos os registos
-              </button>
-            </div>
-          )}
         </div>
 
         {toast && <Toast msg={toast} />}
@@ -637,11 +583,11 @@ export function Feiras({ onPosModeChange }) {
       >
         <div className="flex items-center gap-3 min-w-0">
           <button
-            className="text-sm font-semibold opacity-60 hover:opacity-100 shrink-0 transition-opacity"
-            style={{ color: 'var(--color-text-light)' }}
+            className="flex items-center gap-1.5 shrink-0 font-semibold transition-opacity hover:opacity-100"
+            style={{ color: 'var(--ink-on-dark-2)', fontSize: 'var(--text-sm)' }}
             onClick={() => { cancelCheckout(); setView('landing') }}
           >
-            ← Voltar
+            <Icon name="voltar" size={16} /> Voltar
           </button>
           <span className="opacity-20 shrink-0" style={{ color: 'var(--color-text-light)' }}>|</span>
           <span
@@ -653,7 +599,7 @@ export function Feiras({ onPosModeChange }) {
         </div>
         <div className="flex items-center gap-4 shrink-0">
           <div className="text-right">
-            <div className="text-[10px] opacity-45 uppercase tracking-wide" style={{ color: 'var(--color-text-light)' }}>Caixa hoje</div>
+            <div className="text-[11px] opacity-45 uppercase tracking-wide" style={{ color: 'var(--color-text-light)' }}>Caixa hoje</div>
             <div className="text-base font-black tabular-nums" style={{ color: 'var(--color-accent)' }}>
               {fmtEuro(metrics.total)}
             </div>
@@ -675,13 +621,13 @@ export function Feiras({ onPosModeChange }) {
         {/* ── Cardápio ── */}
         <section
           className="flex min-h-0 flex-col px-3 py-3 sm:px-4 lg:border-r max-lg:max-h-[min(54dvh,540px)] max-lg:flex-none max-lg:overflow-y-auto lg:max-h-none lg:flex-[1.4] lg:overflow-y-auto"
-          style={{ borderColor: 'rgba(29,16,8,0.1)' }}
+          style={{ borderColor: 'var(--line-2)' }}
         >
           <div className="shrink-0 flex items-center justify-between mb-3">
-            <span className="text-[10px] font-black uppercase tracking-widest opacity-45" style={{ color: 'var(--color-text)' }}>
+            <span className="bfy-eyebrow">
               Cardápio
             </span>
-            <span className="text-[10px] opacity-35 hidden sm:block" style={{ color: 'var(--color-text)' }}>
+            <span className="text-[11px] hidden sm:block ink-4">
               Toca para adicionar
             </span>
           </div>
@@ -699,7 +645,7 @@ export function Feiras({ onPosModeChange }) {
                     onClick={() => addToCart(c.id)}
                     className="relative rounded-2xl overflow-hidden flex flex-col transition-all active:scale-95"
                     style={{
-                      border:     on ? '2.5px solid var(--color-accent-dark)' : '1.5px solid rgba(29,16,8,0.1)',
+                      border:     on ? '2.5px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
                       boxShadow:  on ? '0 4px 16px rgba(154,59,28,0.22)' : 'var(--shadow-card)',
                       background: on ? 'var(--color-accent-dark)' : 'var(--color-surface)',
                     }}
@@ -709,7 +655,7 @@ export function Feiras({ onPosModeChange }) {
                       className="relative flex items-center justify-center overflow-hidden"
                       style={{
                         aspectRatio: '1',
-                        background: on ? 'rgba(255,255,255,0.07)' : 'rgba(29,16,8,0.04)',
+                        background: on ? 'rgba(255,255,255,0.07)' : 'var(--color-surface-sunk)',
                       }}
                     >
                       {c.image
@@ -764,7 +710,7 @@ export function Feiras({ onPosModeChange }) {
                     onClick={() => addToCart(MINI_BOX_ID)}
                     className="relative rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
                     style={{
-                      border:     on ? '2px solid var(--color-accent-dark)' : '1.5px solid rgba(29,16,8,0.1)',
+                      border:     on ? '2px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
                       background: on ? 'var(--color-accent-dark)' : 'var(--color-surface)',
                       boxShadow:  'var(--shadow-card)',
                     }}
@@ -777,10 +723,10 @@ export function Feiras({ onPosModeChange }) {
                         {n}
                       </span>
                     )}
-                    <span className="text-xl shrink-0">🍪</span>
+                    <span className="shrink-0 ink-3"><Icon name="cookie" size={19} /></span>
                     <div className="min-w-0 flex-1 text-left">
                       <div className="text-xs font-bold truncate" style={{ color: on ? '#fff' : 'var(--color-text)' }}>Box Mini</div>
-                      <div className="text-[10px]" style={{ color: on ? 'rgba(255,255,255,0.55)' : 'rgba(29,16,8,0.45)' }}>Pacote especial</div>
+                      <div className="text-[11px]" style={{ color: on ? 'rgba(255,255,255,0.55)' : 'rgba(29,16,8,0.45)' }}>Pacote especial</div>
                     </div>
                     <span className="text-sm font-black shrink-0 tabular-nums" style={{ color: on ? 'rgba(255,255,255,0.8)' : 'var(--color-accent-dark)' }}>
                       {fmtEuro(miniBoxConfig.price)}
@@ -800,12 +746,14 @@ export function Feiras({ onPosModeChange }) {
                   boxShadow:  'var(--shadow-card)',
                 }}
               >
-                <span className="text-xl shrink-0">📦</span>
+                <span className="shrink-0" style={{ color: order?.kind === 'box' ? '#fff' : 'var(--color-accent-dark)' }}>
+                  <Icon name="caixa" size={20} />
+                </span>
                 <div className="min-w-0 flex-1 text-left">
                   <div className="text-xs font-bold" style={{ color: order?.kind === 'box' ? '#fff' : 'var(--color-accent-dark)' }}>
                     BOX {boxConfig.size} cookies
                   </div>
-                  <div className="text-[10px]" style={{ color: order?.kind === 'box' ? 'rgba(255,255,255,0.65)' : 'rgba(154,59,28,0.65)' }}>
+                  <div className="text-[11px]" style={{ color: order?.kind === 'box' ? 'rgba(255,255,255,0.65)' : 'rgba(154,59,28,0.65)' }}>
                     Mix de sabores
                   </div>
                 </div>
@@ -820,17 +768,19 @@ export function Feiras({ onPosModeChange }) {
                 onClick={startDemo}
                 className="rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
                 style={{
-                  border:     order?.kind === 'demo' ? '2px solid var(--color-primary)' : '1.5px solid rgba(29,16,8,0.1)',
-                  background: order?.kind === 'demo' ? 'var(--color-primary)' : 'rgba(29,16,8,0.04)',
+                  border:     order?.kind === 'demo' ? '2px solid var(--color-primary)' : '1.5px solid var(--line-2)',
+                  background: order?.kind === 'demo' ? 'var(--color-primary)' : 'var(--color-surface-sunk)',
                   boxShadow:  'var(--shadow-card)',
                 }}
               >
-                <span className="text-xl shrink-0">✨</span>
+                <span className="shrink-0" style={{ color: order?.kind === 'demo' ? '#fff' : 'var(--ink-2)' }}>
+                  <Icon name="cookie" size={20} />
+                </span>
                 <div className="min-w-0 flex-1 text-left">
                   <div className="text-xs font-bold" style={{ color: order?.kind === 'demo' ? '#fff' : 'var(--color-text)' }}>
-                    Demonstração
+                    Prova grátis
                   </div>
-                  <div className="text-[10px]" style={{ color: order?.kind === 'demo' ? 'rgba(255,255,255,0.5)' : 'rgba(29,16,8,0.4)' }}>
+                  <div className="text-[11px]" style={{ color: order?.kind === 'demo' ? 'rgba(255,255,255,0.5)' : 'rgba(29,16,8,0.4)' }}>
                     Prova grátis
                   </div>
                 </div>
@@ -845,13 +795,13 @@ export function Feiras({ onPosModeChange }) {
         {/* ── Finalizar ── */}
         <section
           className="flex shrink-0 flex-col max-lg:max-h-[min(40dvh,400px)] max-lg:min-h-[200px] max-lg:border-b max-lg:overflow-hidden lg:w-[min(360px,30vw)] lg:max-h-none lg:border-r"
-          style={{ background: 'var(--color-surface)', borderColor: 'rgba(29,16,8,0.1)' }}
+          style={{ background: 'var(--color-surface)', borderColor: 'var(--line-2)' }}
         >
           <div
             className="shrink-0 px-4 py-2 border-b"
-            style={{ borderColor: 'rgba(29,16,8,0.08)' }}
+            style={{ borderColor: 'var(--line-1)' }}
           >
-            <span className="text-[11px] font-black uppercase tracking-widest opacity-45" style={{ color: 'var(--color-text)' }}>
+            <span className="bfy-eyebrow">
               Finalizar
             </span>
           </div>
@@ -859,8 +809,8 @@ export function Feiras({ onPosModeChange }) {
           <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-3 min-h-0">
             {!order && nCart === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center px-4">
-                <span className="text-4xl mb-3 opacity-25">👆</span>
-                <p className="text-sm opacity-40" style={{ color: 'var(--color-text)' }}>
+                <span className="mb-3 ink-4"><Icon name="carrinho" size={30} /></span>
+                <p className="text-sm ink-3">
                   Toca nos cookies para adicionar ao pedido
                 </p>
               </div>
@@ -869,24 +819,24 @@ export function Feiras({ onPosModeChange }) {
                 {/* BOX */}
                 {order?.kind === 'box' && (
                   <div className="bfy-card p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl">📦</span>
+                    <div className="flex items-center gap-2.5">
+                      <span style={{ color: 'var(--color-accent-dark)' }}><Icon name="caixa" size={21} /></span>
                       <div className="flex-1">
                         <div className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>
                           BOX {boxConfig.size} cookies ({boxFilled}/{boxConfig.size})
                         </div>
-                        <div className="text-xs opacity-45" style={{ color: 'var(--color-text)' }}>
+                        <div className="ink-3" style={{ fontSize: 'var(--text-xs)' }}>
                           {fmtEuro(boxConfig.price)} · mix de sabores
                         </div>
                       </div>
                       <button
                         type="button"
                         onClick={cancelBox}
-                        className="text-xs font-semibold opacity-40 hover:opacity-70 shrink-0 px-2 py-1"
-                        style={{ color: '#e57373' }}
+                        className="btn-icon btn-icon-danger shrink-0"
                         title="Remover BOX"
+                        aria-label="Remover BOX"
                       >
-                        ✕
+                        <Icon name="fechar" size={15} />
                       </button>
                     </div>
                     {menuItems.map((c) => {
@@ -895,7 +845,7 @@ export function Feiras({ onPosModeChange }) {
                         <div
                           key={c.id}
                           className="flex items-center gap-2 rounded-xl px-2 py-1.5"
-                          style={{ background: 'rgba(29,16,8,0.04)' }}
+                          style={{ background: 'var(--color-surface-sunk)' }}
                         >
                           <span className="text-sm shrink-0">{c.emoji}</span>
                           <span className="flex-1 text-xs font-semibold truncate" style={{ color: 'var(--color-text)' }}>{c.short}</span>
@@ -903,22 +853,20 @@ export function Feiras({ onPosModeChange }) {
                             type="button"
                             onClick={() => changeBoxCount(c.id, -1)}
                             disabled={n <= 0}
-                            className="w-7 h-7 rounded-lg font-bold text-base disabled:opacity-25"
-                            style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                            className="btn-step"
                           >−</button>
                           <span className="w-5 text-center text-sm font-black tabular-nums" style={{ color: 'var(--color-text)' }}>{n}</span>
                           <button
                             type="button"
                             onClick={() => changeBoxCount(c.id, 1)}
                             disabled={boxFilled >= boxConfig.size}
-                            className="w-7 h-7 rounded-lg font-bold text-base disabled:opacity-25"
-                            style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                            className="btn-step"
                           >+</button>
                         </div>
                       )
                     })}
                     {boxFilled > 0 && (
-                      <div className="text-[10px] opacity-40 pt-0.5" style={{ color: 'var(--color-text)' }}>
+                      <div className="text-[11px] pt-0.5 ink-3">
                         {formatBoxCountsSummary(order.boxCounts, menuItems)}
                       </div>
                     )}
@@ -928,11 +876,11 @@ export function Feiras({ onPosModeChange }) {
                 {/* Demo */}
                 {order?.kind === 'demo' && (
                   <div className="bfy-card p-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-2xl">✨</span>
+                    <div className="flex items-center gap-2.5">
+                      <span className="ink-2"><Icon name="cookie" size={21} /></span>
                       <div>
-                        <div className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>Demo — prova grátis</div>
-                        <div className="text-xs opacity-45" style={{ color: 'var(--color-text)' }}>Seleciona o sabor à mesa</div>
+                        <div className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>Prova grátis</div>
+                        <div className="ink-3" style={{ fontSize: 'var(--text-xs)' }}>Seleciona o sabor dado a provar</div>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-1.5">
@@ -945,13 +893,13 @@ export function Feiras({ onPosModeChange }) {
                             onClick={() => setDemoFlavor(c.id)}
                             className="rounded-xl px-1 py-2 text-center transition-all"
                             style={{
-                              border:     on ? '2px solid var(--color-accent-dark)' : '1.5px solid rgba(29,16,8,0.1)',
+                              border:     on ? '2px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
                               background: on ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.03)',
                             }}
                           >
                             <div className="text-lg leading-none">{c.emoji}</div>
                             <div
-                              className="text-[9px] font-bold mt-1 truncate"
+                              className="text-[11px] font-bold mt-1 truncate"
                               style={{ color: on ? '#fff' : 'var(--color-text)' }}
                             >{c.short}</div>
                           </button>
@@ -964,7 +912,7 @@ export function Feiras({ onPosModeChange }) {
                 {/* Lista avulsa — visível junto com BOX */}
                 {nCart > 0 && order?.kind !== 'demo' && (
                   <div className="bfy-card p-3 space-y-2">
-                    <div className="text-[11px] font-black uppercase tracking-widest opacity-45 mb-1" style={{ color: 'var(--color-text)' }}>
+                    <div className="bfy-eyebrow mb-1">
                       Lista · {nCart} {nCart === 1 ? 'item' : 'itens'}
                     </div>
                     {buildCartLines(cart).map((ln) => {
@@ -974,7 +922,7 @@ export function Feiras({ onPosModeChange }) {
                         <div
                           key={ln.productId}
                           className="flex items-center gap-2 rounded-xl px-2 py-2"
-                          style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.06)' }}
+                          style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
                         >
                           {meta.image
                             ? <img src={meta.image} alt={meta.nome} className="w-8 h-8 rounded-lg object-cover shrink-0" />
@@ -982,7 +930,7 @@ export function Feiras({ onPosModeChange }) {
                           }
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-bold truncate" style={{ color: 'var(--color-text)' }}>{meta.nome}</div>
-                            <div className="text-[10px] opacity-45" style={{ color: 'var(--color-text)' }}>
+                            <div className="text-[11px] ink-3">
                               {ln.qty}× {fmtEuro(price)}
                             </div>
                           </div>
@@ -990,15 +938,13 @@ export function Feiras({ onPosModeChange }) {
                             <button
                               type="button"
                               onClick={() => changeQty(ln.productId, -1)}
-                              className="w-7 h-7 rounded-lg font-bold text-base"
-                              style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                              className="btn-step"
                             >−</button>
                             <span className="w-5 text-center text-sm font-black tabular-nums" style={{ color: 'var(--color-text)' }}>{ln.qty}</span>
                             <button
                               type="button"
                               onClick={() => addToCart(ln.productId)}
-                              className="w-7 h-7 rounded-lg font-bold text-base"
-                              style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                              className="btn-step"
                             >+</button>
                           </div>
                           <div
@@ -1013,7 +959,7 @@ export function Feiras({ onPosModeChange }) {
                     {order?.kind !== 'box' && (
                       <div
                         className="flex justify-between items-center rounded-xl px-3 py-2"
-                        style={{ background: 'rgba(154,59,28,0.07)', border: '1.5px solid rgba(154,59,28,0.18)' }}
+                        style={{ background: 'var(--color-accent-soft)', border: '1.5px solid rgba(154,59,28,0.18)' }}
                       >
                         <span className="text-sm font-bold" style={{ color: 'var(--color-accent-dark)' }}>Total</span>
                         <span className="text-lg font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
@@ -1028,7 +974,7 @@ export function Feiras({ onPosModeChange }) {
                 {order?.kind === 'box' && (nCart > 0 || boxReady) && (
                   <div
                     className="flex justify-between items-center rounded-xl px-3 py-2.5"
-                    style={{ background: 'rgba(154,59,28,0.07)', border: '1.5px solid rgba(154,59,28,0.18)' }}
+                    style={{ background: 'var(--color-accent-soft)', border: '1.5px solid rgba(154,59,28,0.18)' }}
                   >
                     <span className="text-sm font-bold" style={{ color: 'var(--color-accent-dark)' }}>
                       Total{boxReady ? '' : ' (completa a BOX)'}
@@ -1042,7 +988,7 @@ export function Feiras({ onPosModeChange }) {
                 {/* Pagamento */}
                 {order?.kind !== 'demo' && (nCart > 0 || boxReady || order?.kind === 'box') && (
                   <div className="bfy-card p-3 space-y-1.5">
-                    <div className="text-[11px] font-black uppercase tracking-widest opacity-45 mb-1" style={{ color: 'var(--color-text)' }}>
+                    <div className="bfy-eyebrow mb-1">
                       Pagamento
                     </div>
                     {PAYMENTS.map((p) => (
@@ -1052,9 +998,9 @@ export function Feiras({ onPosModeChange }) {
                         onClick={() => setPayment(p.id)}
                         className="w-full rounded-xl py-2.5 text-sm font-bold text-left px-4 transition-all"
                         style={{
-                          background: payment === p.id ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.04)',
+                          background: payment === p.id ? 'var(--color-accent-dark)' : 'var(--color-surface-sunk)',
                           color:      payment === p.id ? '#fff' : 'var(--color-text)',
-                          border:     payment === p.id ? '2px solid var(--color-accent-dark)' : '1.5px solid rgba(29,16,8,0.1)',
+                          border:     payment === p.id ? '2px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
                         }}
                       >
                         {p.label}
@@ -1062,8 +1008,8 @@ export function Feiras({ onPosModeChange }) {
                     ))}
 
                     {(nCart > 0 || boxReady) && (
-                      <div className="pt-2 space-y-2" style={{ borderTop: '1px solid rgba(29,16,8,0.08)' }}>
-                        <div className="text-[11px] font-black uppercase tracking-widest opacity-45" style={{ color: 'var(--color-text)' }}>
+                      <div className="pt-2 space-y-2" style={{ borderTop: '1px solid var(--line-1)' }}>
+                        <div className="bfy-eyebrow">
                           Desconto
                         </div>
                         <div className="flex gap-2 items-center">
@@ -1072,11 +1018,11 @@ export function Feiras({ onPosModeChange }) {
                             onClick={() => setDesconto((d) => (Number(d) === 0.5 ? 0 : 0.5))}
                             className="rounded-xl px-3 py-2 text-sm font-bold shrink-0 transition-all"
                             style={{
-                              background: descontoAplicado === 0.5 ? 'var(--color-success)' : 'rgba(29,16,8,0.04)',
+                              background: descontoAplicado === 0.5 ? 'var(--color-success)' : 'var(--color-surface-sunk)',
                               color: descontoAplicado === 0.5 ? '#fff' : 'var(--color-text)',
                               border: descontoAplicado === 0.5
                                 ? '2px solid var(--color-success)'
-                                : '1.5px solid rgba(29,16,8,0.1)',
+                                : '1.5px solid var(--line-2)',
                             }}
                           >
                             −€0,50
@@ -1124,7 +1070,7 @@ export function Feiras({ onPosModeChange }) {
                     disabled={!canConfirm}
                     className="flex-[1.8] py-3 rounded-[10px] font-black text-sm transition-all"
                     style={{
-                      background: canConfirm ? 'var(--color-success)' : 'rgba(29,16,8,0.1)',
+                      background: canConfirm ? 'var(--color-success)' : 'var(--line-2)',
                       color:      canConfirm ? '#fff' : 'rgba(29,16,8,0.3)',
                       cursor:     canConfirm ? 'pointer' : 'not-allowed',
                     }}
@@ -1140,7 +1086,7 @@ export function Feiras({ onPosModeChange }) {
         {/* ── Dashboard ── */}
         <aside
           className="min-h-0 w-full flex-1 overflow-y-auto max-lg:border-t lg:w-[min(340px,26vw)] lg:flex-none lg:shrink-0"
-          style={{ background: 'var(--color-bg)', borderColor: 'rgba(29,16,8,0.08)' }}
+          style={{ background: 'var(--color-bg)', borderColor: 'var(--line-1)' }}
         >
           <div className="p-3 space-y-3">
             <div className="grid grid-cols-3 gap-2">
@@ -1154,13 +1100,13 @@ export function Feiras({ onPosModeChange }) {
 
             <SideBlock title="Cookies vendidos hoje">
               {todayRanking.length === 0 ? (
-                <div className="text-xs opacity-35 py-1" style={{ color: 'var(--color-text)' }}>Nenhum cookie vendido hoje.</div>
+                <div className="text-xs py-1 ink-4">Nenhum cookie vendido hoje.</div>
               ) : todayRanking.map((r) => (
                 <div key={r.id} className="flex items-center gap-2 text-xs">
                   <span className="w-24 font-semibold truncate" style={{ color: 'var(--color-text)' }}>
                     {r.emoji} {r.short ?? r.label}
                   </span>
-                  <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: 'rgba(29,16,8,0.1)' }}>
+                  <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: 'var(--line-2)' }}>
                     <div
                       className="h-full rounded-full transition-all"
                       style={{ width: `${(r.qty / maxRankBar) * 100}%`, background: 'var(--color-accent)' }}
@@ -1176,8 +1122,8 @@ export function Feiras({ onPosModeChange }) {
                 const qty = metrics.demoCount.byFlavor[c.id] ?? 0
                 return (
                   <div key={c.id} className="flex items-center gap-2 text-xs">
-                    <span className="w-24 font-semibold truncate opacity-70" style={{ color: 'var(--color-text)' }}>{c.short}</span>
-                    <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: 'rgba(29,16,8,0.08)' }}>
+                    <span className="w-24 font-semibold truncate ink-2">{c.short}</span>
+                    <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: 'var(--color-surface-sunk)' }}>
                       <div
                         className="h-full rounded-full transition-all"
                         style={{ width: `${(qty / maxDemoBar) * 100}%`, background: 'var(--color-accent-dark)' }}
@@ -1197,11 +1143,11 @@ export function Feiras({ onPosModeChange }) {
                     <div
                       key={p.id}
                       className="rounded-xl px-3 py-2"
-                      style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.07)' }}
+                      style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
                     >
-                      <div className="text-[10px] font-bold opacity-45" style={{ color: 'var(--color-text)' }}>{p.label}</div>
+                      <div className="text-[11px] font-bold ink-3">{p.label}</div>
                       <div className="text-lg font-black tabular-nums" style={{ color: 'var(--color-text)' }}>{fmtEuro(r.eur)}</div>
-                      <div className="text-[10px] opacity-35" style={{ color: 'var(--color-text)' }}>{r.count}×</div>
+                      <div className="text-[11px] ink-4">{r.count}×</div>
                     </div>
                   )
                 })}
@@ -1211,22 +1157,13 @@ export function Feiras({ onPosModeChange }) {
             <SideBlock
               title="Últimos registos"
               action={
-                <div className="flex gap-1.5 items-center">
-                  <button
-                    type="button"
-                    onClick={deleteLastSale}
-                    disabled={!sales.length}
-                    className="text-[10px] font-bold disabled:opacity-30"
-                    style={{ color: '#e57373' }}
-                  >Excluir última</button>
-                  <span className="opacity-25" style={{ color: 'var(--color-text)' }}>·</span>
-                  <button
-                    type="button"
-                    onClick={clearAll}
-                    className="text-[10px] font-bold opacity-35"
-                    style={{ color: 'var(--color-text)' }}
-                  >Limpar</button>
-                </div>
+                <button
+                  type="button"
+                  onClick={deleteLastSale}
+                  disabled={!sales.length}
+                  className="font-bold disabled:opacity-30 transition-colors"
+                  style={{ color: 'var(--color-danger)', fontSize: 'var(--text-2xs)' }}
+                >Anular última</button>
               }
             >
               <div className="flex flex-wrap gap-1 mb-2">
@@ -1238,13 +1175,13 @@ export function Feiras({ onPosModeChange }) {
                     key={p.id}
                     type="button"
                     onClick={() => setPaymentFilter(p.id)}
-                    className="rounded-lg px-2 py-1 text-[10px] font-bold transition-all"
+                    className="rounded-lg px-2 py-1 text-[11px] font-bold transition-all"
                     style={{
-                      background: paymentFilter === p.id ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.05)',
+                      background: paymentFilter === p.id ? 'var(--color-accent-dark)' : 'var(--color-surface-sunk)',
                       color: paymentFilter === p.id ? '#fff' : 'var(--color-text)',
                       border: paymentFilter === p.id
                         ? '1.5px solid var(--color-accent-dark)'
-                        : '1px solid rgba(29,16,8,0.1)',
+                        : '1px solid var(--line-2)',
                     }}
                   >
                     {p.label}
@@ -1252,7 +1189,7 @@ export function Feiras({ onPosModeChange }) {
                 ))}
               </div>
               {filteredTodaySales.length === 0 ? (
-                <div className="text-xs opacity-35 py-2" style={{ color: 'var(--color-text)' }}>
+                <div className="text-xs py-2 ink-4">
                   {todaySales.length === 0 ? 'Nada registado hoje.' : 'Nenhum registo com este pagamento.'}
                 </div>
               ) : (
@@ -1261,16 +1198,16 @@ export function Feiras({ onPosModeChange }) {
                     <div
                       key={s.id}
                       className="rounded-lg px-2 py-1.5"
-                      style={{ background: 'rgba(29,16,8,0.03)', border: '1px solid rgba(29,16,8,0.05)' }}
+                      style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
                     >
-                      <div className="flex gap-2 text-[10px]">
-                        <span className="font-mono opacity-40" style={{ color: 'var(--color-text)' }}>{fmtTime(s.createdAt)}</span>
-                        <span className="flex-1 truncate text-[11px] font-semibold opacity-65" style={{ color: 'var(--color-text)' }}>
+                      <div className="flex gap-2 text-[11px]">
+                        <span className="font-mono ink-3">{fmtTime(s.createdAt)}</span>
+                        <span className="flex-1 truncate text-[11px] font-semibold ink-2">
                           {saleDescription(s, cookies)}
                         </span>
                       </div>
                       <div className="flex justify-between items-baseline mt-0.5">
-                        <span className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
+                        <span className="text-[11px] ink-3">
                           {(s.totalEur ?? 0) > 0 || (s.desconto ?? 0) > 0
                             ? paymentLabel(s.paymentId)
                             : 'Prova grátis'}
@@ -1301,11 +1238,11 @@ function StatCard({ label, value, accent }) {
     <div
       className="rounded-xl px-3 py-2"
       style={{
-        background: accent ? 'rgba(194,75,41,0.08)' : 'rgba(29,16,8,0.05)',
-        border: `1px solid ${accent ? 'rgba(194,75,41,0.18)' : 'rgba(29,16,8,0.07)'}`,
+        background: accent ? 'rgba(194,75,41,0.08)' : 'var(--color-surface-sunk)',
+        border: `1px solid ${accent ? 'rgba(194,75,41,0.18)' : 'var(--line-1)'}`,
       }}
     >
-      <div className="text-[10px] font-bold uppercase tracking-wide opacity-45" style={{ color: 'var(--color-text)' }}>{label}</div>
+      <div className="bfy-eyebrow">{label}</div>
       <div
         className="text-lg font-black tabular-nums"
         style={{ color: accent ? 'var(--color-accent-dark)' : 'var(--color-text)' }}
@@ -1318,7 +1255,7 @@ function SideBlock({ title, children, action }) {
   return (
     <div className="bfy-card p-3">
       <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="text-[10px] font-black uppercase tracking-widest opacity-40" style={{ color: 'var(--color-text)' }}>{title}</div>
+        <div className="bfy-eyebrow">{title}</div>
         {action && <div className="flex gap-1 items-center shrink-0">{action}</div>}
       </div>
       <div className="space-y-1.5">{children}</div>

@@ -4,6 +4,7 @@ import { useEstoqueCookies } from '../stores/useEstoqueCookies'
 import { useClientes } from '../stores/useClientes'
 import { usePedidosVendas, STATUS_PEDIDO } from '../stores/usePedidosVendas'
 import { Modal } from '../components/Modal'
+import { Icon } from '../components/Icon'
 import { SearchInput } from '../components/SearchInput'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -410,7 +411,7 @@ export function Vendas() {
       .reduce((s, p) => s + p.totalEur, 0)
 
     return (
-      <div className="p-4 md:p-6 max-w-3xl mx-auto pb-10 space-y-5">
+      <div className="bfy-page space-y-5">
         <div className="flex items-center gap-3">
           <button
             className="btn-ghost text-sm px-3 py-1.5 flex items-center gap-1.5"
@@ -432,12 +433,11 @@ export function Vendas() {
               </div>
               <div>
                 <h2
-                  className="text-xl font-black"
-                  style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}
+                  className="text-xl font-black bfy-title"
                 >
                   {clienteDetalheObj.nome}
                 </h2>
-                <p className="text-xs opacity-45" style={{ color: 'var(--color-text)' }}>
+                <p className="text-xs ink-3">
                   Cliente desde {fmtDateFull(clienteDetalheObj.criadoEm)}
                 </p>
               </div>
@@ -473,7 +473,7 @@ export function Vendas() {
           </div>
 
           {clienteDetalheObj.notas && (
-            <p className="text-xs opacity-55 italic border-t pt-3" style={{ color: 'var(--color-text)', borderColor: 'rgba(29,16,8,0.08)' }}>
+            <p className="text-xs opacity-55 italic border-t pt-3" style={{ color: 'var(--color-text)', borderColor: 'var(--line-1)' }}>
               {clienteDetalheObj.notas}
             </p>
           )}
@@ -489,8 +489,8 @@ export function Vendas() {
                 key={i}
                 className="rounded-2xl p-3 text-center"
                 style={{
-                  background: k.accent ? 'rgba(154,59,28,0.07)' : 'rgba(29,16,8,0.04)',
-                  border: `1px solid ${k.accent ? 'rgba(154,59,28,0.15)' : 'rgba(29,16,8,0.07)'}`,
+                  background: k.accent ? 'var(--color-accent-soft)' : 'var(--color-surface-sunk)',
+                  border: `1px solid ${k.accent ? 'rgba(154,59,28,0.15)' : 'var(--line-1)'}`,
                 }}
               >
                 <div
@@ -499,7 +499,7 @@ export function Vendas() {
                 >
                   {k.value}
                 </div>
-                <div className="text-[10px] opacity-45 mt-0.5" style={{ color: 'var(--color-text)' }}>{k.label}</div>
+                <div className="text-[11px] mt-0.5 ink-3">{k.label}</div>
               </div>
             ))}
           </div>
@@ -507,20 +507,21 @@ export function Vendas() {
 
         {/* Pedidos do cliente */}
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-widest opacity-50" style={{ color: 'var(--color-text)' }}>
+          <h3 className="bfy-eyebrow">
             Histórico de pedidos
           </h3>
           <button
             className="btn-accent text-xs px-4 py-2"
             onClick={() => openNewPedido(clienteDetalhe)}
           >
-            + Novo pedido
+            <Icon name="mais" size={15} /> Novo pedido
           </button>
         </div>
 
         {pedidosDoCliente.length === 0 ? (
-          <div className="bfy-card p-10 text-center opacity-45" style={{ color: 'var(--color-text)' }}>
-            Nenhum pedido ainda.
+          <div className="bfy-card bfy-empty">
+            <Icon name="recibo" size={28} />
+            <p style={{ fontSize: 'var(--text-md)' }}>Nenhum pedido ainda</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -592,18 +593,15 @@ export function Vendas() {
   // ── Render: principal ─────────────────────────────────────────────────────
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto pb-10 space-y-5">
+    <div className="bfy-page space-y-5">
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1
-            className="text-3xl font-black"
-            style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}
-          >
+          <h1 className="bfy-page-title">
             Vendas Diretas
           </h1>
-          <p className="text-sm mt-1 opacity-55" style={{ color: 'var(--color-text)' }}>
+          <p className="text-sm mt-1 ink-3">
             WhatsApp, Instagram e encomendas
           </p>
         </div>
@@ -611,7 +609,7 @@ export function Vendas() {
           className="btn-accent text-sm px-4 py-2 shrink-0"
           onClick={() => openNewPedido('')}
         >
-          + Novo Pedido
+          <Icon name="mais" size={15} /> Novo Pedido
         </button>
       </div>
 
@@ -632,28 +630,22 @@ export function Vendas() {
             >
               {k.value}
             </div>
-            <div className="text-xs mt-1 opacity-50" style={{ color: 'var(--color-text)' }}>{k.label}</div>
+            <div className="text-xs mt-1 ink-3">{k.label}</div>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div
-        className="flex rounded-xl overflow-hidden"
-        style={{ border: '1.5px solid rgba(29,16,8,0.12)', width: 'fit-content' }}
-      >
+      <div className="bfy-segment" role="tablist">
         {[
           { id: 'pedidos',  label: `Pedidos (${pedidos.length})` },
           { id: 'clientes', label: `Clientes (${clientes.length})` },
         ].map((t) => (
           <button
             key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
-            className="px-5 py-2 text-sm font-bold transition-all"
-            style={{
-              background: tab === t.id ? 'var(--color-accent-dark)' : 'transparent',
-              color: tab === t.id ? '#fff' : 'var(--color-text)',
-            }}
           >
             {t.label}
           </button>
@@ -665,11 +657,11 @@ export function Vendas() {
         <>
           {pedidos.length === 0 ? (
             <div className="bfy-card p-12 text-center space-y-3">
-              <p className="text-lg font-semibold opacity-40" style={{ color: 'var(--color-text)' }}>
+              <p className="text-lg font-semibold ink-3">
                 Nenhum pedido ainda
               </p>
               <button className="btn-accent px-5 py-2.5" onClick={() => openNewPedido('')}>
-                + Criar primeiro pedido
+                <Icon name="mais" size={15} /> Criar primeiro pedido
               </button>
             </div>
           ) : (
@@ -688,7 +680,7 @@ export function Vendas() {
                           {cliente ? cliente.nome : <span className="opacity-40">Sem cliente</span>}
                         </span>
                         <span
-                          className="px-2 py-0.5 rounded-full text-[10px] font-black"
+                          className="px-2 py-0.5 rounded-full text-[11px] font-black"
                           style={{
                             background: `${st.color}20`,
                             color: st.color,
@@ -698,16 +690,16 @@ export function Vendas() {
                           {st.label}
                         </span>
                         {p.formaPagamento && (
-                          <span className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
+                          <span className="text-[11px] ink-3">
                             · {p.formaPagamento}
                           </span>
                         )}
                       </div>
-                      <p className="text-xs opacity-55 truncate" style={{ color: 'var(--color-text)' }}>
+                      <p className="text-xs truncate ink-3">
                         {pedidoSummary(p, cookies)}
                       </p>
                       {p.notas && (
-                        <p className="text-[10px] opacity-40 italic truncate" style={{ color: 'var(--color-text)' }}>
+                        <p className="text-[11px] italic truncate ink-3">
                           {p.notas}
                         </p>
                       )}
@@ -717,7 +709,7 @@ export function Vendas() {
                         <p className="font-black text-base tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
                           {fmtEuro(p.totalEur)}
                         </p>
-                        <p className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
+                        <p className="text-[11px] ink-3">
                           {fmtDate(p.dataPedido ?? p.criadoEm)}
                         </p>
                       </div>
@@ -728,12 +720,12 @@ export function Vendas() {
                         Editar
                       </button>
                       <button
-                        className="opacity-30 hover:opacity-70 transition-opacity text-xs"
-                        style={{ color: '#e57373' }}
+                        className="btn-icon btn-icon-danger"
                         onClick={() => handleDeletePedido(p)}
-                        title="Excluir"
+                        title="Excluir pedido"
+                        aria-label="Excluir pedido"
                       >
-                        ✕
+                        <Icon name="lixo" size={15} />
                       </button>
                     </div>
                   </div>
@@ -755,18 +747,18 @@ export function Vendas() {
               onChange={(e) => setSearchCliente(e.target.value)}
             />
             <button className="btn-accent text-sm px-4 py-2 shrink-0" onClick={() => openNewCliente()}>
-              + Novo cliente
+              <Icon name="mais" size={15} /> Novo cliente
             </button>
           </div>
 
           {clientesFiltrados.length === 0 ? (
             <div className="bfy-card p-12 text-center space-y-3">
-              <p className="text-lg font-semibold opacity-40" style={{ color: 'var(--color-text)' }}>
+              <p className="text-lg font-semibold ink-3">
                 {clientes.length === 0 ? 'Nenhum cliente cadastrado' : 'Nenhum resultado'}
               </p>
               {clientes.length === 0 && (
                 <button className="btn-accent px-5 py-2.5" onClick={() => openNewCliente()}>
-                  + Adicionar primeiro cliente
+                  <Icon name="mais" size={15} /> Adicionar primeiro cliente
                 </button>
               )}
             </div>
@@ -791,12 +783,12 @@ export function Vendas() {
                       <p className="font-bold text-sm truncate" style={{ color: 'var(--color-text)' }}>{c.nome}</p>
                       <div className="flex gap-3 mt-0.5 flex-wrap">
                         {c.telefone && (
-                          <span className="text-xs opacity-45 flex items-center gap-1" style={{ color: 'var(--color-text)' }}>
+                          <span className="text-xs flex items-center gap-1 ink-3">
                             <IconPhone /> {c.telefone}
                           </span>
                         )}
                         {c.instagram && (
-                          <span className="text-xs opacity-45 flex items-center gap-1" style={{ color: 'var(--color-text)' }}>
+                          <span className="text-xs flex items-center gap-1 ink-3">
                             <IconInstagram /> @{c.instagram.replace('@', '')}
                           </span>
                         )}
@@ -806,7 +798,7 @@ export function Vendas() {
                       <p className="font-black text-sm tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
                         {fmtEuro(total)}
                       </p>
-                      <p className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
+                      <p className="text-[11px] ink-3">
                         {clientePedidos.length} pedido{clientePedidos.length !== 1 ? 's' : ''}
                       </p>
                     </div>
@@ -877,34 +869,34 @@ function PedidoCard({ pedido, cookies, st, onEdit, onDelete }) {
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="flex items-center gap-2 flex-wrap">
           <span
-            className="px-2 py-0.5 rounded-full text-[10px] font-black"
+            className="px-2 py-0.5 rounded-full text-[11px] font-black"
             style={{ background: `${st.color}20`, color: st.color, border: `1px solid ${st.color}40` }}
           >
             {st.label}
           </span>
-          <span className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
+          <span className="text-[11px] ink-3">
             {parseDate(pedido.dataPedido ?? pedido.criadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
             · {pedido.formaPagamento}
           </span>
         </div>
-        <p className="text-xs opacity-55 truncate" style={{ color: 'var(--color-text)' }}>
+        <p className="text-xs truncate ink-3">
           {pedidoSummary(pedido, cookies)}
         </p>
         {pedido.notas && (
-          <p className="text-[10px] opacity-40 italic" style={{ color: 'var(--color-text)' }}>{pedido.notas}</p>
+          <p className="text-[11px] italic ink-3">{pedido.notas}</p>
         )}
       </div>
       <div className="flex items-center gap-3 shrink-0">
         <span className="font-black text-base tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
           {fmtEuro(pedido.totalEur)}
         </span>
-        <button className="btn-ghost text-xs px-3 py-1.5" onClick={onEdit}>Editar</button>
+        <button className="btn-ghost btn-sm" onClick={onEdit}>Editar</button>
         <button
-          className="opacity-30 hover:opacity-70 transition-opacity text-xs"
-          style={{ color: '#e57373' }}
+          className="btn-icon btn-icon-danger"
           onClick={onDelete}
-          title="Excluir"
-        >✕</button>
+          title="Excluir pedido"
+          aria-label="Excluir pedido"
+        ><Icon name="lixo" size={15} /></button>
       </div>
     </div>
   )
@@ -971,7 +963,7 @@ function ClienteModal({ title, form, setForm, onClose, onSave, canDelete, onDele
             <button
               type="button"
               className="btn-ghost text-xs px-3"
-              style={{ color: '#e57373', borderColor: '#e57373' }}
+              style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
               onClick={onDelete}
             >
               Excluir
@@ -1024,13 +1016,13 @@ function PedidoModal({
               background: 'rgba(194,75,41,0.07)',
             }}
           >
-            <div className="flex items-center gap-2">
-              <span className="text-xl">📦</span>
+            <div className="flex items-center gap-2.5">
+              <span style={{ color: 'var(--color-accent-dark)' }}><Icon name="caixa" size={20} /></span>
               <div className="text-left">
                 <div className="text-sm font-bold" style={{ color: 'var(--color-accent-dark)' }}>
                   BOX {boxConfig.size} cookies
                 </div>
-                <div className="text-[10px] opacity-55" style={{ color: 'var(--color-text)' }}>
+                <div className="text-[11px] ink-3">
                   Mix de sabores · preço fixo
                 </div>
               </div>
@@ -1042,26 +1034,26 @@ function PedidoModal({
         ) : (
           <div
             className="rounded-xl p-3 space-y-2"
-            style={{ background: 'rgba(154,59,28,0.06)', border: '1.5px solid rgba(154,59,28,0.18)' }}
+            style={{ background: 'var(--color-accent-soft)', border: '1.5px solid rgba(154,59,28,0.18)' }}
           >
-            <div className="flex items-center gap-2">
-              <span className="text-xl">📦</span>
+            <div className="flex items-center gap-2.5">
+              <span style={{ color: 'var(--color-accent-dark)' }}><Icon name="caixa" size={20} /></span>
               <div className="flex-1">
                 <div className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>
                   BOX {boxConfig.size} cookies ({boxFilled}/{boxConfig.size})
                 </div>
-                <div className="text-xs opacity-45" style={{ color: 'var(--color-text)' }}>
+                <div className="ink-3" style={{ fontSize: 'var(--text-xs)' }}>
                   {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(boxConfig.price)} · mix de sabores
                 </div>
               </div>
               <button
                 type="button"
                 onClick={cancelBox}
-                className="text-xs font-semibold opacity-40 hover:opacity-70 shrink-0 px-2 py-1"
-                style={{ color: '#e57373' }}
+                className="btn-icon btn-icon-danger shrink-0"
                 title="Remover BOX"
+                aria-label="Remover BOX"
               >
-                ✕
+                <Icon name="fechar" size={15} />
               </button>
             </div>
             {cookies.map((c) => {
@@ -1070,7 +1062,7 @@ function PedidoModal({
                 <div
                   key={c.id}
                   className="flex items-center gap-2 rounded-xl px-2 py-1.5"
-                  style={{ background: 'rgba(29,16,8,0.04)' }}
+                  style={{ background: 'var(--color-surface-sunk)' }}
                 >
                   <span className="text-sm shrink-0">{c.emoji}</span>
                   <span className="flex-1 text-xs font-semibold truncate" style={{ color: 'var(--color-text)' }}>{c.short}</span>
@@ -1078,27 +1070,25 @@ function PedidoModal({
                     type="button"
                     onClick={() => boxAdjust(c.id, -1)}
                     disabled={n <= 0}
-                    className="w-7 h-7 rounded-lg font-bold text-base disabled:opacity-25"
-                    style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                    className="btn-step"
                   >−</button>
                   <span className="w-5 text-center text-sm font-black tabular-nums" style={{ color: 'var(--color-text)' }}>{n}</span>
                   <button
                     type="button"
                     onClick={() => boxAdjust(c.id, 1)}
                     disabled={boxFilled >= boxConfig.size}
-                    className="w-7 h-7 rounded-lg font-bold text-base disabled:opacity-25"
-                    style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                    className="btn-step"
                   >+</button>
                 </div>
               )
             })}
             {boxFilled > 0 && (
-              <div className="text-[10px] opacity-40 pt-0.5" style={{ color: 'var(--color-text)' }}>
+              <div className="text-[11px] pt-0.5 ink-3">
                 {formatBoxCountsSummary(pedidoBox.boxCounts, cookies)}
               </div>
             )}
             {boxPartial && (
-              <p className="text-[10px] font-semibold" style={{ color: '#E8A040' }}>
+              <p className="text-[11px] font-semibold" style={{ color: '#E8A040' }}>
                 Seleciona {boxConfig.size - boxFilled} cookie(s) para completar a BOX
               </p>
             )}
@@ -1117,14 +1107,14 @@ function PedidoModal({
                   key={c.id}
                   className="flex items-center gap-2 rounded-xl px-3 py-2"
                   style={{
-                    background: n > 0 ? 'rgba(154,59,28,0.07)' : 'rgba(29,16,8,0.04)',
-                    border: `1.5px solid ${n > 0 ? 'rgba(154,59,28,0.2)' : 'rgba(29,16,8,0.08)'}`,
+                    background: n > 0 ? 'var(--color-accent-soft)' : 'var(--color-surface-sunk)',
+                    border: `1.5px solid ${n > 0 ? 'rgba(154,59,28,0.2)' : 'var(--line-1)'}`,
                   }}
                 >
                   <span className="text-lg shrink-0">{c.emoji}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold truncate" style={{ color: 'var(--color-text)' }}>{c.short}</p>
-                    <p className="text-[10px] opacity-40" style={{ color: 'var(--color-text)' }}>
+                    <p className="text-[11px] ink-3">
                       {available > 0 ? `${available} em stock` : 'sem stock'}
                     </p>
                   </div>
@@ -1133,8 +1123,7 @@ function PedidoModal({
                       type="button"
                       onClick={() => cartAdjust(c.id, -1)}
                       disabled={n <= 0}
-                      className="w-7 h-7 rounded-lg font-bold text-base flex items-center justify-center disabled:opacity-25"
-                      style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                      className="btn-step"
                     >−</button>
                     <span
                       className="w-5 text-center text-sm font-black tabular-nums"
@@ -1143,8 +1132,7 @@ function PedidoModal({
                     <button
                       type="button"
                       onClick={() => cartAdjust(c.id, 1)}
-                      className="w-7 h-7 rounded-lg font-bold text-base flex items-center justify-center"
-                      style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                      className="btn-step"
                     >+</button>
                   </div>
                 </div>
@@ -1156,10 +1144,10 @@ function PedidoModal({
         {/* Item personalizado */}
         <div
           className="rounded-xl p-3 space-y-3"
-          style={{ background: 'rgba(29,16,8,0.03)', border: '1.5px dashed rgba(154,59,28,0.25)' }}
+          style={{ background: 'var(--color-surface-sunk)', border: '1.5px dashed rgba(154,59,28,0.25)' }}
         >
           <span className="bfy-label block">Item personalizado</span>
-          <p className="text-[10px] opacity-45 -mt-2" style={{ color: 'var(--color-text)' }}>
+          <p className="text-[11px] -mt-2 ink-3">
             Para pedidos únicos (ex.: mini cookies de evento, preço especial para cliente).
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1198,7 +1186,7 @@ function PedidoModal({
             </span>
           </label>
           <button type="button" className="btn-ghost w-full text-xs py-2" onClick={onAddCustom}>
-            + Adicionar item personalizado
+            <Icon name="mais" size={15} /> Adicionar item personalizado
           </button>
           {customLinhas.length > 0 && (
             <div className="space-y-1.5 pt-1">
@@ -1214,7 +1202,12 @@ function PedidoModal({
                   <span className="font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
                     {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(l.preco * l.qty)}
                   </span>
-                  <button type="button" className="opacity-40 hover:opacity-80" onClick={() => onRemoveCustom(l.id)}>✕</button>
+                  <button
+                    type="button"
+                    className="ink-4 hover:text-[var(--color-danger)] transition-colors"
+                    onClick={() => onRemoveCustom(l.id)}
+                    aria-label={`Remover ${l.label}`}
+                  ><Icon name="fechar" size={14} /></button>
                 </div>
               ))}
             </div>
@@ -1238,12 +1231,12 @@ function PedidoModal({
             </label>
             <div
               className="rounded-xl px-4 py-3 space-y-1.5"
-              style={{ background: 'rgba(154,59,28,0.07)', border: '1px solid rgba(154,59,28,0.18)' }}
+              style={{ background: 'var(--color-accent-soft)', border: '1px solid rgba(154,59,28,0.18)' }}
             >
               {(form.desconto ?? 0) > 0 && (
                 <>
                   <div className="flex justify-between text-sm">
-                    <span className="opacity-60" style={{ color: 'var(--color-text)' }}>Subtotal</span>
+                    <span className="ink-3">Subtotal</span>
                     <span className="tabular-nums" style={{ color: 'var(--color-text)' }}>
                       {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(total)}
                     </span>
@@ -1255,7 +1248,7 @@ function PedidoModal({
                     </span>
                   </div>
                   <div style={{ borderTop: '1px solid rgba(154,59,28,0.18)', paddingTop: '6px' }} className="flex justify-between items-center">
-                    <span className="text-sm font-bold opacity-60" style={{ color: 'var(--color-text)' }}>Total</span>
+                    <span className="text-sm font-bold ink-3">Total</span>
                     <span className="font-black text-lg tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
                       {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(Math.max(0, total - form.desconto))}
                     </span>
@@ -1264,7 +1257,7 @@ function PedidoModal({
               )}
               {!(form.desconto ?? 0) && (
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-bold opacity-60" style={{ color: 'var(--color-text)' }}>Total</span>
+                  <span className="text-sm font-bold ink-3">Total</span>
                   <span className="font-black text-lg tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
                     {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(total)}
                   </span>

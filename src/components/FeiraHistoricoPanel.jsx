@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { summarizeEvent, formatEventDateRange } from '../lib/feiraHistory'
-import { describePosSale, topFlavorsRanking } from '../lib/salesAnalytics'
+import { describePosSale, topFlavorsRanking, saleDayKey } from '../lib/salesAnalytics'
 
 const PAYMENT_FILTERS = [
   { id: 'all', label: 'Todos' },
@@ -64,7 +64,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
   const dayScopedSales = useMemo(() => {
     const list = evSales.filter((s) => (s.totalEur ?? 0) > 0 || s.kind === 'demo' || (s.desconto ?? 0) > 0)
     if (selectedDay === 'all') return list
-    return list.filter((s) => (s.createdAt ?? '').slice(0, 10) === selectedDay)
+    return list.filter((s) => saleDayKey(s) === selectedDay)
   }, [evSales, selectedDay])
 
   const filteredSales = useMemo(() => {
@@ -84,7 +84,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs opacity-50" style={{ color: 'var(--color-text)' }}>
+        <p className="text-xs ink-3">
           {formatEventDateRange(evento)}
           {evento.local ? ` · ${evento.local}` : ''}
         </p>
@@ -127,7 +127,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
               key={label}
               className="rounded-xl p-3 text-center"
               style={{
-                background: accent ? 'rgba(154,59,28,0.08)' : 'rgba(29,16,8,0.04)',
+                background: accent ? 'rgba(154,59,28,0.08)' : 'var(--color-surface-sunk)',
               }}
             >
               <p
@@ -136,7 +136,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
               >
                 {value}
               </p>
-              <p className="text-[10px] opacity-45 mt-0.5" style={{ color: 'var(--color-text)' }}>
+              <p className="text-[11px] mt-0.5 ink-3">
                 {label}
               </p>
             </div>
@@ -147,8 +147,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
       {isMultiDay && selectedDay === 'all' && dayBreakdown.length > 0 && (
         <div className="space-y-2">
           <p
-            className="text-[11px] font-black uppercase tracking-widest opacity-45"
-            style={{ color: 'var(--color-text)' }}
+            className="bfy-eyebrow"
           >
             Resumo por dia
           </p>
@@ -158,13 +157,13 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
               type="button"
               onClick={() => setSelectedDay(d.day)}
               className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all hover:bg-black/[0.03]"
-              style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.06)' }}
+              style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold capitalize" style={{ color: 'var(--color-text)' }}>
                   {fmtDay(d.day)}
                 </p>
-                <p className="text-[10px] opacity-45" style={{ color: 'var(--color-text)' }}>
+                <p className="text-[11px] ink-3">
                   {d.vendas} venda{d.vendas !== 1 ? 's' : ''}
                   {d.demos > 0 ? ` · ${d.demos} demo${d.demos !== 1 ? 's' : ''}` : ''}
                 </p>
@@ -186,8 +185,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
       {flavorRanking.length > 0 && (
         <div className="space-y-2">
           <p
-            className="text-[11px] font-black uppercase tracking-widest opacity-45"
-            style={{ color: 'var(--color-text)' }}
+            className="bfy-eyebrow"
           >
             Cookies vendidos{selectedDay !== 'all' ? ' · dia' : ''}
           </p>
@@ -197,7 +195,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
                 <span className="w-28 font-semibold truncate" style={{ color: 'var(--color-text)' }}>
                   {r.emoji} {r.short ?? r.label}
                 </span>
-                <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: 'rgba(29,16,8,0.1)' }}>
+                <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: 'var(--line-2)' }}>
                   <div
                     className="h-full rounded-full transition-all"
                     style={{ width: `${(r.qty / maxRankBar) * 100}%`, background: 'var(--color-accent)' }}
@@ -216,8 +214,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
         <div className="space-y-1.5 max-h-[min(52vh,520px)] overflow-y-auto">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p
-              className="text-[11px] font-black uppercase tracking-widest opacity-45"
-              style={{ color: 'var(--color-text)' }}
+              className="bfy-eyebrow"
             >
               Registos{filteredSales.length !== dayScopedSales.length
                 ? ` · ${filteredSales.length}/${dayScopedSales.length}`
@@ -232,13 +229,13 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
                 key={p.id}
                 type="button"
                 onClick={() => setPaymentFilter(p.id)}
-                className="rounded-lg px-2 py-1 text-[10px] font-bold transition-all"
+                className="rounded-lg px-2 py-1 text-[11px] font-bold transition-all"
                 style={{
-                  background: paymentFilter === p.id ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.05)',
+                  background: paymentFilter === p.id ? 'var(--color-accent-dark)' : 'var(--color-surface-sunk)',
                   color: paymentFilter === p.id ? '#fff' : 'var(--color-text)',
                   border: paymentFilter === p.id
                     ? '1.5px solid var(--color-accent-dark)'
-                    : '1px solid rgba(29,16,8,0.1)',
+                    : '1px solid var(--line-2)',
                 }}
               >
                 {p.label}
@@ -246,7 +243,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
             ))}
           </div>
           {filteredSales.length === 0 ? (
-            <p className="text-xs opacity-40 py-2" style={{ color: 'var(--color-text)' }}>
+            <p className="text-xs py-2 ink-3">
               Nenhum registo com este filtro.
             </p>
           ) : (
@@ -254,7 +251,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
               <div
                 key={s.id}
                 className="rounded-lg px-2.5 py-2 text-xs"
-                style={{ background: 'rgba(29,16,8,0.03)', border: '1px solid rgba(29,16,8,0.05)' }}
+                style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
               >
                 <div className="flex justify-between gap-2">
                   <span className="opacity-45 shrink-0">
@@ -266,10 +263,10 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
                     {fmtEuro(s.totalEur ?? 0)}
                   </span>
                 </div>
-                <p className="opacity-65 mt-0.5 truncate" style={{ color: 'var(--color-text)' }}>
+                <p className="mt-0.5 truncate ink-2">
                   {describePosSale(s, catalog)}
                 </p>
-                <p className="opacity-40 mt-0.5" style={{ color: 'var(--color-text)' }}>
+                <p className="mt-0.5 ink-3">
                   {s.kind === 'demo' || s.paymentId === 'gratis'
                     ? 'Prova grátis'
                     : paymentLabel(s.paymentId)}
@@ -282,7 +279,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
       )}
 
       {dayStats.vendas === 0 && dayStats.demos === 0 && (
-        <p className="text-sm text-center py-4 opacity-40" style={{ color: 'var(--color-text)' }}>
+        <p className="text-sm text-center py-4 ink-3">
           {selectedDay === 'all'
             ? 'Sem vendas POS associadas a esta feira.'
             : 'Nenhum registo neste dia.'}
@@ -301,14 +298,14 @@ function DayTab({ active, onClick, label, sub }) {
       onClick={onClick}
       className="rounded-xl px-3 py-2 text-left transition-all shrink-0"
       style={{
-        background: active ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.05)',
-        border: active ? '2px solid var(--color-accent-dark)' : '1.5px solid rgba(29,16,8,0.1)',
+        background: active ? 'var(--color-accent-dark)' : 'var(--color-surface-sunk)',
+        border: active ? '2px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
         color: active ? '#fff' : 'var(--color-text)',
       }}
     >
       <span className="block text-xs font-bold capitalize">{label}</span>
       <span
-        className="block text-[10px] font-black tabular-nums mt-0.5"
+        className="block text-[11px] font-black tabular-nums mt-0.5"
         style={{ opacity: active ? 0.85 : 0.5 }}
       >
         {sub}

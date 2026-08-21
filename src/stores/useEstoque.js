@@ -1,64 +1,52 @@
-import { useStorage } from './useStorage'
-
-const uid = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+import { useData } from './DataProvider'
 
 export const UNIDADES = ['g', 'kg', 'ml', 'L', 'unidade', 'colher (sopa)', 'colher (chá)', 'xícara']
 
 export function useEstoque() {
-  const [ingredientes, setIngredientes] = useStorage('bfy:ingredientes', [])
-  const [movimentacoes, setMovimentacoes] = useStorage('bfy:movimentacoes', [])
+  const { ingredientes, movimentacoes, createRow, updateRow, removeRow } = useData()
 
   function adicionarIngrediente(dados) {
-    const novo = { ...dados, id: uid(), estoqueAtual: dados.estoqueAtual ?? 0 }
-    setIngredientes(prev => [novo, ...prev])
-    return novo
+    return createRow('ingredientes', { ...dados, estoqueAtual: dados.estoqueAtual ?? 0 })
   }
 
   function atualizarIngrediente(id, changes) {
-    setIngredientes(prev => prev.map(i => (i.id === id ? { ...i, ...changes } : i)))
+    updateRow('ingredientes', id, changes)
   }
 
   function removerIngrediente(id) {
-    setIngredientes(prev => prev.filter(i => i.id !== id))
-    setMovimentacoes(prev => prev.filter(m => m.ingredienteId !== id))
+    // a FK no banco já apaga as movimentações em cascata; removemos localmente também
+    movimentacoes.filter((m) => m.ingredienteId === id).forEach((m) => removeRow('movimentacoes', m.id))
+    removeRow('ingredientes', id)
   }
 
   function registrarMovimentacao(mov) {
-    const nova = { ...mov, id: uid(), data: new Date().toISOString() }
-    setMovimentacoes(prev => [nova, ...prev])
-    setIngredientes(prev =>
-      prev.map(i => {
-        if (i.id !== mov.ingredienteId) return i
-        const delta = mov.tipo === 'entrada' ? mov.quantidade : -mov.quantidade
-        return { ...i, estoqueAtual: Math.max(0, (i.estoqueAtual ?? 0) + delta) }
-      }),
-    )
+    createRow('movimentacoes', { ...mov, data: new Date().toISOString() })
+    const ing = ingredientes.find((i) => i.id === mov.ingredienteId)
+    if (ing) {
+      const delta = mov.tipo === 'entrada' ? mov.quantidade : -mov.quantidade
+      updateRow('ingredientes', ing.id, { estoqueAtual: Math.max(0, (ing.estoqueAtual ?? 0) + delta) })
+    }
   }
 
   function baixarEstoqueProducao(itens, motivo = 'Produção') {
     const timestamp = new Date().toISOString()
-    const novasMovs = itens
-      .filter((item) => item.ingredienteId)
-      .map((item) => ({
-        id: uid(),
+    const validos = itens.filter((item) => item.ingredienteId)
+    if (validos.length === 0) return
+    for (const item of validos) {
+      createRow('movimentacoes', {
         ingredienteId: item.ingredienteId,
         tipo: 'saida',
         quantidade: item.quantidade,
         motivo,
         data: timestamp,
-      }))
-    if (novasMovs.length === 0) return
-    setMovimentacoes((prev) => [...novasMovs, ...prev])
-    setIngredientes((prev) =>
-      prev.map((ing) => {
-        const mov = novasMovs.find((m) => m.ingredienteId === ing.id)
-        if (!mov) return ing
-        return { ...ing, estoqueAtual: Math.max(0, parseFloat(((ing.estoqueAtual ?? 0) - mov.quantidade).toFixed(4))) }
-      }),
-    )
+      })
+      const ing = ingredientes.find((i) => i.id === item.ingredienteId)
+      if (ing) {
+        updateRow('ingredientes', ing.id, {
+          estoqueAtual: Math.max(0, parseFloat(((ing.estoqueAtual ?? 0) - item.quantidade).toFixed(4))),
+        })
+      }
+    }
   }
 
   function statusIngrediente(ing) {

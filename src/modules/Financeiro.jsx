@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { useFinanceiro } from '../stores/useFinanceiro'
 import { usePedidosVendas } from '../stores/usePedidosVendas'
 import { useEventos } from '../stores/useEventos'
+import { useVendas } from '../stores/useVendas'
+import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
 import {
   CATEGORIAS_DESPESA,
@@ -43,16 +45,6 @@ function labelMes(mesRef) {
   })
 }
 
-function readPosSales() {
-  try {
-    const raw = localStorage.getItem('cookies-sales:v1')
-    const parsed = raw ? JSON.parse(raw) : []
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
 const EMPTY_FORM = {
   data: new Date().toISOString().slice(0, 10),
   categoria: 'materia-prima',
@@ -84,8 +76,7 @@ export function Financeiro() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [novoFixoNome, setNovoFixoNome] = useState('')
   const catalog = useMemo(() => readCookieCatalog(), [])
-  // Lê sempre do localStorage para refletir vendas feitas noutro módulo
-  const posSales = readPosSales()
+  const { sales: posSales } = useVendas()
 
   const despesasMes = useMemo(
     () =>
@@ -203,18 +194,18 @@ export function Financeiro() {
   ]
 
   return (
-    <div className="p-4 md:p-6 max-w-2xl mx-auto pb-10 space-y-5">
+    <div className="bfy-page space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-black" style={{ color: 'var(--color-text)' }}>
+          <h1 className="bfy-page-title">
             Entradas e Saídas
           </h1>
-          <p className="text-sm opacity-50 mt-0.5" style={{ color: 'var(--color-text)' }}>
+          <p className="text-sm mt-0.5 ink-3">
             Balanço do mês com vendas e gastos categorizados
           </p>
         </div>
         <button type="button" className="btn-accent shrink-0" onClick={openNew}>
-          + Saída
+          <Icon name="mais" size={15} /> Nova saída
         </button>
       </div>
 
@@ -222,20 +213,22 @@ export function Financeiro() {
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"
-          className="btn-ghost px-3 py-2 text-sm"
+          className="btn-icon"
+          aria-label="Mês anterior"
           onClick={() => setMesRef((m) => shiftMonth(m, -1))}
         >
-          ←
+          <Icon name="voltar" size={16} />
         </button>
-        <span className="text-sm font-bold capitalize" style={{ color: 'var(--color-text)' }}>
+        <span className="font-bold capitalize ink-1" style={{ fontSize: 'var(--text-md)' }}>
           {labelMes(mesRef)}
         </span>
         <button
           type="button"
-          className="btn-ghost px-3 py-2 text-sm"
+          className="btn-icon"
+          aria-label="Mês seguinte"
           onClick={() => setMesRef((m) => shiftMonth(m, 1))}
         >
-          →
+          <Icon name="avancar" size={16} />
         </button>
       </div>
 
@@ -251,20 +244,14 @@ export function Financeiro() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 overflow-x-auto no-scrollbar pb-0.5">
+      <div className="bfy-segment" role="tablist">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
+            role="tab"
+            aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
-            className="rounded-xl px-3 py-2 text-xs font-bold shrink-0 transition-all"
-            style={{
-              background: tab === t.id ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.05)',
-              color: tab === t.id ? '#fff' : 'var(--color-text)',
-              border: tab === t.id
-                ? '1.5px solid var(--color-accent-dark)'
-                : '1px solid rgba(29,16,8,0.1)',
-            }}
           >
             {t.label}
           </button>
@@ -274,7 +261,7 @@ export function Financeiro() {
       {tab === 'resumo' && (
         <div className="space-y-4">
           <div className="bfy-card p-4 space-y-2">
-            <p className="text-[11px] font-black uppercase tracking-widest opacity-45" style={{ color: 'var(--color-text)' }}>
+            <p className="bfy-eyebrow">
               Origem das entradas
             </p>
             <Row label="Feiras (POS)" value={fmtEuro(totalPos)} />
@@ -282,11 +269,11 @@ export function Financeiro() {
           </div>
 
           <div className="bfy-card p-4 space-y-2">
-            <p className="text-[11px] font-black uppercase tracking-widest opacity-45" style={{ color: 'var(--color-text)' }}>
+            <p className="bfy-eyebrow">
               Saídas por categoria
             </p>
             {porCategoria.length === 0 ? (
-              <p className="text-sm opacity-40" style={{ color: 'var(--color-text)' }}>
+              <p className="text-sm ink-3">
                 Sem saídas pagas neste mês.
               </p>
             ) : (
@@ -297,13 +284,13 @@ export function Financeiro() {
           </div>
 
           <div className="bfy-card p-4 space-y-1">
-            <p className="text-[11px] font-black uppercase tracking-widest opacity-45 mb-2" style={{ color: 'var(--color-text)' }}>
+            <p className="bfy-eyebrow mb-2">
               Categorias da planilha
             </p>
-            <p className="text-xs opacity-50 mb-2" style={{ color: 'var(--color-text)' }}>
+            <p className="text-xs mb-2 ink-3">
               Variáveis: {CATEGORIAS_VARIAVEIS.map((c) => c.label).join(', ')}.
             </p>
-            <p className="text-xs opacity-50" style={{ color: 'var(--color-text)' }}>
+            <p className="text-xs ink-3">
               Taxas: {CATEGORIAS_TAXAS.map((c) => c.label).join(', ')}.
             </p>
           </div>
@@ -313,8 +300,8 @@ export function Financeiro() {
       {tab === 'saidas' && (
         <div className="space-y-2">
           {despesasMes.length === 0 ? (
-            <p className="text-sm text-center py-8 opacity-40" style={{ color: 'var(--color-text)' }}>
-              Nenhuma saída neste mês. Toca em “+ Saída” para registar.
+            <p className="text-sm text-center py-8 ink-3">
+              Nenhuma saída neste mês. Usa “Nova saída” para registar.
             </p>
           ) : (
             despesasMes
@@ -332,7 +319,7 @@ export function Financeiro() {
                       <p className="text-sm font-bold truncate" style={{ color: 'var(--color-text)' }}>
                         {d.descricao || labelCategoria(d.categoria)}
                       </p>
-                      <p className="text-[11px] opacity-45" style={{ color: 'var(--color-text)' }}>
+                      <p className="text-[11px] ink-3">
                         {fmtDay(d.data)} · {labelCategoria(d.categoria)}
                         {d.origem === 'inscricao-evento' ? ' · inscrição' : ''}
                         {d.origem === 'custo-fixo' ? ' · fixo' : ''}
@@ -354,7 +341,7 @@ export function Financeiro() {
 
       {tab === 'fixos' && (
         <div className="space-y-3">
-          <p className="text-xs opacity-50" style={{ color: 'var(--color-text)' }}>
+          <p className="text-xs ink-3">
             Marca o check quando o custo do mês já foi pago. Entra automaticamente nas saídas.
           </p>
           {custosFixos.map((c) => {
@@ -400,8 +387,8 @@ export function Financeiro() {
                   </span>
                   <button
                     type="button"
-                    className="text-[10px] opacity-40 hover:opacity-80"
-                    style={{ color: '#e57373' }}
+                    className="text-[11px] opacity-40 hover:opacity-80"
+                    style={{ color: 'var(--color-danger)' }}
                     onClick={() => {
                       if (confirm(`Remover “${c.nome}” dos custos fixos?`)) removerCustoFixo(c.id)
                     }}
@@ -431,11 +418,11 @@ export function Financeiro() {
       {tab === 'entradas' && (
         <div className="space-y-4">
           <div className="space-y-2">
-            <p className="text-[11px] font-black uppercase tracking-widest opacity-45" style={{ color: 'var(--color-text)' }}>
+            <p className="bfy-eyebrow">
               Feiras (POS) · {fmtEuro(totalPos)}
             </p>
             {entradasPos.length === 0 ? (
-              <p className="text-sm opacity-40" style={{ color: 'var(--color-text)' }}>Sem vendas POS neste mês.</p>
+              <p className="text-sm ink-3">Sem vendas POS neste mês.</p>
             ) : (
               <div className="space-y-1 max-h-[280px] overflow-y-auto">
                 {entradasPos
@@ -445,7 +432,7 @@ export function Financeiro() {
                     <div
                       key={s.id}
                       className="rounded-lg px-2.5 py-2 text-xs"
-                      style={{ background: 'rgba(29,16,8,0.03)', border: '1px solid rgba(29,16,8,0.05)' }}
+                      style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
                     >
                       <div className="flex justify-between gap-2">
                         <span className="opacity-45">{fmtDay(s.createdAt)}</span>
@@ -453,7 +440,7 @@ export function Financeiro() {
                           +{fmtEuro(s.totalEur)}
                         </span>
                       </div>
-                      <p className="opacity-65 mt-0.5 truncate" style={{ color: 'var(--color-text)' }}>
+                      <p className="mt-0.5 truncate ink-2">
                         {describePosSale(s, catalog)}
                       </p>
                     </div>
@@ -463,11 +450,11 @@ export function Financeiro() {
           </div>
 
           <div className="space-y-2">
-            <p className="text-[11px] font-black uppercase tracking-widest opacity-45" style={{ color: 'var(--color-text)' }}>
+            <p className="bfy-eyebrow">
               Vendas diretas · {fmtEuro(totalDiretas)}
             </p>
             {entradasDiretas.length === 0 ? (
-              <p className="text-sm opacity-40" style={{ color: 'var(--color-text)' }}>Sem pedidos neste mês.</p>
+              <p className="text-sm ink-3">Sem pedidos neste mês.</p>
             ) : (
               <div className="space-y-1 max-h-[280px] overflow-y-auto">
                 {entradasDiretas
@@ -479,7 +466,7 @@ export function Financeiro() {
                     <div
                       key={p.id}
                       className="rounded-lg px-2.5 py-2 text-xs"
-                      style={{ background: 'rgba(29,16,8,0.03)', border: '1px solid rgba(29,16,8,0.05)' }}
+                      style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
                     >
                       <div className="flex justify-between gap-2">
                         <span className="opacity-45">{fmtDay(p.dataPedido || p.criadoEm)}</span>
@@ -487,7 +474,7 @@ export function Financeiro() {
                           +{fmtEuro(p.totalEur)}
                         </span>
                       </div>
-                      <p className="opacity-65 mt-0.5" style={{ color: 'var(--color-text)' }}>
+                      <p className="mt-0.5 ink-2">
                         {p.formaPagamento || 'Pedido'} · {p.status}
                         {(p.desconto ?? 0) > 0 ? ` · −${fmtEuro(p.desconto)} desc.` : ''}
                       </p>
@@ -576,7 +563,7 @@ export function Financeiro() {
                 <button
                   type="button"
                   className="btn-ghost flex-1"
-                  style={{ color: '#e57373' }}
+                  style={{ color: 'var(--color-danger)' }}
                   onClick={() => {
                     if (confirm('Excluir esta saída?')) {
                       removerDespesa(formModal)
@@ -607,11 +594,11 @@ function Kpi({ label, value, tone }) {
     <div
       className="rounded-xl px-3 py-2.5"
       style={{
-        background: accent ? 'rgba(46,125,50,0.08)' : 'rgba(154,59,28,0.07)',
+        background: accent ? 'rgba(46,125,50,0.08)' : 'var(--color-accent-soft)',
         border: `1px solid ${accent ? 'rgba(46,125,50,0.18)' : 'rgba(154,59,28,0.15)'}`,
       }}
     >
-      <div className="text-[10px] font-bold uppercase tracking-wide opacity-45" style={{ color: 'var(--color-text)' }}>
+      <div className="bfy-eyebrow">
         {label}
       </div>
       <div
@@ -627,7 +614,7 @@ function Kpi({ label, value, tone }) {
 function Row({ label, value }) {
   return (
     <div className="flex justify-between gap-3 text-sm">
-      <span className="opacity-70 truncate" style={{ color: 'var(--color-text)' }}>{label}</span>
+      <span className="truncate ink-2">{label}</span>
       <span className="font-bold tabular-nums shrink-0" style={{ color: 'var(--color-text)' }}>{value}</span>
     </div>
   )

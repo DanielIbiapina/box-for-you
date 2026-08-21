@@ -3,6 +3,7 @@ import { useEstoque, UNIDADES } from '../stores/useEstoque'
 import { useCookies } from '../stores/useCookies'
 import { useEstoqueCookies } from '../stores/useEstoqueCookies'
 import { Modal } from '../components/Modal'
+import { Icon } from '../components/Icon'
 import { SearchInput } from '../components/SearchInput'
 
 const EMPTY_ING = { nome: '', unidade: 'g', custoPorUnidade: '', estoqueAtual: '', estoqueMinimo: '' }
@@ -119,18 +120,15 @@ export function Estoque() {
   const totalMassaKg = cookies.reduce((s, c) => s + (stockMassa[c.id] ?? 0), 0)
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto pb-10">
+    <div className="bfy-page">
 
       {/* ── Header ── */}
       <div className="flex items-center justify-between mb-5">
         <div>
-          <h1
-            className="text-3xl font-black"
-            style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}
-          >
+          <h1 className="bfy-page-title">
             Estoque
           </h1>
-          <p className="text-sm mt-0.5 opacity-50" style={{ color: 'var(--color-text)' }}>
+          <p className="text-sm mt-0.5 ink-3">
             {activeTab === 'ingredientes' && `${ingredientes.length} ingrediente${ingredientes.length !== 1 ? 's' : ''}`}
             {activeTab === 'massa'        && `${totalMassaKg.toFixed(0)}g de massa pronta`}
             {activeTab === 'cookies'      && `${totalCookiesCongelados} cookie${totalCookiesCongelados !== 1 ? 's' : ''} prontos`}
@@ -138,25 +136,19 @@ export function Estoque() {
         </div>
         {activeTab === 'ingredientes' && (
           <button className="btn-primary px-5 py-2.5" onClick={openNew}>
-            + Ingrediente
+            <Icon name="mais" size={15} /> Ingrediente
           </button>
         )}
       </div>
 
       {/* ── Tabs ── */}
-      <div
-        className="flex rounded-xl overflow-hidden mb-5"
-        style={{ border: '1.5px solid rgba(29,16,8,0.12)', width: 'fit-content' }}
-      >
+      <div className="bfy-segment mb-5" role="tablist">
         {TABS.map((t) => (
           <button
             key={t.id}
+            role="tab"
+            aria-selected={activeTab === t.id}
             onClick={() => setActiveTab(t.id)}
-            className="px-4 py-2 text-sm font-bold transition-all"
-            style={{
-              background: activeTab === t.id ? 'var(--color-accent-dark)' : 'transparent',
-              color: activeTab === t.id ? '#fff' : 'var(--color-text)',
-            }}
           >
             {t.label}
           </button>
@@ -170,18 +162,26 @@ export function Estoque() {
         <>
           {ingredientes.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4">
-              {totalOk      > 0 && <span className="badge-ok">✅ {totalOk} OK</span>}
-              {totalBaixo   > 0 && <span className="badge-baixo">⚠️ {totalBaixo} Baixo</span>}
-              {totalCritico > 0 && <span className="badge-critico">🔴 {totalCritico} Crítico</span>}
+              {totalOk      > 0 && <span className="badge-ok">{totalOk} OK</span>}
+              {totalBaixo   > 0 && <span className="badge-baixo">{totalBaixo} baixo</span>}
+              {totalCritico > 0 && <span className="badge-critico">{totalCritico} crítico</span>}
             </div>
           )}
           {(totalCritico > 0 || totalBaixo > 0) && (
             <div
-              className="rounded-2xl p-3 mb-5 text-sm font-semibold"
-              style={{ background: 'var(--color-warning)', color: 'var(--color-text)' }}
+              className="flex items-start gap-2.5 rounded-2xl p-3.5 mb-5"
+              style={{
+                background: totalCritico > 0 ? 'var(--color-danger-soft)' : 'var(--color-warning-soft)',
+                border: `1px solid ${totalCritico > 0 ? 'rgba(179,64,47,0.28)' : 'rgba(181,122,33,0.28)'}`,
+              }}
             >
-              {totalCritico > 0 && `🔴 ${totalCritico} ingrediente${totalCritico > 1 ? 's' : ''} em estoque crítico. `}
-              {totalBaixo   > 0 && `⚠️ ${totalBaixo} abaixo do mínimo.`}
+              <span style={{ color: totalCritico > 0 ? 'var(--color-danger)' : 'var(--color-warning)' }}>
+                <Icon name="alerta" size={17} />
+              </span>
+              <p style={{ fontSize: 'var(--text-md)', color: totalCritico > 0 ? '#8C3123' : '#7A5214' }}>
+                {totalCritico > 0 && `${totalCritico} ingrediente${totalCritico > 1 ? 's' : ''} sem estoque. `}
+                {totalBaixo   > 0 && `${totalBaixo} abaixo do mínimo.`}
+              </p>
             </div>
           )}
           <div className="mb-4">
@@ -194,13 +194,13 @@ export function Estoque() {
           </div>
           {filtrados.length === 0 ? (
             <div className="bfy-card p-12 text-center">
-              <span className="text-6xl block mb-3">📦</span>
-              <p className="font-semibold text-lg opacity-55" style={{ color: 'var(--color-text)' }}>
+              <span className="ink-4 inline-block mb-3"><Icon name="estoque" size={34} /></span>
+              <p className="font-semibold ink-3" style={{ fontSize: 'var(--text-lg)' }}>
                 {ingredientes.length === 0 ? 'Nenhum ingrediente cadastrado' : 'Nenhum resultado'}
               </p>
               {ingredientes.length === 0 && (
                 <button className="btn-primary mt-4 px-5 py-2.5" onClick={openNew}>
-                  + Adicionar primeiro ingrediente
+                  <Icon name="mais" size={15} /> Adicionar primeiro ingrediente
                 </button>
               )}
             </div>
@@ -212,7 +212,7 @@ export function Estoque() {
                 const atual  = parseFloat(ing.estoqueAtual)  || 0
                 const minimo = parseFloat(ing.estoqueMinimo) || 0
                 const barPct = minimo > 0 ? Math.min(100, Math.round((atual / minimo) * 100)) : atual > 0 ? 100 : 0
-                const barColor = st === 'critico' ? '#e57373' : st === 'baixo' ? '#E8C080' : 'var(--color-success)'
+                const barColor = st === 'critico' ? 'var(--color-danger)' : st === 'baixo' ? '#E8C080' : 'var(--color-success)'
                 return (
                   <div key={ing.id} className="bfy-card p-3 flex flex-col gap-2 overflow-hidden min-w-0">
                     <div className="flex items-center justify-between gap-2 min-w-0">
@@ -220,7 +220,7 @@ export function Estoque() {
                         <p className="font-bold text-sm leading-tight truncate" style={{ color: 'var(--color-text)' }}>
                           {ing.nome}
                         </p>
-                        <p className="text-[11px] mt-0.5 truncate opacity-45" style={{ color: 'var(--color-text)' }}>
+                        <p className="text-[11px] mt-0.5 truncate ink-3">
                           {ing.unidade} · {fmtCusto(ing.custoPorUnidade)}
                         </p>
                       </div>
@@ -232,12 +232,12 @@ export function Estoque() {
                           {fmtQtd(ing.estoqueAtual)} {ing.unidade}
                         </span>
                         {minimo > 0 && (
-                          <span className="text-[10px] shrink-0 opacity-40" style={{ color: 'var(--color-text)' }}>
+                          <span className="text-[11px] shrink-0 ink-3">
                             mín {fmtQtd(ing.estoqueMinimo)}
                           </span>
                         )}
                       </div>
-                      <div className="h-1 rounded-full overflow-hidden" style={{ background: 'rgba(29,16,8,0.1)' }}>
+                      <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--line-2)' }}>
                         <div className="h-full rounded-full transition-all" style={{ width: `${barPct}%`, background: barColor }} />
                       </div>
                     </div>
@@ -245,13 +245,18 @@ export function Estoque() {
                       <button
                         className="btn-accent btn-sm flex-1 min-w-0"
                         onClick={() => { setMovForm({ tipo: 'entrada', quantidade: '', motivo: '' }); setMovModal(ing.id) }}
-                      >+ Entrada</button>
+                      ><Icon name="mais" size={15} /> Entrada</button>
                       <button
                         className="btn-ghost btn-sm flex-1 min-w-0"
                         onClick={() => { setMovForm({ tipo: 'saida', quantidade: '', motivo: '' }); setMovModal(ing.id) }}
                       >− Saída</button>
-                      <button className="btn-icon-sm" title="Editar" onClick={() => openEdit(ing)}>✏️</button>
-                      <button className="btn-icon-sm" title="Histórico" onClick={() => setHistModal(ing.id)}>📋</button>
+                      <button className="btn-icon-sm" title="Editar" onClick={() => openEdit(ing)}><Icon name="editar" size={14} /></button>
+                      <button
+                        className="btn-icon-sm"
+                        title="Histórico de movimentações"
+                        aria-label={`Histórico de ${ing.nome}`}
+                        onClick={() => setHistModal(ing.id)}
+                      ><Icon name="recibo" size={14} /></button>
                     </div>
                   </div>
                 )
@@ -266,11 +271,11 @@ export function Estoque() {
       ──────────────────────────────────────────────── */}
       {activeTab === 'massa' && (
         <>
-          <p className="text-sm mb-4 opacity-55" style={{ color: 'var(--color-text)' }}>
+          <p className="text-sm mb-4 ink-3">
             Regista a quantidade de massa pronta (em gramas) disponível por sabor. Útil para planear quantos cookies consegues assar.
           </p>
           {cookies.length === 0 ? (
-            <div className="bfy-card p-10 text-center opacity-50" style={{ color: 'var(--color-text)' }}>
+            <div className="bfy-card p-10 text-center ink-3">
               Nenhum cookie no cardápio. Adiciona em Feiras → Gerenciar Cardápio.
             </div>
           ) : (
@@ -285,7 +290,7 @@ export function Estoque() {
                   >
                     <div
                       className="w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
-                      style={{ background: 'rgba(29,16,8,0.06)' }}
+                      style={{ background: 'var(--color-surface-sunk)' }}
                     >
                       {c.image
                         ? <img src={c.image} alt={c.nome} className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none' }} />
@@ -319,15 +324,13 @@ export function Estoque() {
                     <div className="flex flex-col gap-1 shrink-0">
                       <button
                         onClick={() => adjustMassa(c.id, 50)}
-                        className="w-8 h-8 rounded-lg font-bold text-base flex items-center justify-center"
-                        style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                        className="btn-step"
                         title="+50g"
                       >+</button>
                       <button
                         onClick={() => adjustMassa(c.id, -50)}
                         disabled={qty <= 0}
-                        className="w-8 h-8 rounded-lg font-bold text-base flex items-center justify-center disabled:opacity-25"
-                        style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                        className="btn-step"
                         title="-50g"
                       >−</button>
                     </div>
@@ -339,9 +342,9 @@ export function Estoque() {
           {totalMassaKg > 0 && (
             <div
               className="mt-4 rounded-2xl px-4 py-3 flex items-center justify-between"
-              style={{ background: 'rgba(154,59,28,0.07)', border: '1px solid rgba(154,59,28,0.15)' }}
+              style={{ background: 'var(--color-accent-soft)', border: '1px solid rgba(154,59,28,0.15)' }}
             >
-              <span className="text-sm opacity-60" style={{ color: 'var(--color-text)' }}>Total de massa</span>
+              <span className="text-sm ink-3">Total de massa</span>
               <span className="font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
                 {totalMassaKg.toFixed(0)}g
               </span>
@@ -355,11 +358,11 @@ export function Estoque() {
       ──────────────────────────────────────────────── */}
       {activeTab === 'cookies' && (
         <>
-          <p className="text-sm mb-4 opacity-55" style={{ color: 'var(--color-text)' }}>
+          <p className="text-sm mb-4 ink-3">
             Cookies prontos para venda. O stock baixa automaticamente a cada venda confirmada no caixa ou como venda rápida.
           </p>
           {cookies.length === 0 ? (
-            <div className="bfy-card p-10 text-center opacity-50" style={{ color: 'var(--color-text)' }}>
+            <div className="bfy-card p-10 text-center ink-3">
               Nenhum cookie no cardápio. Adiciona em Feiras → Gerenciar Cardápio.
             </div>
           ) : (
@@ -377,7 +380,7 @@ export function Estoque() {
                   >
                     <div
                       className="w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
-                      style={{ background: 'rgba(29,16,8,0.06)' }}
+                      style={{ background: 'var(--color-surface-sunk)' }}
                     >
                       {c.image
                         ? <img src={c.image} alt={c.nome} className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none' }} />
@@ -413,14 +416,12 @@ export function Estoque() {
                     <div className="flex flex-col gap-1 shrink-0">
                       <button
                         onClick={() => adjustCookies(c.id, 1)}
-                        className="w-8 h-8 rounded-lg font-bold text-base flex items-center justify-center"
-                        style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                        className="btn-step"
                       >+</button>
                       <button
                         onClick={() => adjustCookies(c.id, -1)}
                         disabled={qty <= 0}
-                        className="w-8 h-8 rounded-lg font-bold text-base flex items-center justify-center disabled:opacity-25"
-                        style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}
+                        className="btn-step"
                       >−</button>
                     </div>
                   </div>
@@ -431,9 +432,9 @@ export function Estoque() {
           {totalCookiesCongelados > 0 && (
             <div
               className="mt-4 rounded-2xl px-4 py-3 flex items-center justify-between"
-              style={{ background: 'rgba(154,59,28,0.07)', border: '1px solid rgba(154,59,28,0.15)' }}
+              style={{ background: 'var(--color-accent-soft)', border: '1px solid rgba(154,59,28,0.15)' }}
             >
-              <span className="text-sm opacity-60" style={{ color: 'var(--color-text)' }}>Total prontos</span>
+              <span className="text-sm ink-3">Total prontos</span>
               <span className="font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
                 {totalCookiesCongelados} {totalCookiesCongelados === 1 ? 'cookie' : 'cookies'}
               </span>
@@ -504,7 +505,7 @@ export function Estoque() {
                 <button
                   type="button"
                   className="btn-ghost text-xs px-4"
-                  style={{ color: '#e57373', borderColor: '#e57373' }}
+                  style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
                   onClick={() => { if (confirm('Excluir este ingrediente?')) { removerIngrediente(modal); setModal(null) } }}
                 >Excluir</button>
               )}
@@ -523,16 +524,12 @@ export function Estoque() {
           size="sm"
         >
           <form onSubmit={handleMovimentacao} className="space-y-4">
-            <div className="flex rounded-xl overflow-hidden" style={{ border: '1.5px solid rgba(29,16,8,0.15)' }}>
-              {['entrada', 'saida'].map((t) => (
+            <div className="bfy-segment bfy-segment-block" role="group" aria-label="Tipo de movimento">
+              {["entrada", "saida"].map((t) => (
                 <button
                   key={t}
                   type="button"
-                  className="flex-1 py-2.5 text-sm font-bold transition-all"
-                  style={{
-                    background: movForm.tipo === t ? 'var(--color-accent-dark)' : 'transparent',
-                    color: movForm.tipo === t ? '#fff' : 'var(--color-text)',
-                  }}
+                  aria-selected={movForm.tipo === t}
                   onClick={() => setMovForm((f) => ({ ...f, tipo: t }))}
                 >
                   {t === 'entrada' ? '+ Entrada' : '− Saída'}
@@ -572,7 +569,7 @@ export function Estoque() {
           size="sm"
         >
           {histMovs.length === 0 ? (
-            <p className="text-center py-6 text-sm opacity-50" style={{ color: 'var(--color-text)' }}>
+            <p className="text-center py-6 text-sm ink-3">
               Nenhuma movimentação registrada.
             </p>
           ) : (
@@ -581,18 +578,18 @@ export function Estoque() {
                 <div
                   key={m.id}
                   className="flex items-center gap-3 rounded-xl px-3 py-2.5"
-                  style={{ background: 'rgba(29,16,8,0.05)' }}
+                  style={{ background: 'var(--color-surface-sunk)' }}
                 >
-                  <span className="text-lg shrink-0">{m.tipo === 'entrada' ? '📥' : '📤'}</span>
+                  <span className="shrink-0" style={{ color: m.tipo === 'entrada' ? 'var(--color-success)' : 'var(--color-danger)' }}><Icon name={m.tipo === 'entrada' ? 'carregar' : 'descarregar'} size={17} /></span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>
                       {m.tipo === 'entrada' ? '+' : '−'} {fmtQtd(m.quantidade)} {histIngrediente?.unidade}
                     </p>
                     {m.motivo && (
-                      <p className="text-xs truncate opacity-55" style={{ color: 'var(--color-text)' }}>{m.motivo}</p>
+                      <p className="text-xs truncate ink-3">{m.motivo}</p>
                     )}
                   </div>
-                  <p className="text-xs shrink-0 tabular-nums opacity-45" style={{ color: 'var(--color-text)' }}>
+                  <p className="text-xs shrink-0 tabular-nums ink-3">
                     {new Date(m.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                   </p>
                 </div>

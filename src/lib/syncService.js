@@ -19,6 +19,16 @@ let listenersBound = false
 
 const ECHO_IGNORE_MS = 5000
 const PULL_COOLDOWN_MS = 30_000
+const REQUEST_TIMEOUT_MS = 12_000
+
+/** Corre uma promessa com limite de tempo — evita que a nuvem lenta trave o app para sempre. */
+function withTimeout(promise, ms, reason = 'timeout') {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(reason)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
 
 export function initSync() {
   if (!isSupabaseConfigured) return
@@ -220,7 +230,7 @@ async function flushSync() {
   isPushing = true
 
   try {
-    const remoteRow = await fetchRemoteRow()
+    const remoteRow = await withTimeout(fetchRemoteRow(), REQUEST_TIMEOUT_MS)
     const remoteData = remoteRow?.data ?? {}
     const localSnapshot = collectLocalSnapshot()
     const merged = buildMergedSnapshot(localSnapshot, remoteData, pendingKeys)
@@ -270,7 +280,7 @@ export async function pullFromCloud(options = {}) {
   }
 
   try {
-    const remoteRow = await fetchRemoteRow()
+    const remoteRow = await withTimeout(fetchRemoteRow(), REQUEST_TIMEOUT_MS)
     const cloudData = remoteRow?.data ?? {}
     const hasCloudData = Object.keys(cloudData).length > 0
     const remoteUpdatedAt = remoteRow?.updated_at ?? null

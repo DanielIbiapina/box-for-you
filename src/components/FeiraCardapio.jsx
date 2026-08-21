@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useCookies } from '../stores/useCookies'
 import { Modal } from './Modal'
+import { Icon } from './Icon'
 import { menuCookies } from '../lib/catalog'
 
 const fmtEuro = (v) =>
@@ -30,7 +31,7 @@ export function FeiraCardapio({ onBack, notify }) {
     if (Number.isNaN(p) || p < 0) return
     updateCookie(editId, { price: p })
     setEditId(null)
-    notify?.('Preço atualizado ✓')
+    notify?.('Preço atualizado')
   }
 
   function removeFromCaixa(c) {
@@ -42,19 +43,21 @@ export function FeiraCardapio({ onBack, notify }) {
   function addToCaixa(c) {
     if (c.ativoNoCardapio !== false) return
     toggleCardapio(c.id)
-    notify?.(`${c.short} adicionado ao caixa ✓`)
+    notify?.(`${c.short} adicionado ao caixa`)
   }
 
   return (
     <div className="h-full overflow-y-auto" style={{ background: 'var(--color-bg)' }}>
       <div className="max-w-2xl mx-auto p-4 md:p-6 pb-10 space-y-5">
         <div className="flex items-center gap-3">
-          <button type="button" className="btn-ghost text-sm px-4 py-2" onClick={onBack}>← Voltar</button>
+          <button type="button" className="btn-ghost btn-sm" onClick={onBack}>
+            <Icon name="voltar" size={15} /> Voltar
+          </button>
           <div>
-            <h1 className="text-2xl font-black" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}>
+            <h1 className="bfy-title" style={{ fontSize: "var(--text-2xl)" }}>
               Cardápio do caixa
             </h1>
-            <p className="text-xs opacity-50 mt-0.5" style={{ color: 'var(--color-text)' }}>
+            <p className="text-xs mt-0.5 ink-3">
               Remove sabores do caixa sem apagar estatísticas
             </p>
           </div>
@@ -67,7 +70,7 @@ export function FeiraCardapio({ onBack, notify }) {
             </h2>
           </div>
           {visible.length === 0 ? (
-            <p className="text-sm opacity-45 text-center py-4" style={{ color: 'var(--color-text)' }}>
+            <p className="text-sm text-center py-4 ink-3">
               Nenhum sabor visível — adiciona algum abaixo ou em Config.
             </p>
           ) : (
@@ -97,7 +100,7 @@ export function FeiraCardapio({ onBack, notify }) {
             </button>
             {showHidden && (
               <div className="space-y-2 pt-1">
-                <p className="text-[10px] opacity-45" style={{ color: 'var(--color-text)' }}>
+                <p className="text-[11px] ink-3">
                   Ex.: BOW — mantém estatísticas, não aparece no caixa.
                 </p>
                 {hidden.map((c) => (
@@ -114,7 +117,7 @@ export function FeiraCardapio({ onBack, notify }) {
           </div>
         )}
 
-        <p className="text-xs text-center opacity-40 px-4" style={{ color: 'var(--color-text)' }}>
+        <p className="text-xs text-center px-4 ink-3">
           Para criar sabores novos, editar BOX ou imagens → Config → Cardápio & Sabores
         </p>
       </div>
@@ -151,15 +154,15 @@ function CookieRow({ c, onEditPrice, onRemove, onAdd, muted = false }) {
     <div
       className="flex flex-wrap items-center gap-2 sm:gap-3 rounded-xl px-3 py-2.5"
       style={{
-        background: muted ? 'rgba(29,16,8,0.02)' : 'rgba(29,16,8,0.04)',
-        border: '1px solid rgba(29,16,8,0.06)',
+        background: muted ? 'rgba(29,16,8,0.02)' : 'var(--color-surface-sunk)',
+        border: '1px solid var(--line-1)',
         opacity: muted ? 0.85 : 1,
       }}
     >
       <span className="text-xl shrink-0">{c.emoji}</span>
       <div className="flex-1 min-w-[120px]">
         <p className="text-sm font-bold truncate" style={{ color: 'var(--color-text)' }}>{c.short}</p>
-        <p className="text-xs opacity-45" style={{ color: 'var(--color-text)' }}>{fmtEuro(c.price)}</p>
+        <p className="text-xs ink-3">{fmtEuro(c.price)}</p>
       </div>
       <div className="flex items-center gap-1.5 shrink-0 ml-auto">
         <button type="button" className="btn-ghost text-xs px-2.5 py-1.5" onClick={onEditPrice}>

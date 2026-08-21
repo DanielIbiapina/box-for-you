@@ -7,6 +7,8 @@ export function SearchInput({ value, onChange, placeholder, className = '' }) {
       </svg>
       <input
         className="bfy-input"
+        type="search"
+        aria-label={placeholder}
         placeholder={placeholder}
         value={value}
         onChange={onChange}

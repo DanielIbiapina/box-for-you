@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useEventos } from '../stores/useEventos'
 import { usePedidosVendas } from '../stores/usePedidosVendas'
 import { useClientes } from '../stores/useClientes'
+import { useVendas } from '../stores/useVendas'
+import { Icon } from '../components/Icon'
 import { BarChart } from '../components/BarChart'
 import { Modal } from '../components/Modal'
 import { FeiraHistoricoPanel } from '../components/FeiraHistoricoPanel'
@@ -11,18 +13,9 @@ import {
   topFlavorsRanking,
   aggregateCookieCounts,
 } from '../lib/salesAnalytics'
-import { summarizeEvent, formatEventDateRange } from '../lib/feiraHistory'
+import { summarizeEvent, formatEventDateRange, orphanFairDayEvents } from '../lib/feiraHistory'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function readFeirasPos() {
-  try {
-    const raw = localStorage.getItem('cookies-sales:v1')
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
-}
 
 function monthKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
@@ -102,13 +95,13 @@ function PosSaleRow({ sale, catalog }) {
   return (
     <div
       className="flex items-start gap-3 rounded-xl px-3 py-2.5"
-      style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.06)' }}
+      style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
     >
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold leading-snug" style={{ color: 'var(--color-text)' }}>
           {title}
         </p>
-        <p className="text-[10px] opacity-40 mt-0.5" style={{ color: 'var(--color-text)' }}>
+        <p className="text-[11px] mt-0.5 ink-3">
           {fmtDate(sale.createdAt)} · {fmtTime(sale.createdAt)}
           {sale.paymentId && sale.paymentId !== 'gratis' && (
             <span> · {PAY_LABELS[sale.paymentId] ?? sale.paymentId}</span>
@@ -130,7 +123,7 @@ export function Relatorios() {
   const { eventos } = useEventos()
   const { pedidos: pedidosVendas } = usePedidosVendas()
   const { clientes } = useClientes()
-  const salesPos = readFeirasPos()
+  const { sales: salesPos } = useVendas()
   const catalog = useMemo(() => readCookieCatalog(), [])
 
   const now = new Date()
@@ -244,7 +237,8 @@ export function Relatorios() {
   const posRestantes = Math.max(0, posMes.length - posVisiveis)
 
   const porEvento = useMemo(() => {
-    return [...eventos]
+    const all = [...eventos, ...orphanFairDayEvents(salesPos, eventos)]
+    return all
       .sort((a, b) => (b.data || '').localeCompare(a.data || ''))
       .map((ev) => {
         const stats = summarizeEvent(salesPos, ev, catalog)
@@ -280,17 +274,14 @@ export function Relatorios() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl mx-auto pb-10 space-y-5">
+    <div className="bfy-page space-y-5">
 
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1
-            className="text-3xl font-black"
-            style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}
-          >
+          <h1 className="bfy-page-title">
             Relatórios & Métricas
           </h1>
-          <p className="text-sm mt-1 opacity-55" style={{ color: 'var(--color-text)' }}>
+          <p className="text-sm mt-1 ink-3">
             Feiras, vendas diretas e ranking de sabores
           </p>
         </div>
@@ -301,7 +292,7 @@ export function Relatorios() {
 
       {/* Gráfico */}
       <div className="bfy-card p-5">
-        <h2 className="text-xs font-bold uppercase tracking-widest mb-4 opacity-55" style={{ color: 'var(--color-text)' }}>
+        <h2 className="bfy-eyebrow mb-4">
           Receita total — últimos 6 meses (€)
         </h2>
         <BarChart data={chartData} height={110} />
@@ -309,7 +300,7 @@ export function Relatorios() {
 
       {/* Seletor de mês + KPIs */}
       <div className="bfy-card p-5 space-y-4">
-        <h2 className="text-xs font-bold uppercase tracking-widest opacity-55" style={{ color: 'var(--color-text)' }}>
+        <h2 className="bfy-eyebrow">
           Relatório mensal
         </h2>
 
@@ -320,7 +311,7 @@ export function Relatorios() {
               onClick={() => setMesSelecionado(m.key)}
               className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
               style={{
-                background: mesSelecionado === m.key ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.07)',
+                background: mesSelecionado === m.key ? 'var(--color-accent-dark)' : 'var(--line-1)',
                 color: mesSelecionado === m.key ? '#fff' : 'var(--color-text)',
               }}
             >
@@ -346,8 +337,8 @@ export function Relatorios() {
               key={i}
               className="rounded-2xl p-3 flex flex-col gap-1.5"
               style={{
-                background: k.accent ? 'rgba(154,59,28,0.07)' : 'rgba(29,16,8,0.04)',
-                border: `1px solid ${k.accent ? 'rgba(154,59,28,0.18)' : 'rgba(29,16,8,0.07)'}`,
+                background: k.accent ? 'var(--color-accent-soft)' : 'var(--color-surface-sunk)',
+                border: `1px solid ${k.accent ? 'rgba(154,59,28,0.18)' : 'var(--line-1)'}`,
               }}
             >
               <div style={{ color: k.accent ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.4)' }}>
@@ -362,7 +353,7 @@ export function Relatorios() {
               >
                 {k.value}
               </div>
-              <div className="text-[10px] opacity-50 leading-tight" style={{ color: 'var(--color-text)' }}>
+              <div className="text-[11px] leading-tight ink-3">
                 {k.label}
               </div>
             </div>
@@ -373,46 +364,43 @@ export function Relatorios() {
       {/* Insights divertidos */}
       <div className="grid sm:grid-cols-3 gap-3">
         {insights.champion && (
-          <div
-            className="bfy-card p-4 rounded-2xl"
-            style={{ background: 'linear-gradient(135deg, rgba(194,75,41,0.12), rgba(242,181,160,0.2))' }}
-          >
-            <p className="text-2xl mb-1">{insights.champion.emoji}</p>
-            <p className="text-xs font-bold uppercase opacity-50" style={{ color: 'var(--color-text)' }}>
-              Campeão do mês
-            </p>
-            <p className="font-black text-lg" style={{ color: 'var(--color-accent-dark)' }}>
+          <div className="bfy-card p-4" style={{ background: 'var(--color-accent-soft)' }}>
+            <div className="flex items-center gap-2 mb-1.5" style={{ color: 'var(--color-accent-dark)' }}>
+              <Icon name="troféu" size={17} />
+              <span className="bfy-eyebrow" style={{ color: 'var(--color-accent-dark)' }}>Campeão do mês</span>
+            </div>
+            <p className="bfy-title" style={{ fontSize: 'var(--text-lg)', color: 'var(--color-accent-dark)' }}>
               {insights.champion.label}
             </p>
-            <p className="text-xs opacity-55" style={{ color: 'var(--color-text)' }}>
+            <p className="ink-3" style={{ fontSize: 'var(--text-xs)' }}>
               {insights.champion.qty} unidades vendidas
             </p>
           </div>
         )}
         {insights.bestDay && (
-          <div className="bfy-card p-4 rounded-2xl">
-            <p className="text-2xl mb-1">📅</p>
-            <p className="text-xs font-bold uppercase opacity-50" style={{ color: 'var(--color-text)' }}>
-              Melhor dia POS
-            </p>
-            <p className="font-black text-lg" style={{ color: 'var(--color-text)' }}>
+          <div className="bfy-card p-4">
+            <div className="flex items-center gap-2 mb-1.5 ink-3">
+              <Icon name="calendario" size={17} />
+              <span className="bfy-eyebrow">Melhor dia de feira</span>
+            </div>
+            <p className="bfy-title" style={{ fontSize: 'var(--text-lg)' }}>
               {fmtDate(insights.bestDay[0] + 'T12:00:00')}
             </p>
-            <p className="text-xs opacity-55" style={{ color: 'var(--color-text)' }}>
+            <p className="ink-3 bfy-num" style={{ fontSize: 'var(--text-xs)' }}>
               {fmtEuro(insights.bestDay[1])} no caixa
             </p>
           </div>
         )}
         {insights.topPay && (
-          <div className="bfy-card p-4 rounded-2xl">
-            <p className="text-2xl mb-1">💳</p>
-            <p className="text-xs font-bold uppercase opacity-50" style={{ color: 'var(--color-text)' }}>
-              Pagamento favorito
-            </p>
-            <p className="font-black text-lg" style={{ color: 'var(--color-text)' }}>
+          <div className="bfy-card p-4">
+            <div className="flex items-center gap-2 mb-1.5 ink-3">
+              <Icon name="financeiro" size={17} />
+              <span className="bfy-eyebrow">Pagamento favorito</span>
+            </div>
+            <p className="bfy-title" style={{ fontSize: 'var(--text-lg)' }}>
               {PAY_LABELS[insights.topPay[0]] ?? insights.topPay[0]}
             </p>
-            <p className="text-xs opacity-55" style={{ color: 'var(--color-text)' }}>
+            <p className="ink-3" style={{ fontSize: 'var(--text-xs)' }}>
               {insights.topPay[1]} vendas este mês
             </p>
           </div>
@@ -421,11 +409,11 @@ export function Relatorios() {
 
       {/* Ranking sabores */}
       <div className="bfy-card p-5 space-y-4">
-        <h2 className="text-xs font-bold uppercase tracking-widest opacity-55" style={{ color: 'var(--color-text)' }}>
-          🏆 Ranking de sabores — {meses.find((m) => m.key === mesSelecionado)?.label}
+        <h2 className="bfy-eyebrow">
+          Ranking de sabores — {meses.find((m) => m.key === mesSelecionado)?.label}
         </h2>
         {rankingSabores.length === 0 ? (
-          <p className="text-sm text-center py-6 opacity-40" style={{ color: 'var(--color-text)' }}>
+          <p className="text-sm text-center py-6 ink-3">
             Nenhum cookie vendido neste mês.
           </p>
         ) : (
@@ -442,7 +430,7 @@ export function Relatorios() {
                 <span className="w-28 sm:w-36 text-xs font-bold truncate" style={{ color: 'var(--color-text)' }}>
                   {r.label}
                 </span>
-                <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ background: 'rgba(29,16,8,0.08)' }}>
+                <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ background: 'var(--color-surface-sunk)' }}>
                   <div
                     className="h-full rounded-full transition-all"
                     style={{
@@ -463,7 +451,7 @@ export function Relatorios() {
             ))}
           </div>
         )}
-        <p className="text-[10px] opacity-40 pt-1" style={{ color: 'var(--color-text)' }}>
+        <p className="text-[11px] pt-1 ink-3">
           Inclui sabores atuais, históricos (ex. BOW) e vendas personalizadas.
         </p>
       </div>
@@ -471,8 +459,8 @@ export function Relatorios() {
       {/* Hall da fama — all time */}
       {rankingAllTime.length > 0 && (
         <div className="bfy-card p-5">
-          <h2 className="text-xs font-bold uppercase tracking-widest mb-3 opacity-55" style={{ color: 'var(--color-text)' }}>
-            🌟 Hall da fama (desde sempre)
+          <h2 className="bfy-eyebrow mb-3">
+            Hall da fama (desde sempre)
           </h2>
           <div className="flex flex-wrap gap-2">
             {rankingAllTime.slice(0, 5).map((r, i) => (
@@ -480,7 +468,7 @@ export function Relatorios() {
                 key={r.id}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
                 style={{
-                  background: 'rgba(29,16,8,0.06)',
+                  background: 'var(--color-surface-sunk)',
                   color: 'var(--color-text)',
                 }}
               >
@@ -495,22 +483,19 @@ export function Relatorios() {
       {/* Vendas do mês */}
       <div className="bfy-card p-5 space-y-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <h2 className="text-xs font-bold uppercase tracking-widest opacity-55" style={{ color: 'var(--color-text)' }}>
+          <h2 className="bfy-eyebrow">
             Vendas do mês
           </h2>
-          <div className="flex rounded-xl overflow-hidden" style={{ border: '1.5px solid rgba(29,16,8,0.12)' }}>
+          <div className="bfy-segment" role="tablist">
             {[
               { id: 'avulsas', label: `Diretas (${diretasDoMes.length})` },
               { id: 'pos', label: `POS (${posMes.length})` },
             ].map((t) => (
               <button
                 key={t.id}
+                role="tab"
+                aria-selected={tabVendas === t.id}
                 onClick={() => setTabVendas(t.id)}
-                className="px-3 py-1.5 text-xs font-bold transition-all"
-                style={{
-                  background: tabVendas === t.id ? 'var(--color-accent-dark)' : 'transparent',
-                  color: tabVendas === t.id ? '#fff' : 'var(--color-text)',
-                }}
               >
                 {t.label}
               </button>
@@ -522,7 +507,7 @@ export function Relatorios() {
           <>
             {diretasDoMes.length === 0 ? (
               <div className="py-8 text-center">
-                <p className="text-sm opacity-45" style={{ color: 'var(--color-text)' }}>
+                <p className="text-sm ink-3">
                   Nenhuma venda direta neste mês.
                 </p>
               </div>
@@ -534,7 +519,7 @@ export function Relatorios() {
                     <div
                       key={p.id}
                       className="flex items-center gap-3 rounded-xl px-3 py-3"
-                      style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.07)' }}
+                      style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
                     >
                       <div className="flex-1 min-w-0">
                         {c && (
@@ -542,7 +527,7 @@ export function Relatorios() {
                             {c.nome}
                           </span>
                         )}
-                        <div className="flex gap-3 mt-0.5 text-xs opacity-45 flex-wrap" style={{ color: 'var(--color-text)' }}>
+                        <div className="flex gap-3 mt-0.5 text-xs flex-wrap ink-3">
                           <span>{fmtDate(p.criadoEm)}</span>
                           <span>{p.formaPagamento}</span>
                           {p.notas && <span className="truncate max-w-xs">{p.notas}</span>}
@@ -562,7 +547,7 @@ export function Relatorios() {
         {tabVendas === 'pos' && (
           <>
             {posMes.length === 0 ? (
-              <p className="text-sm text-center py-8 opacity-40" style={{ color: 'var(--color-text)' }}>
+              <p className="text-sm text-center py-8 ink-3">
                 Nenhuma venda POS neste mês.
               </p>
             ) : (
@@ -588,16 +573,16 @@ export function Relatorios() {
       {/* Por evento / feira */}
       <div className="bfy-card p-5 space-y-3">
         <div className="flex items-center gap-2">
-          <div className="opacity-45" style={{ color: 'var(--color-text)' }}>
+          <div className="ink-3">
             <IconCalendar />
           </div>
-          <h2 className="text-xs font-bold uppercase tracking-widest opacity-55" style={{ color: 'var(--color-text)' }}>
+          <h2 className="bfy-eyebrow">
             Por evento / feira
           </h2>
         </div>
 
         {porEvento.length === 0 ? (
-          <p className="text-sm text-center py-6 opacity-40" style={{ color: 'var(--color-text)' }}>
+          <p className="text-sm text-center py-6 ink-3">
             Nenhum evento cadastrado.
           </p>
         ) : (
@@ -608,13 +593,16 @@ export function Relatorios() {
                 type="button"
                 onClick={() => setHistoricoEvent(ev)}
                 className="w-full flex items-center gap-4 rounded-xl px-4 py-3 text-left transition-all hover:bg-black/[0.02]"
-                style={{ background: 'rgba(29,16,8,0.04)', border: '1px solid rgba(29,16,8,0.07)' }}
+                style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
               >
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm truncate" style={{ color: 'var(--color-text)' }}>
                     {ev.nome}
+                    {ev.virtual ? (
+                      <span className="font-semibold opacity-45 text-xs ml-1.5">· sem evento cadastrado</span>
+                    ) : null}
                   </p>
-                  <p className="text-xs opacity-50" style={{ color: 'var(--color-text)' }}>
+                  <p className="text-xs ink-3">
                     {ev.dateLabel}
                     {ev.local ? ` · ${ev.local}` : ''}
                     {ev.stats?.dayBreakdown?.length > 1 ? ` · ${ev.stats.dayBreakdown.length} dias` : ''}
@@ -625,7 +613,7 @@ export function Relatorios() {
                   <p className="font-black text-base tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
                     {fmtEuro(ev.receita)}
                   </p>
-                  <p className="text-xs opacity-50" style={{ color: 'var(--color-text)' }}>
+                  <p className="text-xs ink-3">
                     {ev.vendas} venda{ev.vendas !== 1 ? 's' : ''}
                   </p>
                 </div>

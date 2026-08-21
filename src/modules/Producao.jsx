@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useReceitas } from '../stores/useReceitas'
 import { useEstoque } from '../stores/useEstoque'
 import { Modal } from '../components/Modal'
+import { Icon } from '../components/Icon'
 
 export function Producao() {
   const { receitas } = useReceitas()
@@ -169,25 +170,20 @@ export function Producao() {
     const temVinculados   = listaUnificada.some((i) => i.ingredienteId)
 
     return (
-      <div className="p-4 md:p-6 max-w-3xl mx-auto pb-10">
+      <div className="bfy-page bfy-page-flow">
         <div className="flex items-center gap-3 mb-6">
           <button
-            className="btn-ghost text-sm px-4 py-2"
+            className="btn-ghost btn-sm"
             onClick={() => { setPlanejarMode(false); setFeiraConfirmada(false) }}
           >
-            ← Voltar
+            <Icon name="voltar" size={15} /> Voltar
           </button>
-          <h1
-            className="text-2xl font-black"
-            style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}
-          >
-            Planejar Feira
-          </h1>
+          <h1 className="bfy-page-title">Planear feira</h1>
         </div>
 
         {/* Adicionar receitas */}
         <div className="bfy-card p-5 mb-4">
-          <p className="text-sm font-semibold mb-3" style={{ color: 'var(--color-text)', opacity: 0.6 }}>
+          <p className="text-sm font-semibold mb-3" style={{ color: 'var(--ink-3)' }}>
             Adicione as receitas e quantidades que planeja produzir:
           </p>
           <div className="flex flex-wrap gap-2 mb-4">
@@ -209,11 +205,11 @@ export function Producao() {
               onChange={(e) => setNovoSabor((n) => ({ ...n, quantidade: parseInt(e.target.value) || 0 }))}
               placeholder="Qtd"
             />
-            <button className="btn-primary px-5" onClick={addAoPlanejamento}>+ Add</button>
+            <button className="btn-primary px-5" onClick={addAoPlanejamento}><Icon name="mais" size={15} /> Add</button>
           </div>
 
           {planejamento.length === 0 && (
-            <p className="text-sm text-center py-2" style={{ color: 'var(--color-text)', opacity: 0.35 }}>
+            <p className="text-sm text-center py-2" style={{ color: 'var(--ink-4)' }}>
               Nenhuma receita adicionada ainda
             </p>
           )}
@@ -223,7 +219,7 @@ export function Producao() {
               <div
                 key={i}
                 className="flex items-center gap-3 rounded-xl px-3 py-2 mb-1"
-                style={{ background: 'rgba(29,16,8,0.06)' }}
+                style={{ background: 'var(--color-surface-sunk)' }}
               >
                 <span className="text-lg">{r?.emoji ?? '🍪'}</span>
                 <span className="flex-1 font-semibold text-sm" style={{ color: 'var(--color-text)' }}>
@@ -246,20 +242,19 @@ export function Producao() {
           <div className="bfy-card p-5">
             <div className="flex items-center justify-between gap-2 mb-3 min-w-0">
               <h2
-                className="text-lg font-black min-w-0 truncate"
-                style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}
+                className="text-lg font-black min-w-0 truncate bfy-card-title"
               >
                 Ingredientes Necessários
               </h2>
               <button className="btn-ghost btn-sm shrink-0" onClick={exportarLista}>
-                📋 Copiar
+                Copiar
               </button>
             </div>
 
             {temInsuficiente && (
               <div className="mb-3 p-3 rounded-xl" style={{ background: 'rgba(229,115,115,0.1)' }}>
-                <p className="text-sm font-bold" style={{ color: '#e57373' }}>
-                  ⚠️ Alguns ingredientes estão insuficientes no estoque
+                <p className="text-sm font-bold" style={{ color: 'var(--color-danger)' }}>
+                  Alguns ingredientes estão insuficientes no estoque
                 </p>
               </div>
             )}
@@ -274,7 +269,7 @@ export function Producao() {
                       ? 'rgba(229,115,115,0.1)'
                       : item.suficiente === true
                       ? 'rgba(90,158,133,0.1)'
-                      : 'rgba(29,16,8,0.05)',
+                      : 'var(--color-surface-sunk)',
                   }}
                 >
                   <div>
@@ -282,7 +277,7 @@ export function Producao() {
                       {item.nome}
                     </p>
                     {item.estoqueAtual !== null && (
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--color-text)', opacity: 0.5 }}>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--ink-3)' }}>
                         Estoque: {item.estoqueAtual.toFixed(1)} {item.unidade}
                       </p>
                     )}
@@ -292,10 +287,10 @@ export function Producao() {
                       {item.total.toFixed(1)} {item.unidade}
                     </p>
                     {item.suficiente === false && (
-                      <p className="text-xs font-bold" style={{ color: '#e57373' }}>⚠️ Falta</p>
+                      <p className="text-xs font-bold" style={{ color: 'var(--color-danger)' }}>Falta</p>
                     )}
                     {item.suficiente === true && (
-                      <p className="text-xs font-bold" style={{ color: 'var(--color-success)' }}>✓ OK</p>
+                      <p className="text-xs font-bold" style={{ color: 'var(--color-success)' }}>OK</p>
                     )}
                   </div>
                 </div>
@@ -309,19 +304,17 @@ export function Producao() {
                   className="btn-primary w-full py-3"
                   disabled={planejamento.length === 0}
                   onClick={() => setShowConfirmFeira(true)}
-                >
-                  ✓ Confirmar Produção e Baixar Estoque
-                </button>
+                ><Icon name="check" size={16} /> Confirmar produção e baixar estoque</button>
               ) : (
-                <p className="text-xs text-center" style={{ color: 'var(--color-text)', opacity: 0.4 }}>
-                  💡 Vincule ingredientes ao estoque nas receitas para baixar automaticamente
+                <p className="text-xs text-center" style={{ color: 'var(--ink-3)' }}>
+                  Vincule ingredientes ao estoque nas receitas para baixar automaticamente
                 </p>
               )
             ) : (
               <div className="p-4 rounded-xl text-center" style={{ background: 'rgba(90,158,133,0.15)' }}>
-                <p className="text-2xl mb-1">✓</p>
+                <p className="mb-1" style={{ color: 'var(--color-success)' }}><Icon name="check" size={24} strokeWidth={2.4} /></p>
                 <p className="font-bold" style={{ color: 'var(--color-success)' }}>Produção confirmada!</p>
-                <p className="text-xs mt-1" style={{ color: 'var(--color-text)', opacity: 0.6 }}>
+                <p className="text-xs mt-1" style={{ color: 'var(--ink-3)' }}>
                   Estoque atualizado com sucesso.
                 </p>
                 <button
@@ -339,7 +332,7 @@ export function Producao() {
         {showConfirmFeira && (
           <Modal title="Confirmar Produção" onClose={() => setShowConfirmFeira(false)} size="sm">
             <div className="space-y-4">
-              <p className="text-sm" style={{ color: 'var(--color-text)', opacity: 0.7 }}>
+              <p className="text-sm" style={{ color: 'var(--ink-2)' }}>
                 Será registrada saída de estoque para os ingredientes vinculados:
               </p>
               <div className="space-y-1.5 max-h-60 overflow-y-auto">
@@ -347,14 +340,14 @@ export function Producao() {
                   <div
                     key={i}
                     className="flex items-center justify-between px-3 py-2 rounded-xl"
-                    style={{ background: 'rgba(29,16,8,0.05)' }}
+                    style={{ background: 'var(--color-surface-sunk)' }}
                   >
                     <span className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
                       {item.nome}
                     </span>
                     <span
                       className="text-sm tabular-nums font-bold"
-                      style={{ color: item.suficiente === false ? '#e57373' : 'var(--color-text)' }}
+                      style={{ color: item.suficiente === false ? 'var(--color-danger)' : 'var(--color-text)' }}
                     >
                       −{item.total.toFixed(2)} {item.unidade}
                     </span>
@@ -362,7 +355,7 @@ export function Producao() {
                 ))}
               </div>
               {listaUnificada.some((i) => !i.ingredienteId) && (
-                <p className="text-xs" style={{ color: 'var(--color-text)', opacity: 0.45 }}>
+                <p className="text-xs" style={{ color: 'var(--ink-3)' }}>
                   * Ingredientes sem vínculo ao estoque não serão baixados
                 </p>
               )}
@@ -382,28 +375,23 @@ export function Producao() {
   const temVinculadosProducao   = ingredientesNecessarios.some((i) => i.ingredienteId)
 
   return (
-    <div className="p-4 md:p-6 max-w-2xl mx-auto pb-10">
+    <div className="bfy-page bfy-page-flow">
       <div className="flex items-center justify-between mb-6">
-        <h1
-          className="text-3xl font-black"
-          style={{ fontFamily: 'var(--font-title)', color: 'var(--color-text)' }}
-        >
+        <h1 className="bfy-page-title">
           Calculadora de Produção
         </h1>
         <button
           className="btn-ghost text-sm px-4"
           onClick={() => { setPlanejarMode(true); setFeiraConfirmada(false) }}
         >
-          🏪 Planejar Feira
+          Planear feira
         </button>
       </div>
 
       {receitas.length === 0 ? (
-        <div className="bfy-card p-10 text-center">
-          <span className="text-5xl block mb-3">📚</span>
-          <p className="text-base font-semibold" style={{ color: 'var(--color-text)', opacity: 0.6 }}>
-            Cadastre receitas primeiro para usar a calculadora.
-          </p>
+        <div className="bfy-card bfy-empty">
+          <Icon name="receitas" size={30} />
+          <p style={{ fontSize: 'var(--text-md)' }}>Cadastre receitas primeiro para usar a calculadora.</p>
         </div>
       ) : (
         <>
@@ -418,7 +406,7 @@ export function Producao() {
                 <div
                   className="flex items-center justify-center w-9 h-9 rounded-full font-black text-sm shrink-0 transition-all"
                   style={{
-                    background: fase >= n ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.12)',
+                    background: fase >= n ? 'var(--color-accent-dark)' : 'var(--line-2)',
                     color: fase >= n ? '#fff' : 'var(--color-text)',
                   }}
                 >
@@ -433,7 +421,7 @@ export function Producao() {
                 {idx < arr.length - 1 && (
                   <div
                     className="flex-1 h-0.5 mx-3"
-                    style={{ background: fase > n ? 'var(--color-accent-dark)' : 'rgba(29,16,8,0.12)' }}
+                    style={{ background: fase > n ? 'var(--color-accent-dark)' : 'var(--line-2)' }}
                   />
                 )}
               </div>
@@ -442,7 +430,7 @@ export function Producao() {
 
           {/* Fase 1 */}
           <div className="bfy-card p-6 mb-4">
-            <h2 className="text-base font-bold mb-4" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}>
+            <h2 className="text-base font-bold mb-4 bfy-card-title">
               1. Quantos cookies você vai fazer?
             </h2>
             <div className="space-y-4">
@@ -482,10 +470,10 @@ export function Producao() {
                     className="btn-ghost w-10 h-10 px-0 py-0 text-xl font-bold"
                     onClick={() => setQuantidade((q) => q + (receita?.rendimento ?? 1))}
                   >+</button>
-                  <span className="text-sm" style={{ color: 'var(--color-text)', opacity: 0.55 }}>cookies</span>
+                  <span className="text-sm" style={{ color: 'var(--ink-3)' }}>cookies</span>
                 </div>
                 {receita && (
-                  <p className="text-xs mt-1.5" style={{ color: 'var(--color-text)', opacity: 0.5 }}>
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--ink-3)' }}>
                     = {(quantidade / receita.rendimento).toFixed(1)} receita{quantidade !== receita.rendimento ? 's' : ''}
                   </p>
                 )}
@@ -496,7 +484,7 @@ export function Producao() {
                 disabled={!receitaId}
                 onClick={() => setFase(2)}
               >
-                Calcular Massa →
+                Calcular massa <Icon name="avancar" size={15} />
               </button>
             </div>
           </div>
@@ -504,10 +492,10 @@ export function Producao() {
           {/* Fase 2 */}
           {fase >= 2 && receita && (
             <div className="bfy-card p-6 mb-4">
-              <h2 className="text-base font-bold mb-4" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}>
+              <h2 className="text-base font-bold mb-4 bfy-card-title">
                 2. Massa necessária
               </h2>
-              <div className="flex items-center gap-4 rounded-2xl p-4" style={{ background: 'rgba(29,16,8,0.06)' }}>
+              <div className="flex items-center gap-4 rounded-2xl p-4" style={{ background: 'var(--color-surface-sunk)' }}>
                 <span className="text-5xl">{receita.emoji ?? '🍪'}</span>
                 <div>
                   <p className="font-black text-lg" style={{ color: 'var(--color-text)' }}>
@@ -515,13 +503,13 @@ export function Producao() {
                       ? `≈ ${pesoMassaTotal.toFixed(0)} g de massa`
                       : 'Sem ingredientes em g/ml/kg/L'}
                   </p>
-                  <p className="text-sm" style={{ color: 'var(--color-text)', opacity: 0.6 }}>
+                  <p className="text-sm" style={{ color: 'var(--ink-3)' }}>
                     para {quantidade} cookies de {receita.nome}
                   </p>
                 </div>
               </div>
               <button className="btn-primary w-full mt-4 py-3" onClick={() => setFase(3)}>
-                Ver Ingredientes →
+                Ver ingredientes <Icon name="avancar" size={15} />
               </button>
             </div>
           )}
@@ -530,16 +518,16 @@ export function Producao() {
           {fase >= 3 && receita && (
             <div className="bfy-card p-6">
               <div className="flex items-center justify-between gap-2 mb-4 min-w-0">
-                <h2 className="text-base font-bold min-w-0 truncate" style={{ fontFamily: 'var(--font-title)', color: 'var(--color-accent-dark)' }}>
+                <h2 className="text-base font-bold min-w-0 truncate bfy-card-title">
                   3. Ingredientes necessários
                 </h2>
                 <button className="btn-ghost btn-sm shrink-0" onClick={exportarLista}>
-                  📋 Copiar
+                  Copiar
                 </button>
               </div>
 
               {ingredientesNecessarios.length === 0 ? (
-                <p className="text-sm" style={{ color: 'var(--color-text)', opacity: 0.5 }}>
+                <p className="text-sm" style={{ color: 'var(--ink-3)' }}>
                   Nenhum ingrediente cadastrado nesta receita.
                 </p>
               ) : (
@@ -553,13 +541,13 @@ export function Producao() {
                           ? 'rgba(229,115,115,0.1)'
                           : item.suficiente === true
                           ? 'rgba(90,158,133,0.1)'
-                          : 'rgba(29,16,8,0.05)',
+                          : 'var(--color-surface-sunk)',
                       }}
                     >
                       <div>
                         <p className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{item.nome}</p>
                         {item.estoqueAtual !== null && (
-                          <p className="text-xs" style={{ color: 'var(--color-text)', opacity: 0.5 }}>
+                          <p className="text-xs" style={{ color: 'var(--ink-3)' }}>
                             Estoque: {item.estoqueAtual.toFixed(1)} {item.unidade}
                           </p>
                         )}
@@ -569,10 +557,10 @@ export function Producao() {
                           {item.quantidade.toFixed(1)} {item.unidade}
                         </p>
                         {item.suficiente === false && (
-                          <p className="text-xs font-bold" style={{ color: '#e57373' }}>⚠️ Insuficiente</p>
+                          <p className="text-xs font-bold" style={{ color: 'var(--color-danger)' }}>Insuficiente</p>
                         )}
                         {item.suficiente === true && (
-                          <p className="text-xs font-bold" style={{ color: 'var(--color-success)' }}>✓ OK</p>
+                          <p className="text-xs font-bold" style={{ color: 'var(--color-success)' }}>OK</p>
                         )}
                       </div>
                     </div>
@@ -582,11 +570,11 @@ export function Producao() {
 
               {/* Confirmar Produção */}
               {ingredientesNecessarios.length > 0 && !confirmado && (
-                <div className="mt-4 pt-4" style={{ borderTop: '1.5px solid rgba(29,16,8,0.08)' }}>
+                <div className="mt-4 pt-4" style={{ borderTop: '1.5px solid var(--line-1)' }}>
                   {temInsuficienteProducao && (
                     <div className="mb-3 p-3 rounded-xl" style={{ background: 'rgba(229,115,115,0.1)' }}>
-                      <p className="text-sm font-bold" style={{ color: '#e57373' }}>⚠️ Estoque insuficiente</p>
-                      <p className="text-xs mt-1" style={{ color: 'var(--color-text)', opacity: 0.6 }}>
+                      <p className="text-sm font-bold" style={{ color: 'var(--color-danger)' }}>Estoque insuficiente</p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--ink-3)' }}>
                         Alguns ingredientes precisam ser comprados. Você pode confirmar mesmo assim para registrar a produção.
                       </p>
                     </div>
@@ -595,12 +583,10 @@ export function Producao() {
                     <button
                       className="btn-primary w-full py-3"
                       onClick={() => setShowConfirmModal(true)}
-                    >
-                      ✓ Confirmar Produção e Baixar Estoque
-                    </button>
+                    ><Icon name="check" size={16} /> Confirmar produção e baixar estoque</button>
                   ) : (
-                    <p className="text-xs text-center py-2" style={{ color: 'var(--color-text)', opacity: 0.4 }}>
-                      💡 Vincule ingredientes ao estoque nas receitas para baixar automaticamente
+                    <p className="text-xs text-center py-2" style={{ color: 'var(--ink-3)' }}>
+                      Vincule ingredientes ao estoque nas receitas para baixar automaticamente
                     </p>
                   )}
                 </div>
@@ -608,9 +594,9 @@ export function Producao() {
 
               {confirmado && (
                 <div className="mt-4 p-4 rounded-xl text-center" style={{ background: 'rgba(90,158,133,0.15)' }}>
-                  <p className="text-2xl mb-1">✓</p>
+                  <p className="mb-1" style={{ color: 'var(--color-success)' }}><Icon name="check" size={24} strokeWidth={2.4} /></p>
                   <p className="font-bold" style={{ color: 'var(--color-success)' }}>Produção confirmada!</p>
-                  <p className="text-xs mt-1" style={{ color: 'var(--color-text)', opacity: 0.6 }}>
+                  <p className="text-xs mt-1" style={{ color: 'var(--ink-3)' }}>
                     Estoque atualizado com sucesso.
                   </p>
                   <button
@@ -630,7 +616,7 @@ export function Producao() {
       {showConfirmModal && (
         <Modal title="Confirmar Produção" onClose={() => setShowConfirmModal(false)} size="sm">
           <div className="space-y-4">
-            <p className="text-sm" style={{ color: 'var(--color-text)', opacity: 0.7 }}>
+            <p className="text-sm" style={{ color: 'var(--ink-2)' }}>
               Será registrada saída de estoque para os ingredientes vinculados:
             </p>
             <div className="space-y-1.5">
@@ -638,12 +624,12 @@ export function Producao() {
                 <div
                   key={i}
                   className="flex items-center justify-between px-3 py-2 rounded-xl"
-                  style={{ background: 'rgba(29,16,8,0.05)' }}
+                  style={{ background: 'var(--color-surface-sunk)' }}
                 >
                   <span className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>{item.nome}</span>
                   <span
                     className="text-sm tabular-nums font-bold"
-                    style={{ color: item.suficiente === false ? '#e57373' : 'var(--color-text)' }}
+                    style={{ color: item.suficiente === false ? 'var(--color-danger)' : 'var(--color-text)' }}
                   >
                     −{item.quantidade.toFixed(2)} {item.unidade}
                   </span>
@@ -651,7 +637,7 @@ export function Producao() {
               ))}
             </div>
             {ingredientesNecessarios.some((i) => !i.ingredienteId) && (
-              <p className="text-xs" style={{ color: 'var(--color-text)', opacity: 0.45 }}>
+              <p className="text-xs" style={{ color: 'var(--ink-3)' }}>
                 * Ingredientes sem vínculo ao estoque não serão baixados
               </p>
             )}

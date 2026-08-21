@@ -1,4 +1,4 @@
-import { filterSalesByDay, computePosMetrics } from './salesAnalytics'
+import { filterSalesByDay, computePosMetrics, saleDayKey } from './salesAnalytics'
 
 export function eventDays(ev) {
   if (ev?.dias?.length) return ev.dias
@@ -9,8 +9,8 @@ export function eventDays(ev) {
 export function saleBelongsToEvent(sale, ev) {
   if (!ev) return false
   if (sale.eventId === ev.id) return true
-  const day = (sale.createdAt ?? '').slice(0, 10)
-  return eventDays(ev).includes(day)
+  const day = saleDayKey(sale)
+  return day !== '' && eventDays(ev).includes(day)
 }
 
 export function getEventPosSales(sales, ev) {
@@ -25,7 +25,7 @@ export function summarizeEvent(sales, ev, catalog) {
   const explicitDays = eventDays(ev)
   const inferredDays = [
     ...new Set(
-      evSales.map((s) => (s.createdAt ?? '').slice(0, 10)).filter(Boolean),
+      evSales.map((s) => saleDayKey(s)).filter(Boolean),
     ),
   ].sort()
 
@@ -75,8 +75,41 @@ export function formatEventDateRange(ev) {
   return '—'
 }
 
+/** Dias com vendas POS que não pertencem a nenhum evento cadastrado */
+export function orphanFairDayEvents(sales, eventos) {
+  const activeDays = new Set()
+  for (const s of sales) {
+    if ((s.totalEur ?? 0) <= 0 && s.kind !== 'demo') continue
+    const day = saleDayKey(s)
+    if (day) activeDays.add(day)
+  }
+
+  const orphans = []
+  for (const day of activeDays) {
+    const daySales = sales.filter((s) => saleDayKey(s) === day)
+    const covered = daySales.some((s) =>
+      eventos.some((ev) => saleBelongsToEvent(s, ev)),
+    )
+    if (covered) continue
+    orphans.push({
+      id: `orphan-day-${day}`,
+      nome: `Feira ${new Date(day + 'T12:00:00').toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      })}`,
+      data: day,
+      status: 'concluida',
+      virtual: true,
+    })
+  }
+
+  return orphans.sort((a, b) => (b.data || '').localeCompare(a.data || ''))
+}
+
 export function listFeirasWithStats(sales, eventos, catalog) {
-  return eventos
+  const all = [...eventos, ...orphanFairDayEvents(sales, eventos)]
+  return all
     .map((ev) => {
       const stats = summarizeEvent(sales, ev, catalog)
       return { ev, stats }

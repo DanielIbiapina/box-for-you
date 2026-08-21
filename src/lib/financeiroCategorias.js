@@ -6,6 +6,7 @@ export const CATEGORIAS_VARIAVEIS = [
   { id: 'material-limpeza', label: 'Material limpeza' },
   { id: 'material-cozinha', label: 'Material cozinha' },
   { id: 'logistica', label: 'Logística' },
+  { id: 'transporte', label: 'Transporte' },
   { id: 'dia-a-dia', label: 'Dia a dia' },
   { id: 'material-mercados', label: 'Material mercados' },
   { id: 'pessoal', label: 'Pessoal' },
