@@ -10,13 +10,14 @@ export const DEFAULT_COOKIES = [
   { id: 'black-pistachio',   nome: 'Black Pistachio',   short: 'Blk Pistachio',  emoji: '💚', price: 3.50, image: '', ativoNoCardapio: true },
 ]
 
-export const DEFAULT_BOX      = { size: 4, price: 12 }
-export const DEFAULT_MINI_BOX = { price: 7 }
+export const DEFAULT_BOX         = { size: 4, price: 12 }
+export const DEFAULT_MINI_BOX    = { price: 7 }
+export const DEFAULT_TASTING_BOX = { price: 16 }
 
 export function useCookies() {
   const {
-    cookies, boxConfig, miniBoxConfig,
-    createRow, updateRow, removeRow, setBoxConfig, setMiniBoxConfig,
+    cookies, boxConfig, miniBoxConfig, tastingBoxConfig,
+    createRow, updateRow, removeRow, setBoxConfig, setMiniBoxConfig, setTastingBoxConfig,
   } = useData()
 
   function addCookie(data) {
@@ -33,11 +34,13 @@ export function useCookies() {
     cookies,
     boxConfig,
     miniBoxConfig,
+    tastingBoxConfig,
     addCookie,
     updateCookie: (id, changes) => updateRow('cookies_catalogo', id, changes),
     removeCookie: (id) => removeRow('cookies_catalogo', id),
     toggleCardapio,
     setBoxConfig,
     setMiniBoxConfig,
+    setTastingBoxConfig,
   }
 }

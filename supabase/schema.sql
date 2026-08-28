@@ -165,8 +165,12 @@ create table if not exists configuracao (
   updated_at        timestamptz not null default now()
 );
 
--- coluna acrescentada depois da 1ª versão (idempotente p/ tabelas já criadas)
+-- colunas acrescentadas depois da 1ª versão (idempotente p/ tabelas já criadas)
 alter table vendas add column if not exists demo_flavor_id text;
+
+-- Tasting Box: 1 cookie de 50g de cada sabor ativo no cardápio, preço fixo.
+alter table configuracao add column if not exists tasting_box_config jsonb
+  not null default '{"price":16}'::jsonb;
 
 -- ---------- Índices úteis para relatórios/consultas ----------
 create index if not exists idx_vendas_created_at on vendas (created_at desc);

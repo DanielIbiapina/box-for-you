@@ -8,7 +8,7 @@ import { FeiraCardapio } from '../components/FeiraCardapio'
 import { useEventos } from '../stores/useEventos'
 import { useVendas } from '../stores/useVendas'
 import { listFeirasWithStats, formatEventDateRange } from '../lib/feiraHistory'
-import { menuCookies, MINI_BOX_ID } from '../lib/catalog'
+import { menuCookies, MINI_BOX_ID, TASTING_BOX_ID } from '../lib/catalog'
 import { todayKey, filterSalesByDay, computePosMetrics, topFlavorsRanking } from '../lib/salesAnalytics'
 import { isSupabaseConfigured } from '../lib/supabase'
 
@@ -69,14 +69,16 @@ function productMeta(productId, cookies, line = null) {
   const c = cookies.find((c) => c.id === productId)
   if (c) return { nome: c.nome, short: c.short, emoji: c.emoji, image: c.image }
   if (productId === MINI_BOX_ID) return { nome: 'Box Mini Cookies', short: 'Box Mini', emoji: '🍪', image: '' }
+  if (productId === TASTING_BOX_ID) return { nome: 'Tasting Box', short: 'Tasting Box', emoji: '🍪', image: '' }
   return { nome: productId, short: productId, emoji: '❓', image: '' }
 }
 
-function getPrice(productId, cookies, miniBoxPrice, line = null) {
+function getPrice(productId, cookies, miniBoxPrice, line = null, tastingBoxPrice = 16) {
   if (line?.unitPrice != null) return line.unitPrice
   const c = cookies.find((c) => c.id === productId)
   if (c) return c.price
   if (productId === MINI_BOX_ID) return miniBoxPrice
+  if (productId === TASTING_BOX_ID) return tastingBoxPrice
   return 0
 }
 
@@ -94,9 +96,9 @@ function buildCartLines(cart, customMeta = {}) {
     }))
 }
 
-function cartTotal(cart, cookies, miniBoxPrice, customMeta = {}) {
+function cartTotal(cart, cookies, miniBoxPrice, customMeta = {}, tastingBoxPrice = 16) {
   return buildCartLines(cart, customMeta).reduce(
-    (sum, ln) => sum + getPrice(ln.productId, cookies, miniBoxPrice, ln) * ln.qty,
+    (sum, ln) => sum + getPrice(ln.productId, cookies, miniBoxPrice, ln, tastingBoxPrice) * ln.qty,
     0,
   )
 }
@@ -125,11 +127,11 @@ function saleDescription(s, cookies) {
 
 export function Feiras({ onPosModeChange }) {
   const {
-    cookies, boxConfig, miniBoxConfig,
+    cookies, boxConfig, miniBoxConfig, tastingBoxConfig,
     setBoxConfig, setMiniBoxConfig,
   } = useCookies()
 
-  const { deductSale } = useEstoqueCookies()
+  const { deductSale, deductSale50, stockCookies50 } = useEstoqueCookies()
 
   const { eventos } = useEventos()
 
@@ -271,10 +273,11 @@ export function Feiras({ onPosModeChange }) {
 
     const newSales = []
     const deductItems = []
+    const deductItems50 = []
     const disc = Math.max(0, Number(desconto) || 0)
 
     if (nCart > 0) {
-      const full = cartTotal(cart, cookies, miniBoxConfig.price)
+      const full = cartTotal(cart, cookies, miniBoxConfig.price, {}, tastingBoxConfig.price)
       newSales.push({
         id: uid(), createdAt: new Date().toISOString(),
         kind: 'order', lines: buildCartLines(cart),
@@ -284,7 +287,11 @@ export function Feiras({ onPosModeChange }) {
         eventId: null,
       })
       for (const [productId, qty] of Object.entries(cart)) {
-        if (!productId.startsWith('custom-')) {
+        if (productId.startsWith('custom-')) continue
+        if (productId === TASTING_BOX_ID) {
+          // Cada Tasting Box leva 1 cookie de 50g de cada sabor ativo no cardápio
+          for (const c of menuItems) deductItems50.push({ cookieId: c.id, qty })
+        } else {
           deductItems.push({ cookieId: productId, qty })
         }
       }
@@ -315,6 +322,7 @@ export function Feiras({ onPosModeChange }) {
 
     newSales.forEach((s) => addSale(s))
     deductSale(deductItems)
+    deductSale50(deductItems50)
     setCart({})
     setOrder(null)
     setPayment(null)
@@ -371,7 +379,7 @@ export function Feiras({ onPosModeChange }) {
   const nCart      = cartPieces(cart)
   const boxFilled  = order?.kind === 'box' ? boxTotalCount(order.boxCounts) : 0
   const boxReady   = order?.kind === 'box' && boxFilled === boxConfig.size
-  const cartTotalEur = cartTotal(cart, cookies, miniBoxConfig.price)
+  const cartTotalEur = cartTotal(cart, cookies, miniBoxConfig.price, {}, tastingBoxConfig.price)
   const checkoutTotal = cartTotalEur + (boxReady ? boxConfig.price : 0)
   const descontoAplicado = Math.min(Math.max(0, Number(desconto) || 0), checkoutTotal)
   const totalFinal = Math.max(0, checkoutTotal - descontoAplicado)
@@ -506,6 +514,7 @@ export function Feiras({ onPosModeChange }) {
             <div className="mt-3 pt-3 flex flex-wrap gap-2" style={{ borderTop: '1px solid var(--line-1)' }}>
               <span className="bfy-chip">BOX {boxConfig.size} cookies · {fmtEuro(boxConfig.price)}</span>
               <span className="bfy-chip">Box Mini · {fmtEuro(miniBoxConfig.price)}</span>
+              <span className="bfy-chip">Tasting Box {menuItems.length} × 50g · {fmtEuro(tastingBoxConfig.price)}</span>
             </div>
           </div>
 
@@ -699,7 +708,59 @@ export function Feiras({ onPosModeChange }) {
             </div>
 
             {/* Linha de extras e ações especiais */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 shrink-0">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 shrink-0">
+              {/* Tasting Box — 1 cookie de 50g de cada sabor do cardápio */}
+              {(() => {
+                const n  = cart[TASTING_BOX_ID] ?? 0
+                const on = n > 0
+                const podeMontar = menuItems.length > 0
+                  ? Math.min(...menuItems.map((c) => stockCookies50[c.id] ?? 0))
+                  : 0
+                const semStock = podeMontar <= n
+                return (
+                  <button
+                    type="button"
+                    onClick={() => addToCart(TASTING_BOX_ID)}
+                    className="relative rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
+                    style={{
+                      border:     on ? '2px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
+                      background: on ? 'var(--color-accent-dark)' : 'var(--color-surface)',
+                      boxShadow:  'var(--shadow-card)',
+                    }}
+                  >
+                    {on && (
+                      <span
+                        className="absolute -top-1.5 -right-1 w-6 h-6 rounded-full flex items-center justify-center font-black text-xs shadow z-10"
+                        style={{ background: 'var(--color-accent)', color: '#fff' }}
+                      >
+                        {n}
+                      </span>
+                    )}
+                    <span className="shrink-0" style={{ color: on ? 'rgba(255,255,255,0.75)' : 'var(--ink-3)' }}>
+                      <Icon name="caixa" size={19} />
+                    </span>
+                    <div className="min-w-0 flex-1 text-left">
+                      <div className="text-xs font-bold truncate" style={{ color: on ? '#fff' : 'var(--color-text)' }}>
+                        Tasting Box
+                      </div>
+                      <div
+                        className="text-[11px] truncate"
+                        style={{
+                          color: on
+                            ? 'rgba(255,255,255,0.55)'
+                            : semStock ? 'var(--color-danger)' : 'rgba(29,16,8,0.45)',
+                        }}
+                      >
+                        {semStock ? 'sem stock de 50g' : `${menuItems.length} sabores · 50g`}
+                      </div>
+                    </div>
+                    <span className="text-sm font-black shrink-0 tabular-nums" style={{ color: on ? 'rgba(255,255,255,0.8)' : 'var(--color-accent-dark)' }}>
+                      {fmtEuro(tastingBoxConfig.price)}
+                    </span>
+                  </button>
+                )
+              })()}
+
               {/* Box Mini Cookies */}
               {(() => {
                 const n  = cart[MINI_BOX_ID] ?? 0
@@ -917,7 +978,7 @@ export function Feiras({ onPosModeChange }) {
                     </div>
                     {buildCartLines(cart).map((ln) => {
                       const meta  = productMeta(ln.productId, cookies, ln)
-                      const price = getPrice(ln.productId, cookies, miniBoxConfig.price, ln)
+                      const price = getPrice(ln.productId, cookies, miniBoxConfig.price, ln, tastingBoxConfig.price)
                       return (
                         <div
                           key={ln.productId}

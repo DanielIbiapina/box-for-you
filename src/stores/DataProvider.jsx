@@ -29,10 +29,18 @@ const sortDesc = (arr) => [...arr].sort((a, b) => String(getTime(b)).localeCompa
 const EMPTY_DB = {
   receitas: [], ingredientes: [], movimentacoes: [], eventos: [], clientes: [],
   vendas: [], pedidos: [], custosFixos: [], despesas: [], cookies: [],
-  estoqueCookies: {}, estoqueMassa: {},
+  estoqueCookies: {}, estoqueMassa: {}, estoqueCookies50: {},
   config: configToApp(null),
   boxConfig: { size: 4, price: 12 },
   miniBoxConfig: { price: 7 },
+  tastingBoxConfig: { price: 16 },
+}
+
+/** tipo de estoque -> chave no estado */
+const CHAVE_ESTOQUE = {
+  cookie: 'estoqueCookies',
+  massa: 'estoqueMassa',
+  cookie50: 'estoqueCookies50',
 }
 
 const DataContext = createContext(null)
@@ -53,7 +61,8 @@ export function DataProvider({ children }) {
   const dbRef = useRef(db)
   useEffect(() => { dbRef.current = db }, [db])
   // fonte síncrona do estoque (para loops de baixa/restauração acumularem certo)
-  const stockRef = useRef({ cookie: {}, massa: {} })
+  // tipos: 'cookie' (unidades normais) | 'massa' (gramas) | 'cookie50' (cookies de 50g)
+  const stockRef = useRef({ cookie: {}, massa: {}, cookie50: {} })
 
   // ── carregar tudo ──────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
@@ -74,18 +83,21 @@ export function DataProvider({ children }) {
       })
 
       if (estRes.error) throw estRes.error
-      const cookie = {}, massa = {}
+      const cookie = {}, massa = {}, cookie50 = {}
+      const balde = { massa, cookie50, cookie }
       for (const row of estRes.data ?? []) {
-        (row.tipo === 'massa' ? massa : cookie)[row.cookie_id] = Number(row.qty ?? 0)
+        (balde[row.tipo] ?? cookie)[row.cookie_id] = Number(row.qty ?? 0)
       }
       next.estoqueCookies = cookie
       next.estoqueMassa = massa
-      stockRef.current = { cookie, massa }
+      next.estoqueCookies50 = cookie50
+      stockRef.current = { cookie, massa, cookie50 }
 
       if (cfgRes.error) throw cfgRes.error
       next.config = configToApp(cfgRes.data)
       next.boxConfig = cfgRes.data?.box_config ?? { size: 4, price: 12 }
       next.miniBoxConfig = cfgRes.data?.mini_box_config ?? { price: 7 }
+      next.tastingBoxConfig = cfgRes.data?.tasting_box_config ?? { price: 16 }
 
       setDb(next)
       setInitialized(true)
@@ -115,13 +127,12 @@ export function DataProvider({ children }) {
     }
     function handleEstoqueChange(payload) {
       const row = payload.eventType === 'DELETE' ? payload.old : payload.new
-      const t = row.tipo === 'massa' ? 'massa' : 'cookie'
+      const t = CHAVE_ESTOQUE[row.tipo] ? row.tipo : 'cookie'
       const map = { ...stockRef.current[t] }
       if (payload.eventType === 'DELETE') delete map[row.cookie_id]
       else map[row.cookie_id] = Number(row.qty ?? 0)
       stockRef.current = { ...stockRef.current, [t]: map }
-      const mk = t === 'massa' ? 'estoqueMassa' : 'estoqueCookies'
-      setDb((prev) => ({ ...prev, [mk]: map }))
+      setDb((prev) => ({ ...prev, [CHAVE_ESTOQUE[t]]: map }))
     }
     function handleConfigChange(payload) {
       if (!payload.new) return
@@ -130,6 +141,7 @@ export function DataProvider({ children }) {
         config: configToApp(payload.new),
         boxConfig: payload.new.box_config ?? prev.boxConfig,
         miniBoxConfig: payload.new.mini_box_config ?? prev.miniBoxConfig,
+        tastingBoxConfig: payload.new.tasting_box_config ?? prev.tastingBoxConfig,
       }))
     }
 
@@ -192,33 +204,36 @@ export function DataProvider({ children }) {
     })
   }, [removeLocal, upsertLocal, fail])
 
-  // ── estoque (cookie/massa) — stockRef mantém a matemática correta em loops ────
+  // ── estoque (cookie / massa / cookie50) ──────────────────────────────────────
+  // stockRef é a fonte síncrona: mantém a matemática correta quando várias
+  // baixas do mesmo sabor acontecem no mesmo instante (ex.: Tasting Box).
   const setEstoque = useCallback((tipo, cookieId, qty) => {
-    const t = tipo === 'massa' ? 'massa' : 'cookie'
+    const t = CHAVE_ESTOQUE[tipo] ? tipo : 'cookie'
     const q = Math.max(0, qty)
     const map = { ...stockRef.current[t], [cookieId]: q }
     stockRef.current = { ...stockRef.current, [t]: map }
-    const mk = t === 'massa' ? 'estoqueMassa' : 'estoqueCookies'
-    setDb((prev) => ({ ...prev, [mk]: map }))
+    setDb((prev) => ({ ...prev, [CHAVE_ESTOQUE[t]]: map }))
     supabase.from('estoque').upsert({ tipo: t, cookie_id: cookieId, qty: q }, { onConflict: 'tipo,cookie_id' }).then(({ error: e }) => {
       if (e) fail(e, 'upsert estoque')
     })
   }, [fail])
 
   const adjustEstoque = useCallback((tipo, cookieId, delta) => {
-    const t = tipo === 'massa' ? 'massa' : 'cookie'
+    const t = CHAVE_ESTOQUE[tipo] ? tipo : 'cookie'
     const cur = stockRef.current[t][cookieId] ?? 0
     setEstoque(t, cookieId, cur + delta)
   }, [setEstoque])
 
-  const deductCookies = useCallback((items) => {
+  /** Baixa várias unidades de uma vez. `tipo` escolhe o balde de estoque. */
+  const deductCookies = useCallback((items, tipo = 'cookie') => {
     if (!items?.length) return
-    const map = { ...stockRef.current.cookie }
+    const t = CHAVE_ESTOQUE[tipo] ? tipo : 'cookie'
+    const map = { ...stockRef.current[t] }
     for (const { cookieId, qty } of items) map[cookieId] = Math.max(0, (map[cookieId] ?? 0) - qty)
-    stockRef.current = { ...stockRef.current, cookie: map }
-    setDb((prev) => ({ ...prev, estoqueCookies: map }))
+    stockRef.current = { ...stockRef.current, [t]: map }
+    setDb((prev) => ({ ...prev, [CHAVE_ESTOQUE[t]]: map }))
     const ids = [...new Set(items.map((i) => i.cookieId))]
-    const rows = ids.map((cookie_id) => ({ tipo: 'cookie', cookie_id, qty: map[cookie_id] }))
+    const rows = ids.map((cookie_id) => ({ tipo: t, cookie_id, qty: map[cookie_id] }))
     supabase.from('estoque').upsert(rows, { onConflict: 'tipo,cookie_id' }).then(({ error: e }) => {
       if (e) fail(e, 'deduct estoque')
     })
@@ -245,6 +260,14 @@ export function DataProvider({ children }) {
     setDb((prev) => ({ ...prev, miniBoxConfig: next }))
     supabase.from('configuracao').update({ mini_box_config: next }).eq('id', 'main').then(({ error: e }) => {
       if (e) fail(e, 'update mini_box_config')
+    })
+  }, [fail])
+
+  const setTastingBoxConfig = useCallback((valueOrFn) => {
+    const next = typeof valueOrFn === 'function' ? valueOrFn(dbRef.current.tastingBoxConfig) : valueOrFn
+    setDb((prev) => ({ ...prev, tastingBoxConfig: next }))
+    supabase.from('configuracao').update({ tasting_box_config: next }).eq('id', 'main').then(({ error: e }) => {
+      if (e) fail(e, 'update tasting_box_config')
     })
   }, [fail])
 
@@ -278,7 +301,7 @@ export function DataProvider({ children }) {
     refetch: loadAll,
     createRow, updateRow, removeRow,
     setEstoque, adjustEstoque, deductCookies,
-    updateConfig, setBoxConfig, setMiniBoxConfig,
+    updateConfig, setBoxConfig, setMiniBoxConfig, setTastingBoxConfig,
   }
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>

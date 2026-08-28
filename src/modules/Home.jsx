@@ -6,7 +6,7 @@ import { useEventos } from '../stores/useEventos'
 import { useVendas } from '../stores/useVendas'
 import { usePedidosVendas } from '../stores/usePedidosVendas'
 import { useFinanceiro } from '../stores/useFinanceiro'
-import { useClientes } from '../stores/useClientes'
+import { useCookies } from '../stores/useCookies'
 import { BarChart } from '../components/BarChart'
 import { Icon } from '../components/Icon'
 
@@ -24,6 +24,25 @@ const mesPedido = (p) => (p.dataPedido ?? p.criadoEm ?? '').slice(0, 7)
 /** Mês a que uma despesa pertence */
 const mesDespesa = (d) => d.mesRef || (d.data ?? '').slice(0, 7)
 
+/** Dia civil local (YYYY-MM-DD) — evita o desalinhamento de fuso do toISOString */
+function diaLocal(d = new Date()) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return y + '-' + m + '-' + dd
+}
+
+/** "Hoje" / "Amanhã" / "seg, 25 ago" */
+function rotuloDia(dia) {
+  const hoje = diaLocal()
+  const amanha = diaLocal(new Date(Date.now() + 86400000))
+  if (dia === hoje) return 'Hoje'
+  if (dia === amanha) return 'Amanhã'
+  return new Date(dia + 'T12:00:00').toLocaleDateString('pt-BR', {
+    weekday: 'short', day: '2-digit', month: 'short',
+  })
+}
+
 export function Home({ onNavigate }) {
   const { config } = useConfiguracoes()
   const { receitas } = useReceitas()
@@ -32,9 +51,10 @@ export function Home({ onNavigate }) {
   const { sales } = useVendas()
   const { pedidos } = usePedidosVendas()
   const { despesas } = useFinanceiro()
-  const { clientes } = useClientes()
+  const { cookies } = useCookies()
 
   const now = new Date()
+  const hojeKey = diaLocal(now)
   const thisMonth = monthKey(now)
 
   // ── Números do mês (feiras + encomendas − saídas) ─────────────────────────
@@ -70,8 +90,78 @@ export function Home({ onNavigate }) {
     ? Math.ceil((new Date(proxFeira.data + 'T12:00:00') - now) / 86400000)
     : null
   const baixoEstoque = ingredientes.filter((i) => statusIngrediente(i) !== 'ok')
-  const pedidosPendentes = pedidos.filter((p) => p.status === 'pendente')
   const criticos = baixoEstoque.filter((i) => statusIngrediente(i) === 'critico')
+
+  // ── Agenda de encomendas ───────────────────────────────────────────────────
+  // Ordenada pela DATA DE ENTREGA (não pela de registo) e agrupada por dia,
+  // para responder de relance a "o que tenho de fazer para amanhã?".
+  const { agenda, agendaAtrasados } = useMemo(() => {
+    const nomeSabor = (id, fallback) =>
+      cookies.find((c) => c.id === id)?.short ?? fallback ?? id
+
+    /** Unidades a produzir num pedido: linhas avulsas + conteúdo da BOX */
+    function contar(p) {
+      const porSabor = {}
+      let total = 0
+      const somar = (nome, q) => { porSabor[nome] = (porSabor[nome] ?? 0) + q; total += q }
+
+      for (const l of p.linhas ?? []) {
+        const q = l.qty ?? 0
+        if (q > 0) somar(l.customLabel ?? nomeSabor(l.cookieId), q)
+      }
+      for (const [cookieId, q] of Object.entries(p.box?.counts ?? {})) {
+        if (q > 0) somar(nomeSabor(cookieId), q)
+      }
+      const temBox = Object.values(p.box?.counts ?? {}).some((q) => q > 0)
+      return { total, porSabor, temBox }
+    }
+
+    const porEntregar = pedidos.filter(
+      (p) => p.status !== 'entregue' && p.status !== 'cancelado',
+    )
+    const dias = new Map()
+    const atrasados = []
+
+    for (const p of porEntregar) {
+      const dia = p.dataPedido ?? String(p.criadoEm ?? '').slice(0, 10)
+      if (!dia) continue
+      if (dia < hojeKey) { atrasados.push(p); continue }
+      if (!dias.has(dia)) dias.set(dia, [])
+      dias.get(dia).push(p)
+    }
+
+    const lista = [...dias.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))   // mais próximo primeiro
+      .slice(0, 4)
+      .map(([data, ps]) => {
+        const porSabor = {}
+        let totalCookies = 0
+        let totalBoxes = 0
+        let valor = 0
+        for (const p of ps) {
+          const c = contar(p)
+          totalCookies += c.total
+          if (c.temBox) totalBoxes += 1
+          valor += p.totalEur ?? 0
+          for (const [nome, q] of Object.entries(c.porSabor)) {
+            porSabor[nome] = (porSabor[nome] ?? 0) + q
+          }
+        }
+        return {
+          data,
+          rotulo: rotuloDia(data),
+          pedidos: ps,
+          totalCookies,
+          totalBoxes,
+          valor,
+          porSabor: Object.entries(porSabor)
+            .map(([nome, qty]) => ({ nome, qty }))
+            .sort((a, b) => b.qty - a.qty),
+        }
+      })
+
+    return { agenda: lista, agendaAtrasados: atrasados }
+  }, [pedidos, cookies, hojeKey])
 
   // ── Gráfico: 6 meses, feiras + encomendas ─────────────────────────────────
   const chartData = useMemo(
@@ -154,6 +244,64 @@ export function Home({ onNavigate }) {
               <span className="ink-4 mt-0.5"><Icon name="avancar" size={16} /></span>
             </button>
           )}
+        </div>
+      )}
+
+      {/* ── Agenda de encomendas: o que há para fazer, por dia de entrega ── */}
+      {(agendaAtrasados.length > 0 || agenda.length > 0) && (
+        <div className="bfy-card p-4 mb-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="bfy-eyebrow">Encomendas por entregar</h2>
+            <button className="btn-ghost btn-sm" onClick={() => onNavigate('vendas')}>
+              Ver todas <Icon name="avancar" size={14} />
+            </button>
+          </div>
+
+          {agendaAtrasados.length > 0 && (
+            <button
+              onClick={() => onNavigate('vendas')}
+              className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left"
+              style={{ background: 'var(--color-danger-soft)', border: '1px solid rgba(179,64,47,0.28)' }}
+            >
+              <span style={{ color: 'var(--color-danger)' }}><Icon name="alerta" size={17} /></span>
+              <span style={{ fontSize: 'var(--text-sm)', color: '#8C3123' }}>
+                <strong>{agendaAtrasados.length} encomenda{agendaAtrasados.length > 1 ? 's' : ''} com data já passada</strong>
+              </span>
+            </button>
+          )}
+
+          {agenda.map((dia) => (
+            <div key={dia.data} className="bfy-sunk p-3">
+              <div className="flex items-baseline justify-between gap-3 mb-2">
+                <span className="font-bold ink-1" style={{ fontSize: 'var(--text-md)' }}>
+                  {dia.rotulo}
+                  <span className="ink-3 font-normal"> · {dia.pedidos.length} encomenda{dia.pedidos.length > 1 ? 's' : ''}</span>
+                </span>
+                <span className="bfy-num font-bold shrink-0" style={{ color: 'var(--color-accent-dark)', fontSize: 'var(--text-md)' }}>
+                  {fmtEur(dia.valor)}
+                </span>
+              </div>
+
+              {/* O número que interessa: quanto há para produzir */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                <span className="bfy-chip bfy-chip-accent">
+                  <Icon name="cookie" size={13} /> {dia.totalCookies} cookie{dia.totalCookies !== 1 ? 's' : ''}
+                </span>
+                {dia.totalBoxes > 0 && (
+                  <span className="bfy-chip">
+                    <Icon name="caixa" size={13} /> {dia.totalBoxes} box
+                  </span>
+                )}
+              </div>
+
+              {/* Repartição por sabor, para saber exatamente o que fazer */}
+              {dia.porSabor.length > 0 && (
+                <p className="ink-2" style={{ fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
+                  {dia.porSabor.map((s) => `${s.qty}× ${s.nome}`).join(' · ')}
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -281,50 +429,6 @@ export function Home({ onNavigate }) {
         />
       </button>
 
-      {/* ── Fila de trabalho: pedidos por entregar ── */}
-      {pedidosPendentes.length > 0 && (
-        <div className="bfy-card p-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="bfy-eyebrow">Pedidos por entregar</h2>
-            <button className="btn-ghost btn-sm" onClick={() => onNavigate('vendas')}>
-              Ver todos <Icon name="avancar" size={14} />
-            </button>
-          </div>
-          <div className="space-y-2">
-            {pedidosPendentes.slice(0, 4).map((p) => {
-              const cliente = clientes.find((c) => c.id === p.clienteId)
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => onNavigate('vendas')}
-                  className="bfy-sunk w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors"
-                >
-                  <span className="ink-4"><Icon name="recibo" size={17} /></span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block font-bold truncate ink-1" style={{ fontSize: 'var(--text-md)' }}>
-                      {cliente?.nome ?? 'Sem cliente'}
-                    </span>
-                    <span className="block ink-3" style={{ fontSize: 'var(--text-xs)' }}>
-                      {p.dataPedido
-                        ? new Date(p.dataPedido + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
-                        : '—'}
-                      {p.formaPagamento ? ` · ${p.formaPagamento}` : ''}
-                    </span>
-                  </span>
-                  <span className="bfy-num font-bold shrink-0" style={{ color: 'var(--color-accent-dark)', fontSize: 'var(--text-md)' }}>
-                    {fmtEur(p.totalEur)}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-          {pedidosPendentes.length > 4 && (
-            <p className="ink-4 text-center" style={{ fontSize: 'var(--text-xs)' }}>
-              e mais {pedidosPendentes.length - 4}
-            </p>
-          )}
-        </div>
-      )}
     </div>
   )
 }

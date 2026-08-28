@@ -11,10 +11,12 @@ const EMPTY_COOKIE_FORM = { nome: '', short: '', emoji: '🍪', price: 3.50, ima
 /** Gestão global de sabores — visível no cardápio da feira, preços, BOX */
 export function CardapioAdmin() {
   const {
-    cookies, boxConfig, miniBoxConfig,
+    cookies, boxConfig, miniBoxConfig, tastingBoxConfig,
     addCookie, updateCookie, removeCookie, toggleCardapio,
-    setBoxConfig, setMiniBoxConfig,
+    setBoxConfig, setMiniBoxConfig, setTastingBoxConfig,
   } = useCookies()
+
+  const ativosNoCardapio = cookies.filter((c) => c.ativoNoCardapio !== false).length
 
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState(EMPTY_COOKIE_FORM)
@@ -162,6 +164,28 @@ export function CardapioAdmin() {
             step="0.5"
             value={miniBoxConfig.price}
             onChange={(e) => setMiniBoxConfig((p) => ({ ...p, price: parseFloat(e.target.value) || 0 }))}
+          />
+        </label>
+      </div>
+
+      <div className="bfy-card p-5 space-y-3">
+        <h3 className="text-sm font-bold bfy-card-title">
+          Tasting Box
+        </h3>
+        <p className="text-sm ink-3">
+          Leva <strong>1 cookie de 50g de cada sabor ativo</strong> no cardápio — hoje são{' '}
+          {ativosNoCardapio} sabor{ativosNoCardapio !== 1 ? 'es' : ''}. Não é preciso definir tamanho:
+          acompanha o cardápio. O stock sai de <strong>Estoque › Cookies 50g</strong>.
+        </p>
+        <label className="block max-w-xs">
+          <span className="bfy-label">Preço (€)</span>
+          <input
+            className="bfy-input"
+            type="number"
+            min="0"
+            step="0.5"
+            value={tastingBoxConfig.price}
+            onChange={(e) => setTastingBoxConfig((p) => ({ ...p, price: parseFloat(e.target.value) || 0 }))}
           />
         </label>
       </div>

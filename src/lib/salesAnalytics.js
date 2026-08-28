@@ -1,4 +1,4 @@
-import { resolveProductMeta, lineUnitPrice, MINI_BOX_ID } from './catalog'
+import { resolveProductMeta, lineUnitPrice, MINI_BOX_ID, TASTING_BOX_ID } from './catalog'
 
 /** Dia civil local (YYYY-MM-DD) — evita desalinhamento UTC vs feira no fuso local */
 export function todayKey(date = new Date()) {
@@ -87,7 +87,8 @@ export function aggregateCookieCounts(sales, catalog) {
   for (const s of sales) {
     if (s.kind === 'order') {
       for (const ln of s.lines ?? []) {
-        if (ln.productId === MINI_BOX_ID) continue
+        // Caixas são produtos, não sabores — ficam fora do ranking de sabores
+        if (ln.productId === MINI_BOX_ID || ln.productId === TASTING_BOX_ID) continue
         add(ln.customLabel ? `custom:${ln.customLabel}` : ln.productId, ln.qty ?? 0)
       }
     } else if (s.kind === 'box') {

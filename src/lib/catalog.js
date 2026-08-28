@@ -7,6 +7,13 @@ export const LEGACY_COOKIES = [
 
 export const MINI_BOX_ID = 'mini-box'
 
+/**
+ * Tasting Box — leva 1 cookie de 50g de CADA sabor ativo no cardápio.
+ * O tamanho é variável de propósito: acompanha o cardápio do dia.
+ * Sai do stock de 50g (`tipo: 'cookie50'`), não do stock de cookies normais.
+ */
+export const TASTING_BOX_ID = 'tasting-box'
+
 export function readCookieCatalog() {
   let cookies = []
   try {
@@ -40,14 +47,18 @@ export function resolveProductMeta(productId, catalog, line = null) {
   if (productId === MINI_BOX_ID) {
     return { nome: 'Box Mini Cookies', short: 'Box Mini', emoji: '🍪', image: '' }
   }
+  if (productId === TASTING_BOX_ID) {
+    return { nome: 'Tasting Box', short: 'Tasting Box', emoji: '🍪', image: '' }
+  }
   return { nome: String(productId), short: String(productId), emoji: '❓', image: '' }
 }
 
-export function lineUnitPrice(line, catalog, miniBoxPrice) {
+export function lineUnitPrice(line, catalog, miniBoxPrice, tastingBoxPrice = 16) {
   if (line.unitPrice != null) return line.unitPrice
   if (line.customLabel && line.unitPrice == null && line.customPrice != null) return line.customPrice
   const c = catalog.find((x) => x.id === line.productId)
   if (c) return c.price
   if (line.productId === MINI_BOX_ID) return miniBoxPrice
+  if (line.productId === TASTING_BOX_ID) return tastingBoxPrice
   return 0
 }
