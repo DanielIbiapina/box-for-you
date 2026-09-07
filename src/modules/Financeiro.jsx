@@ -12,7 +12,8 @@ import {
   labelCategoria,
 } from '../lib/financeiroCategorias'
 import { describePosSale } from '../lib/salesAnalytics'
-import { readCookieCatalog } from '../lib/catalog'
+import { withLegacyCookies } from '../lib/catalog'
+import { useCookies } from '../stores/useCookies'
 
 const fmtEuro = (v) =>
   new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(v ?? 0)
@@ -75,7 +76,8 @@ export function Financeiro() {
   const [formModal, setFormModal] = useState(null) // 'new' | id | null
   const [form, setForm] = useState(EMPTY_FORM)
   const [novoFixoNome, setNovoFixoNome] = useState('')
-  const catalog = useMemo(() => readCookieCatalog(), [])
+  const { cookies: cookiesAtivos } = useCookies()
+  const catalog = useMemo(() => withLegacyCookies(cookiesAtivos), [cookiesAtivos])
   const { sales: posSales } = useVendas()
 
   const despesasMes = useMemo(
@@ -123,7 +125,21 @@ export function Financeiro() {
     () => entradasDiretas.reduce((s, x) => s + (x.totalEur ?? 0), 0),
     [entradasDiretas],
   )
-  const totalEntradas = totalPos + totalDiretas
+
+  // Multibanco cobra ~1,5% de taxa — a entrada líquida (o que cai mesmo na conta) é menor que o valor da venda.
+  const totalMultibancoBruto = useMemo(() => {
+    const pos = entradasPos
+      .filter((s) => s.paymentId === 'multibanco')
+      .reduce((s, x) => s + (x.totalEur ?? 0), 0)
+    const diretas = entradasDiretas
+      .filter((p) => p.formaPagamento === 'Multibanco')
+      .reduce((s, x) => s + (x.totalEur ?? 0), 0)
+    return pos + diretas
+  }, [entradasPos, entradasDiretas])
+  const taxaMultibanco = Math.round(totalMultibancoBruto * 0.015 * 100) / 100
+
+  const totalEntradasBruto = totalPos + totalDiretas
+  const totalEntradas = totalEntradasBruto - taxaMultibanco
   const balanco = totalEntradas - totalSaidas
 
   const porCategoria = useMemo(() => {
@@ -266,6 +282,17 @@ export function Financeiro() {
             </p>
             <Row label="Feiras (POS)" value={fmtEuro(totalPos)} />
             <Row label="Vendas diretas" value={fmtEuro(totalDiretas)} />
+            {taxaMultibanco > 0 && (
+              <Row label="Taxa Multibanco (1,5%)" value={`−${fmtEuro(taxaMultibanco)}`} />
+            )}
+            {taxaMultibanco > 0 && (
+              <div className="flex justify-between gap-3 text-sm pt-2" style={{ borderTop: '1px solid var(--line-1)' }}>
+                <span className="font-bold ink-1">Entradas líquidas</span>
+                <span className="font-black tabular-nums" style={{ color: 'var(--color-text)' }}>
+                  {fmtEuro(totalEntradas)}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="bfy-card p-4 space-y-2">

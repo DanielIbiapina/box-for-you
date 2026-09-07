@@ -125,7 +125,7 @@ function saleDescription(s, cookies) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function Feiras({ onPosModeChange }) {
+export function Feiras({ onPosModeChange, perfilFeira = false }) {
   const {
     cookies, boxConfig, miniBoxConfig, tastingBoxConfig,
     setBoxConfig, setMiniBoxConfig,
@@ -488,9 +488,11 @@ export function Feiras({ onPosModeChange }) {
           <div className="bfy-card p-4">
             <div className="flex items-center justify-between gap-3 mb-3">
               <h2 className="bfy-eyebrow">Cardápio do caixa</h2>
-              <button className="btn-ghost btn-sm" onClick={() => setView('cardapio')}>
-                <Icon name="editar" size={14} /> Gerir
-              </button>
+              {!perfilFeira && (
+                <button className="btn-ghost btn-sm" onClick={() => setView('cardapio')}>
+                  <Icon name="editar" size={14} /> Gerir
+                </button>
+              )}
             </div>
             <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
               {menuItems.map((c) => (
@@ -721,7 +723,7 @@ export function Feiras({ onPosModeChange }) {
                   <button
                     type="button"
                     onClick={() => addToCart(TASTING_BOX_ID)}
-                    className="relative rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
+                    className="relative min-w-0 rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
                     style={{
                       border:     on ? '2px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
                       background: on ? 'var(--color-accent-dark)' : 'var(--color-surface)',
@@ -769,7 +771,7 @@ export function Feiras({ onPosModeChange }) {
                   <button
                     type="button"
                     onClick={() => addToCart(MINI_BOX_ID)}
-                    className="relative rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
+                    className="relative min-w-0 rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
                     style={{
                       border:     on ? '2px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
                       background: on ? 'var(--color-accent-dark)' : 'var(--color-surface)',
@@ -787,7 +789,7 @@ export function Feiras({ onPosModeChange }) {
                     <span className="shrink-0 ink-3"><Icon name="cookie" size={19} /></span>
                     <div className="min-w-0 flex-1 text-left">
                       <div className="text-xs font-bold truncate" style={{ color: on ? '#fff' : 'var(--color-text)' }}>Box Mini</div>
-                      <div className="text-[11px]" style={{ color: on ? 'rgba(255,255,255,0.55)' : 'rgba(29,16,8,0.45)' }}>Pacote especial</div>
+                      <div className="text-[11px] truncate" style={{ color: on ? 'rgba(255,255,255,0.55)' : 'rgba(29,16,8,0.45)' }}>Pacote especial</div>
                     </div>
                     <span className="text-sm font-black shrink-0 tabular-nums" style={{ color: on ? 'rgba(255,255,255,0.8)' : 'var(--color-accent-dark)' }}>
                       {fmtEuro(miniBoxConfig.price)}
@@ -800,7 +802,7 @@ export function Feiras({ onPosModeChange }) {
               <button
                 type="button"
                 onClick={startBox}
-                className="rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
+                className="min-w-0 rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
                 style={{
                   border:     order?.kind === 'box' ? '2px solid var(--color-accent)' : '1.5px solid rgba(194,75,41,0.25)',
                   background: order?.kind === 'box' ? 'var(--color-accent)' : 'rgba(194,75,41,0.07)',
@@ -811,10 +813,10 @@ export function Feiras({ onPosModeChange }) {
                   <Icon name="caixa" size={20} />
                 </span>
                 <div className="min-w-0 flex-1 text-left">
-                  <div className="text-xs font-bold" style={{ color: order?.kind === 'box' ? '#fff' : 'var(--color-accent-dark)' }}>
+                  <div className="text-xs font-bold truncate" style={{ color: order?.kind === 'box' ? '#fff' : 'var(--color-accent-dark)' }}>
                     BOX {boxConfig.size} cookies
                   </div>
-                  <div className="text-[11px]" style={{ color: order?.kind === 'box' ? 'rgba(255,255,255,0.65)' : 'rgba(154,59,28,0.65)' }}>
+                  <div className="text-[11px] truncate" style={{ color: order?.kind === 'box' ? 'rgba(255,255,255,0.65)' : 'rgba(154,59,28,0.65)' }}>
                     Mix de sabores
                   </div>
                 </div>
@@ -827,7 +829,7 @@ export function Feiras({ onPosModeChange }) {
               <button
                 type="button"
                 onClick={startDemo}
-                className="rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
+                className="min-w-0 rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
                 style={{
                   border:     order?.kind === 'demo' ? '2px solid var(--color-primary)' : '1.5px solid var(--line-2)',
                   background: order?.kind === 'demo' ? 'var(--color-primary)' : 'var(--color-surface-sunk)',
@@ -838,10 +840,10 @@ export function Feiras({ onPosModeChange }) {
                   <Icon name="cookie" size={20} />
                 </span>
                 <div className="min-w-0 flex-1 text-left">
-                  <div className="text-xs font-bold" style={{ color: order?.kind === 'demo' ? '#fff' : 'var(--color-text)' }}>
+                  <div className="text-xs font-bold truncate" style={{ color: order?.kind === 'demo' ? '#fff' : 'var(--color-text)' }}>
                     Prova grátis
                   </div>
-                  <div className="text-[11px]" style={{ color: order?.kind === 'demo' ? 'rgba(255,255,255,0.5)' : 'rgba(29,16,8,0.4)' }}>
+                  <div className="text-[11px] truncate" style={{ color: order?.kind === 'demo' ? 'rgba(255,255,255,0.5)' : 'rgba(29,16,8,0.4)' }}>
                     Prova grátis
                   </div>
                 </div>
@@ -1076,17 +1078,17 @@ export function Feiras({ onPosModeChange }) {
                         <div className="flex gap-2 items-center">
                           <button
                             type="button"
-                            onClick={() => setDesconto((d) => (Number(d) === 0.5 ? 0 : 0.5))}
+                            onClick={() => setDesconto((d) => (Number(d) === 1 ? 0 : 1))}
                             className="rounded-xl px-3 py-2 text-sm font-bold shrink-0 transition-all"
                             style={{
-                              background: descontoAplicado === 0.5 ? 'var(--color-success)' : 'var(--color-surface-sunk)',
-                              color: descontoAplicado === 0.5 ? '#fff' : 'var(--color-text)',
-                              border: descontoAplicado === 0.5
+                              background: descontoAplicado === 1 ? 'var(--color-success)' : 'var(--color-surface-sunk)',
+                              color: descontoAplicado === 1 ? '#fff' : 'var(--color-text)',
+                              border: descontoAplicado === 1
                                 ? '2px solid var(--color-success)'
                                 : '1.5px solid var(--line-2)',
                             }}
                           >
-                            −€0,50
+                            −€1,00
                           </button>
                           <input
                             type="number"

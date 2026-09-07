@@ -85,7 +85,6 @@ export function Loja() {
       cliente: {
         nome: form.nome,
         telefone: form.telefone,
-        instagram: form.instagram,
         email: form.email,
       },
       itens: Object.entries(cart)

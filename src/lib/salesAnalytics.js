@@ -78,7 +78,11 @@ export function posSaleDetailLines(s, catalog, miniBoxPrice = 7) {
   return []
 }
 
-/** Contagem de cookies por productId (inclui legacy e custom como id próprio) */
+/**
+ * Contagem de cookies vendidos por productId (inclui legacy e custom como id próprio).
+ * Provas grátis (kind: 'demo') ficam de fora — não são vendas e têm contagem
+ * própria em computePosMetrics().demoCount, para não contaminar rankings/relatórios.
+ */
 export function aggregateCookieCounts(sales, catalog) {
   const counts = {}
   const add = (id, qty) => {
@@ -93,15 +97,50 @@ export function aggregateCookieCounts(sales, catalog) {
       }
     } else if (s.kind === 'box') {
       for (const id of s.boxFlavors ?? []) add(id, 1)
-    } else if (s.kind === 'demo') {
-      add(s.demoFlavorId, 1)
     }
   }
   return counts
 }
 
-export function topFlavorsRanking(sales, catalog, limit = 12) {
-  const counts = aggregateCookieCounts(sales, catalog)
+/**
+ * Contagem de cookies por sabor a partir de pedidos diretos (WhatsApp, pessoal
+ * ou loja online — todos caem na mesma tabela `pedidos`). Mini Box, Tasting Box
+ * e caixas extras (customLabel) ficam fora, igual ao ranking da Feira: não são
+ * 1 sabor só. A 1ª caixa de cada pedido (coluna nativa `box.counts`) entra
+ * normalmente, sabor a sabor.
+ */
+export function aggregatePedidoCookieCounts(pedidos) {
+  const counts = {}
+  const add = (id, qty) => {
+    counts[id] = (counts[id] ?? 0) + qty
+  }
+  for (const p of pedidos) {
+    if (p.status === 'cancelado') continue
+    for (const ln of p.linhas ?? []) {
+      if (ln.customLabel) continue
+      if (ln.cookieId === MINI_BOX_ID || ln.cookieId === TASTING_BOX_ID) continue
+      add(ln.cookieId, ln.qty ?? 0)
+    }
+    for (const [cookieId, qty] of Object.entries(p.box?.counts ?? {})) {
+      if (qty > 0) add(cookieId, qty)
+    }
+  }
+  return counts
+}
+
+/** Soma dois ou mais mapas { id: qty } num só — usado para combinar Feira + Pedidos. */
+export function mergeCookieCounts(...countMaps) {
+  const merged = {}
+  for (const map of countMaps) {
+    for (const [id, qty] of Object.entries(map)) {
+      merged[id] = (merged[id] ?? 0) + qty
+    }
+  }
+  return merged
+}
+
+/** Transforma um mapa { id: qty } no array ordenado usado pelos rankings. */
+export function rankFromCounts(counts, catalog, limit = 12) {
   return Object.entries(counts)
     .map(([id, qty]) => {
       if (id.startsWith('custom:')) {
@@ -112,6 +151,10 @@ export function topFlavorsRanking(sales, catalog, limit = 12) {
     })
     .sort((a, b) => b.qty - a.qty)
     .slice(0, limit)
+}
+
+export function topFlavorsRanking(sales, catalog, limit = 12) {
+  return rankFromCounts(aggregateCookieCounts(sales, catalog), catalog, limit)
 }
 
 export function computePosMetrics(sales, catalog) {

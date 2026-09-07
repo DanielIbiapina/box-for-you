@@ -53,7 +53,7 @@ export function AppGate() {
 
   return (
     <DataProvider>
-      <App />
+      <App role={session.user?.app_metadata?.role ?? 'owner'} />
     </DataProvider>
   )
 }

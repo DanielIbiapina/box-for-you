@@ -17,7 +17,7 @@ const hoje = () => new Date().toISOString().slice(0, 10)
 export function Checkout({ cardapio, cart, caixas, onFechar, onRemoverLinha, onEnviar }) {
   const [passo, setPasso] = useState('resumo')
   const [form, setForm] = useState({
-    nome: '', telefone: '', instagram: '', email: '',
+    nome: '', telefone: '', email: '',
     entrega: '', pagamento: '', notas: '',
   })
   const [erro, setErro] = useState('')
@@ -120,22 +120,13 @@ export function Checkout({ cardapio, cart, caixas, onFechar, onRemoverLinha, onE
               <span className="bfy-hint">É por aqui que confirmamos o pedido contigo.</span>
             </label>
 
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="bfy-label">Instagram</span>
-                <input
-                  className="bfy-input" maxLength={60}
-                  value={form.instagram} onChange={set('instagram')} placeholder="@..."
-                />
-              </label>
-              <label className="block">
-                <span className="bfy-label">Quando queres?</span>
-                <input
-                  className="bfy-input" type="date" min={hoje()}
-                  value={form.entrega} onChange={set('entrega')}
-                />
-              </label>
-            </div>
+            <label className="block">
+              <span className="bfy-label">Quando queres?</span>
+              <input
+                className="bfy-input" type="date" min={hoje()}
+                value={form.entrega} onChange={set('entrega')}
+              />
+            </label>
 
             <fieldset>
               <legend className="bfy-label">Como preferes pagar? *</legend>

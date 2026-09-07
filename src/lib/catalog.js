@@ -14,18 +14,23 @@ export const MINI_BOX_ID = 'mini-box'
  */
 export const TASTING_BOX_ID = 'tasting-box'
 
+/** Junta o cardápio (vivo, do Supabase) com os sabores legados — para nomes não sumirem do histórico. */
+export function withLegacyCookies(cookies) {
+  const byId = new Map((cookies ?? []).map((c) => [c.id, c]))
+  for (const leg of LEGACY_COOKIES) {
+    if (!byId.has(leg.id)) byId.set(leg.id, { ...leg })
+  }
+  return [...byId.values()]
+}
+
 export function readCookieCatalog() {
-  let cookies = []
+  let cookies
   try {
     cookies = JSON.parse(localStorage.getItem('bfy:feiras-cookies') || '[]')
   } catch {
     cookies = []
   }
-  const byId = new Map(cookies.map((c) => [c.id, c]))
-  for (const leg of LEGACY_COOKIES) {
-    if (!byId.has(leg.id)) byId.set(leg.id, { ...leg })
-  }
-  return [...byId.values()]
+  return withLegacyCookies(cookies)
 }
 
 /** Cookies visíveis no POS (Gerir Cardápio pode desativar sem apagar) */

@@ -32,7 +32,7 @@ const NAV = [
 const PRIMARY = NAV.filter((n) => n.primary)
 const SECONDARY = NAV.filter((n) => !n.primary)
 
-export default function App() {
+export default function App({ role = 'owner' }) {
   const [active, setActive] = useState('home')
   const [feirasPosMode, setFeirasPosMode] = useState(false)
   const [maisAberto, setMaisAberto] = useState(false)
@@ -44,6 +44,18 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [maisAberto])
+
+  // Perfil "feira": acesso limitado a registar vendas na feira, sem navegação
+  // para o resto do app. A proteção a sério é o RLS (supabase/perfil-feira.sql) —
+  // isto é só para não mostrar telas que essa conta não pode mesmo usar.
+  if (role === 'feira') {
+    return (
+      <div className="flex h-[100dvh] flex-col overflow-hidden" style={{ background: 'var(--color-bg)' }}>
+        <SyncBar />
+        <Feiras onPosModeChange={() => {}} perfilFeira />
+      </div>
+    )
+  }
 
   function go(id) {
     setActive(id)

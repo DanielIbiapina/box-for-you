@@ -7,11 +7,15 @@ import { Icon } from '../components/Icon'
 import { BarChart } from '../components/BarChart'
 import { Modal } from '../components/Modal'
 import { FeiraHistoricoPanel } from '../components/FeiraHistoricoPanel'
-import { readCookieCatalog } from '../lib/catalog'
+import { withLegacyCookies } from '../lib/catalog'
+import { useCookies } from '../stores/useCookies'
 import {
   describePosSale,
-  topFlavorsRanking,
   aggregateCookieCounts,
+  aggregatePedidoCookieCounts,
+  mergeCookieCounts,
+  rankFromCounts,
+  computePosMetrics,
 } from '../lib/salesAnalytics'
 import { summarizeEvent, formatEventDateRange, orphanFairDayEvents } from '../lib/feiraHistory'
 
@@ -124,13 +128,16 @@ export function Relatorios() {
   const { pedidos: pedidosVendas } = usePedidosVendas()
   const { clientes } = useClientes()
   const { sales: salesPos } = useVendas()
-  const catalog = useMemo(() => readCookieCatalog(), [])
+  const { cookies: cookiesAtivos } = useCookies()
+  const catalog = useMemo(() => withLegacyCookies(cookiesAtivos), [cookiesAtivos])
 
   const now = new Date()
   const [mesSelecionado, setMesSelecionado] = useState(monthKey(now))
   const [tabVendas, setTabVendas] = useState('avulsas')
   const [posVisiveis, setPosVisiveis] = useState(POS_INICIAL)
   const [historicoEvent, setHistoricoEvent] = useState(null)
+  const [incluirFeira, setIncluirFeira] = useState(true)
+  const [incluirPedidos, setIncluirPedidos] = useState(true)
 
   useEffect(() => {
     setPosVisiveis(POS_INICIAL)
@@ -188,20 +195,35 @@ export function Relatorios() {
     }
   }, [salesPos, pedidosVendas, mesSelecionado, catalog])
 
-  const rankingSabores = useMemo(
+  const pagamentosMes = useMemo(
     () =>
-      topFlavorsRanking(
+      computePosMetrics(
         salesPos.filter((s) => (s.createdAt ?? '').startsWith(mesSelecionado)),
         catalog,
-        15,
-      ),
+      ).byPayment,
     [salesPos, mesSelecionado, catalog],
   )
 
-  const rankingAllTime = useMemo(
-    () => topFlavorsRanking(salesPos, catalog, 10),
-    [salesPos, catalog],
-  )
+  const rankingSabores = useMemo(() => {
+    const feira = incluirFeira
+      ? aggregateCookieCounts(
+          salesPos.filter((s) => (s.createdAt ?? '').startsWith(mesSelecionado)),
+          catalog,
+        )
+      : {}
+    const pedidos = incluirPedidos
+      ? aggregatePedidoCookieCounts(
+          pedidosVendas.filter((p) => (p.criadoEm ?? '').startsWith(mesSelecionado)),
+        )
+      : {}
+    return rankFromCounts(mergeCookieCounts(feira, pedidos), catalog, 15)
+  }, [salesPos, pedidosVendas, mesSelecionado, catalog, incluirFeira, incluirPedidos])
+
+  const rankingAllTime = useMemo(() => {
+    const feira = incluirFeira ? aggregateCookieCounts(salesPos, catalog) : {}
+    const pedidos = incluirPedidos ? aggregatePedidoCookieCounts(pedidosVendas) : {}
+    return rankFromCounts(mergeCookieCounts(feira, pedidos), catalog, 10)
+  }, [salesPos, pedidosVendas, catalog, incluirFeira, incluirPedidos])
 
   const maxRank = Math.max(...rankingSabores.map((r) => r.qty), 1)
 
@@ -361,6 +383,35 @@ export function Relatorios() {
         </div>
       </div>
 
+      {/* Total por forma de pagamento (POS) */}
+      <div className="bfy-card p-5 space-y-3">
+        <h2 className="bfy-eyebrow">
+          Total por forma de pagamento — {meses.find((m) => m.key === mesSelecionado)?.label}
+        </h2>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { id: 'dinheiro', label: 'Dinheiro' },
+            { id: 'mbway', label: 'MB WAY' },
+            { id: 'multibanco', label: 'Multibanco' },
+          ].map((p) => {
+            const r = pagamentosMes[p.id] ?? { count: 0, eur: 0 }
+            return (
+              <div
+                key={p.id}
+                className="rounded-xl px-3 py-2.5"
+                style={{ background: 'var(--color-surface-sunk)', border: '1px solid var(--line-1)' }}
+              >
+                <div className="text-[11px] font-bold ink-3">{p.label}</div>
+                <div className="text-lg font-black tabular-nums" style={{ color: 'var(--color-text)' }}>
+                  {fmtEuro(r.eur)}
+                </div>
+                <div className="text-[11px] ink-4">{r.count}×</div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Insights divertidos */}
       <div className="grid sm:grid-cols-3 gap-3">
         {insights.champion && (
@@ -409,12 +460,38 @@ export function Relatorios() {
 
       {/* Ranking sabores */}
       <div className="bfy-card p-5 space-y-4">
-        <h2 className="bfy-eyebrow">
-          Ranking de sabores — {meses.find((m) => m.key === mesSelecionado)?.label}
-        </h2>
-        {rankingSabores.length === 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="bfy-eyebrow">
+            Ranking de sabores — {meses.find((m) => m.key === mesSelecionado)?.label}
+          </h2>
+          <div className="flex items-center gap-3 text-xs font-semibold">
+            <label className="flex items-center gap-1.5 cursor-pointer" style={{ color: 'var(--color-text)' }}>
+              <input
+                type="checkbox"
+                checked={incluirFeira}
+                onChange={(e) => setIncluirFeira(e.target.checked)}
+                className="w-4 h-4 accent-[var(--color-accent-dark)]"
+              />
+              Feira
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer" style={{ color: 'var(--color-text)' }}>
+              <input
+                type="checkbox"
+                checked={incluirPedidos}
+                onChange={(e) => setIncluirPedidos(e.target.checked)}
+                className="w-4 h-4 accent-[var(--color-accent-dark)]"
+              />
+              Pedidos
+            </label>
+          </div>
+        </div>
+        {!incluirFeira && !incluirPedidos ? (
           <p className="text-sm text-center py-6 ink-3">
-            Nenhum cookie vendido neste mês.
+            Marca "Feira" e/ou "Pedidos" pra ver o ranking.
+          </p>
+        ) : rankingSabores.length === 0 ? (
+          <p className="text-sm text-center py-6 ink-3">
+            Nenhum cookie vendido neste mês {incluirFeira && incluirPedidos ? '' : incluirFeira ? '(Feira)' : '(Pedidos)'}.
           </p>
         ) : (
           <div className="space-y-2">
@@ -452,7 +529,12 @@ export function Relatorios() {
           </div>
         )}
         <p className="text-[11px] pt-1 ink-3">
-          Inclui sabores atuais, históricos (ex. BOW) e vendas personalizadas.
+          {incluirFeira && incluirPedidos
+            ? 'Junta vendas do Caixa da Feira com pedidos diretos (WhatsApp, pessoal) e da loja online.'
+            : incluirFeira
+              ? 'Só vendas do Caixa da Feira — desmarca "Feira" e marca "Pedidos" pra ver os diretos/loja.'
+              : 'Só pedidos diretos (WhatsApp, pessoal) e da loja online — marca "Feira" pra somar o caixa.'}
+          {' '}Inclui sabores atuais, históricos (ex. BOW) e vendas personalizadas.
         </p>
       </div>
 
@@ -461,6 +543,9 @@ export function Relatorios() {
         <div className="bfy-card p-5">
           <h2 className="bfy-eyebrow mb-3">
             Hall da fama (desde sempre)
+            {!incluirFeira || !incluirPedidos ? (
+              <span className="font-normal opacity-60"> — {incluirFeira ? 'só Feira' : 'só Pedidos'}</span>
+            ) : null}
           </h2>
           <div className="flex flex-wrap gap-2">
             {rankingAllTime.slice(0, 5).map((r, i) => (
