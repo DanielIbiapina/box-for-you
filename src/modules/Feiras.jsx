@@ -709,8 +709,12 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
               })}
             </div>
 
-            {/* Linha de extras e ações especiais */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 shrink-0">
+            {/* Linha de extras e ações especiais — mesmo layout vertical dos cards
+                de cookie (imagem/ícone em cima, texto embaixo): a versão anterior
+                em linha (ícone + texto + preço lado a lado) não cabia na coluna
+                estreita do Cardápio quando a tela de Caixa divide em 3 colunas
+                (≥1024px) — o texto ficava cortado/sumido no iPad. */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
               {/* Tasting Box — 1 cookie de 50g de cada sabor do cardápio */}
               {(() => {
                 const n  = cart[TASTING_BOX_ID] ?? 0
@@ -723,42 +727,47 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                   <button
                     type="button"
                     onClick={() => addToCart(TASTING_BOX_ID)}
-                    className="relative min-w-0 rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
+                    className="relative rounded-2xl overflow-hidden flex flex-col transition-all active:scale-95"
                     style={{
-                      border:     on ? '2px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
+                      border:     on ? '2.5px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
+                      boxShadow:  on ? '0 4px 16px rgba(154,59,28,0.22)' : 'var(--shadow-card)',
                       background: on ? 'var(--color-accent-dark)' : 'var(--color-surface)',
-                      boxShadow:  'var(--shadow-card)',
                     }}
                   >
-                    {on && (
-                      <span
-                        className="absolute -top-1.5 -right-1 w-6 h-6 rounded-full flex items-center justify-center font-black text-xs shadow z-10"
-                        style={{ background: 'var(--color-accent)', color: '#fff' }}
-                      >
-                        {n}
+                    <div
+                      className="relative flex items-center justify-center py-3"
+                      style={{ background: on ? 'rgba(255,255,255,0.07)' : 'var(--color-surface-sunk)' }}
+                    >
+                      <span style={{ color: on ? 'rgba(255,255,255,0.85)' : 'var(--ink-3)' }}>
+                        <Icon name="caixa" size={24} />
                       </span>
-                    )}
-                    <span className="shrink-0" style={{ color: on ? 'rgba(255,255,255,0.75)' : 'var(--ink-3)' }}>
-                      <Icon name="caixa" size={19} />
-                    </span>
-                    <div className="min-w-0 flex-1 text-left">
-                      <div className="text-xs font-bold truncate" style={{ color: on ? '#fff' : 'var(--color-text)' }}>
+                      {on && (
+                        <span
+                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center font-black text-xs shadow-md"
+                          style={{ background: 'var(--color-accent)', color: '#fff' }}
+                        >
+                          {n}
+                        </span>
+                      )}
+                    </div>
+                    <div className="px-1.5 py-1.5 text-center shrink-0">
+                      <div className="text-[11px] font-bold truncate leading-tight" style={{ color: on ? '#fff' : 'var(--color-text)' }}>
                         Tasting Box
                       </div>
                       <div
-                        className="text-[11px] truncate"
+                        className="text-[10px] truncate leading-tight"
                         style={{
                           color: on
                             ? 'rgba(255,255,255,0.55)'
                             : semStock ? 'var(--color-danger)' : 'rgba(29,16,8,0.45)',
                         }}
                       >
-                        {semStock ? 'sem stock de 50g' : `${menuItems.length} sabores · 50g`}
+                        {semStock ? 'sem stock' : `${menuItems.length} sabores`}
+                      </div>
+                      <div className="text-[11px] font-black tabular-nums" style={{ color: on ? 'rgba(255,255,255,0.8)' : 'var(--color-accent-dark)' }}>
+                        {fmtEuro(tastingBoxConfig.price)}
                       </div>
                     </div>
-                    <span className="text-sm font-black shrink-0 tabular-nums" style={{ color: on ? 'rgba(255,255,255,0.8)' : 'var(--color-accent-dark)' }}>
-                      {fmtEuro(tastingBoxConfig.price)}
-                    </span>
                   </button>
                 )
               })()}
@@ -771,29 +780,40 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                   <button
                     type="button"
                     onClick={() => addToCart(MINI_BOX_ID)}
-                    className="relative min-w-0 rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
+                    className="relative rounded-2xl overflow-hidden flex flex-col transition-all active:scale-95"
                     style={{
-                      border:     on ? '2px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
+                      border:     on ? '2.5px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
+                      boxShadow:  on ? '0 4px 16px rgba(154,59,28,0.22)' : 'var(--shadow-card)',
                       background: on ? 'var(--color-accent-dark)' : 'var(--color-surface)',
-                      boxShadow:  'var(--shadow-card)',
                     }}
                   >
-                    {on && (
-                      <span
-                        className="absolute -top-1.5 -right-1 w-6 h-6 rounded-full flex items-center justify-center font-black text-xs shadow z-10"
-                        style={{ background: 'var(--color-accent)', color: '#fff' }}
-                      >
-                        {n}
+                    <div
+                      className="relative flex items-center justify-center py-3"
+                      style={{ background: on ? 'rgba(255,255,255,0.07)' : 'var(--color-surface-sunk)' }}
+                    >
+                      <span style={{ color: on ? 'rgba(255,255,255,0.85)' : 'var(--ink-3)' }}>
+                        <Icon name="cookie" size={24} />
                       </span>
-                    )}
-                    <span className="shrink-0 ink-3"><Icon name="cookie" size={19} /></span>
-                    <div className="min-w-0 flex-1 text-left">
-                      <div className="text-xs font-bold truncate" style={{ color: on ? '#fff' : 'var(--color-text)' }}>Box Mini</div>
-                      <div className="text-[11px] truncate" style={{ color: on ? 'rgba(255,255,255,0.55)' : 'rgba(29,16,8,0.45)' }}>Pacote especial</div>
+                      {on && (
+                        <span
+                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center font-black text-xs shadow-md"
+                          style={{ background: 'var(--color-accent)', color: '#fff' }}
+                        >
+                          {n}
+                        </span>
+                      )}
                     </div>
-                    <span className="text-sm font-black shrink-0 tabular-nums" style={{ color: on ? 'rgba(255,255,255,0.8)' : 'var(--color-accent-dark)' }}>
-                      {fmtEuro(miniBoxConfig.price)}
-                    </span>
+                    <div className="px-1.5 py-1.5 text-center shrink-0">
+                      <div className="text-[11px] font-bold truncate leading-tight" style={{ color: on ? '#fff' : 'var(--color-text)' }}>
+                        Box Mini
+                      </div>
+                      <div className="text-[10px] truncate leading-tight" style={{ color: on ? 'rgba(255,255,255,0.55)' : 'rgba(29,16,8,0.45)' }}>
+                        Pacote especial
+                      </div>
+                      <div className="text-[11px] font-black tabular-nums" style={{ color: on ? 'rgba(255,255,255,0.8)' : 'var(--color-accent-dark)' }}>
+                        {fmtEuro(miniBoxConfig.price)}
+                      </div>
+                    </div>
                   </button>
                 )
               })()}
@@ -802,54 +822,58 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
               <button
                 type="button"
                 onClick={startBox}
-                className="min-w-0 rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
+                className="relative rounded-2xl overflow-hidden flex flex-col transition-all active:scale-95"
                 style={{
-                  border:     order?.kind === 'box' ? '2px solid var(--color-accent)' : '1.5px solid rgba(194,75,41,0.25)',
+                  border:     order?.kind === 'box' ? '2.5px solid var(--color-accent)' : '1.5px solid rgba(194,75,41,0.25)',
+                  boxShadow:  order?.kind === 'box' ? '0 4px 16px rgba(154,59,28,0.22)' : 'var(--shadow-card)',
                   background: order?.kind === 'box' ? 'var(--color-accent)' : 'rgba(194,75,41,0.07)',
-                  boxShadow:  'var(--shadow-card)',
                 }}
               >
-                <span className="shrink-0" style={{ color: order?.kind === 'box' ? '#fff' : 'var(--color-accent-dark)' }}>
-                  <Icon name="caixa" size={20} />
-                </span>
-                <div className="min-w-0 flex-1 text-left">
-                  <div className="text-xs font-bold truncate" style={{ color: order?.kind === 'box' ? '#fff' : 'var(--color-accent-dark)' }}>
+                <div className="flex items-center justify-center py-3" style={{ background: 'rgba(194,75,41,0.08)' }}>
+                  <span style={{ color: order?.kind === 'box' ? '#fff' : 'var(--color-accent-dark)' }}>
+                    <Icon name="caixa" size={24} />
+                  </span>
+                </div>
+                <div className="px-1.5 py-1.5 text-center shrink-0">
+                  <div className="text-[11px] font-bold truncate leading-tight" style={{ color: order?.kind === 'box' ? '#fff' : 'var(--color-accent-dark)' }}>
                     BOX {boxConfig.size} cookies
                   </div>
-                  <div className="text-[11px] truncate" style={{ color: order?.kind === 'box' ? 'rgba(255,255,255,0.65)' : 'rgba(154,59,28,0.65)' }}>
+                  <div className="text-[10px] truncate leading-tight" style={{ color: order?.kind === 'box' ? 'rgba(255,255,255,0.65)' : 'rgba(154,59,28,0.65)' }}>
                     Mix de sabores
                   </div>
+                  <div className="text-[11px] font-black tabular-nums" style={{ color: order?.kind === 'box' ? '#fff' : 'var(--color-accent-dark)' }}>
+                    {fmtEuro(boxConfig.price)}
+                  </div>
                 </div>
-                <span className="text-sm font-black shrink-0 tabular-nums" style={{ color: order?.kind === 'box' ? '#fff' : 'var(--color-accent-dark)' }}>
-                  {fmtEuro(boxConfig.price)}
-                </span>
               </button>
 
               {/* Demo */}
               <button
                 type="button"
                 onClick={startDemo}
-                className="min-w-0 rounded-xl flex items-center gap-2.5 px-3 py-2.5 transition-all active:scale-95"
+                className="relative rounded-2xl overflow-hidden flex flex-col transition-all active:scale-95"
                 style={{
-                  border:     order?.kind === 'demo' ? '2px solid var(--color-primary)' : '1.5px solid var(--line-2)',
+                  border:     order?.kind === 'demo' ? '2.5px solid var(--color-primary)' : '1.5px solid var(--line-2)',
+                  boxShadow:  order?.kind === 'demo' ? '0 4px 16px rgba(154,59,28,0.22)' : 'var(--shadow-card)',
                   background: order?.kind === 'demo' ? 'var(--color-primary)' : 'var(--color-surface-sunk)',
-                  boxShadow:  'var(--shadow-card)',
                 }}
               >
-                <span className="shrink-0" style={{ color: order?.kind === 'demo' ? '#fff' : 'var(--ink-2)' }}>
-                  <Icon name="cookie" size={20} />
-                </span>
-                <div className="min-w-0 flex-1 text-left">
-                  <div className="text-xs font-bold truncate" style={{ color: order?.kind === 'demo' ? '#fff' : 'var(--color-text)' }}>
+                <div className="flex items-center justify-center py-3" style={{ background: 'rgba(0,0,0,0.04)' }}>
+                  <span style={{ color: order?.kind === 'demo' ? '#fff' : 'var(--ink-2)' }}>
+                    <Icon name="cookie" size={24} />
+                  </span>
+                </div>
+                <div className="px-1.5 py-1.5 text-center shrink-0">
+                  <div className="text-[11px] font-bold truncate leading-tight" style={{ color: order?.kind === 'demo' ? '#fff' : 'var(--color-text)' }}>
                     Prova grátis
                   </div>
-                  <div className="text-[11px] truncate" style={{ color: order?.kind === 'demo' ? 'rgba(255,255,255,0.5)' : 'rgba(29,16,8,0.4)' }}>
-                    Prova grátis
+                  <div className="text-[10px] truncate leading-tight" style={{ color: order?.kind === 'demo' ? 'rgba(255,255,255,0.5)' : 'rgba(29,16,8,0.4)' }}>
+                    Amostra
+                  </div>
+                  <div className="text-[11px] font-black tabular-nums" style={{ color: order?.kind === 'demo' ? 'rgba(255,255,255,0.85)' : 'var(--color-accent-dark)' }}>
+                    {fmtEuro(0)}
                   </div>
                 </div>
-                <span className="text-xs font-bold shrink-0" style={{ color: order?.kind === 'demo' ? 'rgba(255,255,255,0.5)' : 'rgba(29,16,8,0.25)' }}>
-                  {fmtEuro(0)}
-                </span>
               </button>
             </div>
           </div>
