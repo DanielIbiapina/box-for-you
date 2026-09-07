@@ -71,6 +71,7 @@ export const MAPPERS = {
       id: 'id', clienteId: 'cliente_id', linhas: 'linhas', box: 'box',
       totalEur: 'total_eur', desconto: 'desconto', dataPedido: 'data_pedido',
       formaPagamento: 'forma_pagamento', status: 'status', notas: 'notas', criadoEm: 'criado_em',
+      origem: 'origem',
     },
     ['totalEur', 'desconto'],
   ),

@@ -24,6 +24,15 @@ const fmtDateFull = (iso) =>
 
 const PAGAMENTOS = ['Dinheiro', 'MB WAY', 'Multibanco', 'Transferência', 'Outro']
 
+/** Pedido criado pelo cliente na loja online — ainda não passou pela dona. */
+function ChipLoja() {
+  return (
+    <span className="bfy-chip bfy-chip-accent" title="Pedido feito pelo cliente na loja online">
+      🛒 Loja
+    </span>
+  )
+}
+
 function statusInfo(id) {
   return STATUS_PEDIDO.find((s) => s.id === id) ?? STATUS_PEDIDO[0]
 }
@@ -694,6 +703,7 @@ export function Vendas() {
                             · {p.formaPagamento}
                           </span>
                         )}
+                        {p.origem === 'loja' && <ChipLoja />}
                       </div>
                       <p className="text-xs truncate ink-3">
                         {pedidoSummary(p, cookies)}
@@ -878,6 +888,7 @@ function PedidoCard({ pedido, cookies, st, onEdit, onDelete }) {
             {parseDate(pedido.dataPedido ?? pedido.criadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
             · {pedido.formaPagamento}
           </span>
+          {pedido.origem === 'loja' && <ChipLoja />}
         </div>
         <p className="text-xs truncate ink-3">
           {pedidoSummary(pedido, cookies)}

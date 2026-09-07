@@ -11,7 +11,7 @@ npm run preview   # Serve production build locally
 npm run lint      # ESLint check
 ```
 
-No test suite exists. Validate UI changes by running `npm run dev` and testing in a browser.
+No test suite exists. Validate UI changes by running `npm run dev` and testing in a browser — the storefront at `/`, the management app at `/crm/`.
 
 ## Architecture
 
@@ -19,7 +19,14 @@ No test suite exists. Validate UI changes by running `npm run dev` and testing i
 
 **Stack:** React 19 + Vite 8 + Tailwind CSS 4 (via `@tailwindcss/vite`, no separate `tailwind.config`)
 
-**Persistence:** `localStorage` only — no server, no API calls.
+**Persistence:** Supabase (Postgres + realtime), via [`src/stores/DataProvider.jsx`](src/stores/DataProvider.jsx). Column names are snake_case in the DB and camelCase in the app — [`src/stores/mappers.js`](src/stores/mappers.js) translates both ways.
+
+**Two pages, one project** (see `build.rollupOptions.input` in [`vite.config.js`](vite.config.js)):
+
+| URL | Entry | What |
+|-----|-------|------|
+| `/` | `index.html` → [`src/loja/main.jsx`](src/loja/main.jsx) | Public storefront, no login |
+| `/crm/` | `crm/index.html` → [`src/main.jsx`](src/main.jsx) | Owner's app, behind Supabase auth |
 
 ### Modules
 
@@ -75,3 +82,30 @@ Design tokens and utility classes (`.bfy-card`, `.btn-accent`, `.btn-primary`, `
 ### Static assets
 
 Nav icons are served from [`public/icons/`](public/icons/) as `/icons/nav-*.png`. Add PNGs with the exact filenames referenced in `App.jsx` (`nav-inicio.png`, `nav-receitas.png`, etc.) plus `logo.png` for the tablet sidebar.
+
+## Storefront (`src/loja/`)
+
+The public page never touches tables: RLS still admits authenticated users only.
+Anonymous visitors may execute exactly two SECURITY DEFINER functions, defined in
+[`supabase/loja.sql`](supabase/loja.sql):
+
+- `loja_cardapio()` — active flavors, box prices, stock
+- `loja_criar_pedido(jsonb)` — validates, **recomputes the total server-side**,
+  creates the client + order (`origem: 'loja'`, `status: 'pendente'`) and deducts stock
+
+Prices sent by the browser are ignored by design. When changing anything about
+pricing or stock, change it in the SQL function too — otherwise the store and the
+POS drift apart.
+
+Stock rules mirror `Feiras.jsx`: loose cookies and the Box come out of
+`estoque(tipo:'cookie')`, the Mini Box is the pseudo-id `mini-box` in that same
+bucket, and each Tasting Box takes one 50g cookie of every active flavor from
+`estoque(tipo:'cookie50')`.
+
+Orders carry a `linhas` entry with `customLabel` for Mini Box, Tasting Box and any
+box beyond the first, so they read well in Vendas. Those lines are skipped by the
+app's stock restore on cancel/delete (`deductPedidoStock` filters `customLabel`) —
+the flavors of an extra box are not returned to stock automatically.
+
+`src/loja/api.js` calls PostgREST with plain `fetch` rather than `supabase-js`, to
+keep the customer-facing bundle small. Don't import `supabase-js` into `src/loja/`.

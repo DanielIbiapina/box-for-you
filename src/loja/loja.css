@@ -1,0 +1,163 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Loja pública — assenta nos tokens de src/index.css (mesma marca da app).
+   Só o que a loja precisa e o design system ainda não tinha.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.loja-body { min-height: 100dvh; background: var(--color-bg); }
+
+/* ── Barra do topo ──────────────────────────────────────────────────────── */
+.loja-top {
+  position: sticky; top: 0; z-index: 30;
+  background: color-mix(in srgb, var(--color-bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line-1);
+}
+.loja-wrap { width: 100%; max-width: 64rem; margin-inline: auto; padding-inline: 1rem; }
+@media (min-width: 768px) { .loja-wrap { padding-inline: 1.5rem; } }
+
+.loja-brand {
+  font-family: var(--font-title); font-weight: 900;
+  font-variation-settings: 'SOFT' 40, 'WONK' 1;
+  letter-spacing: -0.02em; color: var(--color-accent-dark);
+  line-height: 1;
+}
+
+/* ── Hero ───────────────────────────────────────────────────────────────── */
+.loja-hero {
+  background:
+    radial-gradient(120% 90% at 82% 8%, rgba(194,75,41,0.14), transparent 60%),
+    var(--color-bg);
+}
+.loja-hero-title {
+  font-family: var(--font-title); font-weight: 900;
+  font-variation-settings: 'SOFT' 40, 'WONK' 1;
+  letter-spacing: -0.025em; line-height: 1.02;
+  font-size: clamp(2.25rem, 9vw, 4rem);
+  color: var(--ink-1);
+}
+.loja-hero-img {
+  width: 100%; max-width: 20rem; height: auto;
+  filter: drop-shadow(0 18px 30px rgba(29,16,8,0.22));
+}
+
+/* ── Secções ────────────────────────────────────────────────────────────── */
+.loja-section-title {
+  font-family: var(--font-title); font-weight: 900;
+  font-variation-settings: 'SOFT' 40, 'WONK' 1;
+  letter-spacing: -0.02em; line-height: 1.1;
+  font-size: clamp(1.5rem, 5vw, 2rem);
+  color: var(--ink-1);
+}
+
+/* ── Cartão de sabor ────────────────────────────────────────────────────── */
+.cookie-card {
+  position: relative; display: flex; flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 0.875rem;
+  transition: border-color .15s, box-shadow .15s, transform .12s;
+}
+.cookie-card:hover { border-color: rgba(154,59,28,0.3); box-shadow: var(--shadow-pop); }
+.cookie-card[data-escolhido='true'] {
+  border-color: var(--color-accent-dark);
+  box-shadow: 0 0 0 3px rgba(154,59,28,0.13), var(--shadow-card);
+}
+.cookie-card[data-esgotado='true'] { opacity: 0.55; box-shadow: none; }
+.cookie-card[data-esgotado='true']:hover { border-color: var(--line-1); box-shadow: none; }
+
+.cookie-face {
+  display: grid; place-items: center;
+  aspect-ratio: 1 / 1; width: 100%;
+  border-radius: 12px; overflow: hidden;
+  background: var(--color-surface-sunk);
+  font-size: clamp(2rem, 11vw, 3rem); line-height: 1;
+}
+.cookie-face img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ── Stepper ────────────────────────────────────────────────────────────── */
+.stepper { display: flex; align-items: center; gap: 0.5rem; }
+.stepper-count {
+  min-width: 1.75rem; text-align: center;
+  font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink-1);
+}
+
+/* ── Chips de escolha (box builder) ─────────────────────────────────────── */
+.chip-sabor {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.45rem 0.7rem; border-radius: var(--radius-pill);
+  border: 1.5px solid var(--line-2); background: var(--color-surface);
+  font-size: var(--text-sm); font-weight: 600; color: var(--ink-1);
+  cursor: pointer; transition: border-color .12s, background .12s, transform .08s;
+}
+.chip-sabor:hover:not(:disabled) { border-color: var(--color-accent-dark); background: var(--color-accent-soft); }
+.chip-sabor:active:not(:disabled) { transform: scale(0.96); }
+.chip-sabor:disabled { opacity: 0.35; cursor: not-allowed; }
+.chip-sabor[data-ativo='true'] {
+  border-color: var(--color-accent-dark);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-dark);
+}
+
+/* Ranhuras da caixa a encher */
+.box-slots { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.box-slot {
+  width: 2.5rem; height: 2.5rem; border-radius: 10px;
+  display: grid; place-items: center; font-size: 1.15rem;
+  border: 1.5px dashed var(--line-2); background: var(--color-surface-sunk);
+  color: var(--ink-4);
+}
+.box-slot[data-cheio='true'] {
+  border-style: solid; border-color: var(--color-accent-dark);
+  background: var(--color-accent-soft);
+}
+
+/* ── Barra do carrinho ──────────────────────────────────────────────────── */
+.loja-cartbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  background: var(--color-primary); color: var(--ink-on-dark);
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  box-shadow: 0 -6px 24px rgba(29,16,8,0.22);
+  animation: cartbar-up .22s ease-out;
+}
+@keyframes cartbar-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+/* ── Painel (checkout / carrinho) ───────────────────────────────────────── */
+.sheet-backdrop {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(29,16,8,0.5); backdrop-filter: blur(3px);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+@media (min-width: 640px) { .sheet-backdrop { align-items: center; padding: 1.5rem; } }
+
+.sheet {
+  width: 100%; max-width: 34rem;
+  max-height: 92dvh; overflow-y: auto;
+  background: var(--color-bg);
+  border-radius: 22px 22px 0 0;
+  box-shadow: var(--shadow-pop);
+  animation: sheet-up .24s ease-out;
+}
+@media (min-width: 640px) { .sheet { border-radius: 22px; } }
+@keyframes sheet-up { from { transform: translateY(24px); opacity: .6; } to { transform: translateY(0); opacity: 1; } }
+
+.sheet-head {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--color-bg); border-bottom: 1px solid var(--line-1);
+  padding: 1rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+
+/* ── Passos "como funciona" ─────────────────────────────────────────────── */
+.passo-num {
+  width: 2rem; height: 2rem; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: 50%;
+  background: var(--color-accent-dark); color: #fff;
+  font-weight: 900; font-size: var(--text-sm);
+}
+
+.loja-footer {
+  background: var(--color-primary); color: var(--ink-on-dark-2);
+  padding: 2rem 0 calc(2rem + env(safe-area-inset-bottom));
+}
