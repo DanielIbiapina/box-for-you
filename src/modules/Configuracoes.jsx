@@ -197,6 +197,26 @@ export function Configuracoes() {
           </div>
         </div>
 
+        <Field label="Instruções de levantamento (loja online)">
+          <textarea
+            className="bfy-input"
+            rows={2}
+            value={form.instrucoesLevantamento ?? ''}
+            onChange={(e) => setForm((f) => ({ ...f, instrucoesLevantamento: e.target.value }))}
+            placeholder="Ex.: Levantamento em Lisboa — combinamos o sítio por mensagem."
+          />
+        </Field>
+
+        <Field label="Instruções de entrega (loja online)">
+          <textarea
+            className="bfy-input"
+            rows={2}
+            value={form.instrucoesEntrega ?? ''}
+            onChange={(e) => setForm((f) => ({ ...f, instrucoesEntrega: e.target.value }))}
+            placeholder="Ex.: Entregas na zona de Lisboa. Combinamos o horário contigo."
+          />
+        </Field>
+
         <button type="submit" className="btn-primary w-full py-3">
           {saved ? 'Guardado' : 'Salvar configurações'}
         </button>

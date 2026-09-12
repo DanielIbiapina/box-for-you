@@ -2,7 +2,7 @@
 
 export function Stepper({ qty, onMenos, onMais, podeMais, label }) {
   return (
-    <div className="stepper">
+    <div className="stepper" onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
         className="btn-step"

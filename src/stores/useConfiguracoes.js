@@ -6,6 +6,8 @@ const DEFAULT = {
   moeda: '€',
   metaLucroMensal: 2000,
   formasPagamento: ['Dinheiro', 'MB WAY', 'Multibanco'],
+  instrucoesLevantamento: '',
+  instrucoesEntrega: '',
 }
 
 export function useConfiguracoes() {

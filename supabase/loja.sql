@@ -3,12 +3,14 @@
 -- Rode este script inteiro no Supabase → SQL Editor. Idempotente.
 --
 -- Princípio: o visitante NUNCA fala com as tabelas. O RLS continua a permitir
--- apenas utilizadores autenticados (a app da dona). A loja usa duas funções
+-- apenas utilizadores autenticados (a app da dona). A loja usa funções
 -- SECURITY DEFINER que expõem só o necessário:
 --
---   loja_cardapio()          → sabores ativos, preços das caixas e stock
+--   loja_cardapio()          → sabores ativos, preços das caixas, stock e
+--                              textos de levantamento/entrega
 --   loja_criar_pedido(jsonb) → valida, RECALCULA o total no servidor, cria o
 --                              cliente + pedido e dá baixa no stock
+--   loja_ver_pedido(ref,tel) → acompanhamento público (os dois juntos)
 --
 -- Recalcular no servidor é o ponto central: o preço que o browser envia é
 -- ignorado, portanto ninguém compra uma caixa por €0,01 mexendo no devtools.
@@ -16,6 +18,17 @@
 
 -- Marca a origem do pedido para a dona distinguir loja de venda manual.
 alter table pedidos add column if not exists origem text not null default 'app';
+
+-- Referência curta única (ex. K7M2PQ) e dados estruturados de levantamento/entrega.
+alter table pedidos add column if not exists referencia text;
+alter table pedidos add column if not exists entrega jsonb;
+
+create unique index if not exists idx_pedidos_referencia
+  on pedidos (referencia) where referencia is not null;
+
+-- Textos que a dona edita em Definições e a loja mostra no checkout.
+alter table configuracao add column if not exists loja_instrucoes_levantamento text not null default '';
+alter table configuracao add column if not exists loja_instrucoes_entrega text not null default '';
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- 0) Telemóvel normalizado
@@ -30,6 +43,33 @@ set search_path = public
 as $$
   select case when length(d) >= 9 then right(d, 9) else d end
   from (select regexp_replace(coalesce(t, ''), '\D', '', 'g') as d) s
+$$;
+
+-- Código de 6 caracteres sem 0/O/1/I, para ler em voz alta sem confusão.
+create or replace function loja_nova_referencia()
+returns text
+language plpgsql
+volatile
+set search_path = public
+as $$
+declare
+  alphabet text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  candidate text;
+  i int;
+begin
+  for i in 1..32 loop
+    select string_agg(ch, '')
+      into candidate
+    from (
+      select substr(alphabet, 1 + floor(random() * 32)::int, 1) as ch
+      from generate_series(1, 6)
+    ) s;
+    if not exists (select 1 from pedidos where referencia = candidate) then
+      return candidate;
+    end if;
+  end loop;
+  raise exception 'Não foi possível gerar uma referência única';
+end
 $$;
 
 -- ────────────────────────────────────────────────────────────────────────────
@@ -82,7 +122,11 @@ begin
   return jsonb_build_object(
     'negocio', jsonb_build_object(
       'nome',  coalesce(v_cfg.nome_negocio, 'Box for You'),
-      'moeda', coalesce(v_cfg.moeda, '€')
+      'moeda', coalesce(v_cfg.moeda, '€'),
+      'instrucoesLevantamento', coalesce(nullif(btrim(v_cfg.loja_instrucoes_levantamento), ''),
+        'Combinamos o sítio e a hora contigo por mensagem.'),
+      'instrucoesEntrega', coalesce(nullif(btrim(v_cfg.loja_instrucoes_entrega), ''),
+        'Entregamos na morada que indicares. Combinamos o horário contigo.')
     ),
     'cookies', v_cookies,
     'box', jsonb_build_object(
@@ -108,10 +152,11 @@ end $$;
 -- {
 --   "cliente":   { "nome": "...", "telefone": "...", "instagram": "", "email": "" },
 --   "itens":     [ { "id": "nutella|mini-box|tasting-box", "qty": 2 } ],
---   "caixas":    [ { "nutella": 2, "pistache": 2 } ],        -- cada objeto = 1 Box
+--   "caixas":    [ { "nutella": 2, "pistache": 2 } ],
 --   "pagamento": "MB WAY | Multibanco | Dinheiro",
---   "entrega":   "2026-09-12",                                -- opcional
---   "notas":     "..."                                        -- opcional
+--   "entrega":   { "tipo": "levantar"|"entrega", "data": "YYYY-MM-DD",
+--                  "morada": "...", "localidade": "...", "cp": "..." },
+--   "notas":     "..."
 -- }
 -- Saída: { ok: true, pedidoId, referencia, total } | { ok: false, motivo, campo }
 create or replace function loja_criar_pedido(p jsonb)
@@ -134,7 +179,14 @@ declare
   v_email  text := btrim(coalesce(p#>>'{cliente,email}', ''));
   v_pag    text := btrim(coalesce(p->>'pagamento', ''));
   v_notas  text := btrim(coalesce(p->>'notas', ''));
-  v_entrega text := nullif(btrim(coalesce(p->>'entrega', '')), '');
+
+  v_ent        jsonb;
+  v_tipo       text;
+  v_data       text;
+  v_morada     text;
+  v_localidade text;
+  v_cp         text;
+  v_entrega    jsonb;
 
   v_itens  jsonb := coalesce(p->'itens',  '[]'::jsonb);
   v_caixas jsonb := coalesce(p->'caixas', '[]'::jsonb);
@@ -158,6 +210,7 @@ declare
 
   v_cliente_id text;
   v_pedido_id  text;
+  v_ref        text;
 begin
   -- ── validação do contacto ────────────────────────────────────────────────
   if length(v_nome) < 2 then
@@ -169,9 +222,52 @@ begin
   if v_pag not in ('MB WAY', 'Multibanco', 'Dinheiro') then
     return jsonb_build_object('ok', false, 'campo', 'pagamento', 'motivo', 'Escolhe uma forma de pagamento.');
   end if;
-  if v_entrega is not null and v_entrega !~ '^\d{4}-\d{2}-\d{2}$' then
-    return jsonb_build_object('ok', false, 'campo', 'entrega', 'motivo', 'Data de entrega inválida.');
+
+  -- ── levantamento / entrega ───────────────────────────────────────────────
+  -- Aceita objecto novo; se vier uma data solta (versão antiga), trata como levantar.
+  v_ent := p->'entrega';
+  if v_ent is null or jsonb_typeof(v_ent) = 'null' then
+    v_ent := '{}'::jsonb;
   end if;
+  if jsonb_typeof(v_ent) <> 'object' then
+    v_ent := jsonb_build_object('tipo', 'levantar', 'data', btrim(v_ent #>> '{}'));
+  elsif coalesce(v_ent->>'tipo', '') = '' and coalesce(v_ent->>'data', '') <> '' then
+    v_ent := v_ent || jsonb_build_object('tipo', 'levantar');
+  end if;
+
+  v_tipo       := btrim(coalesce(v_ent->>'tipo', ''));
+  v_data       := btrim(coalesce(v_ent->>'data', ''));
+  v_morada     := btrim(coalesce(v_ent->>'morada', ''));
+  v_localidade := btrim(coalesce(v_ent->>'localidade', ''));
+  v_cp         := btrim(coalesce(v_ent->>'cp', ''));
+
+  if v_tipo not in ('levantar', 'entrega') then
+    return jsonb_build_object('ok', false, 'campo', 'entrega',
+      'motivo', 'Diz-nos se preferes levantar ou receber em casa.');
+  end if;
+  if v_data !~ '^\d{4}-\d{2}-\d{2}$' then
+    return jsonb_build_object('ok', false, 'campo', 'data',
+      'motivo', 'Escolhe o dia em que queres os cookies.');
+  end if;
+  if v_data::date < current_date then
+    return jsonb_build_object('ok', false, 'campo', 'data', 'motivo', 'Essa data já passou.');
+  end if;
+  if v_tipo = 'entrega' then
+    if length(v_morada) < 4 then
+      return jsonb_build_object('ok', false, 'campo', 'morada', 'motivo', 'Indica a morada de entrega.');
+    end if;
+    if length(v_localidade) < 2 then
+      return jsonb_build_object('ok', false, 'campo', 'localidade', 'motivo', 'Indica a localidade.');
+    end if;
+  end if;
+
+  v_entrega := jsonb_strip_nulls(jsonb_build_object(
+    'tipo', v_tipo,
+    'data', v_data,
+    'morada',     case when v_tipo = 'entrega' then left(v_morada, 160) end,
+    'localidade', case when v_tipo = 'entrega' then left(v_localidade, 80) end,
+    'cp',         case when v_tipo = 'entrega' then nullif(left(v_cp, 12), '') end
+  ));
 
   select * into v_cfg from configuracao where id = 'main';
   v_box_size   := coalesce((v_cfg.box_config->>'size')::int, 4);
@@ -332,18 +428,16 @@ begin
      where id = v_cliente_id;
   end if;
 
+  v_ref := loja_nova_referencia();
+
   -- ── pedido ───────────────────────────────────────────────────────────────
   insert into pedidos (cliente_id, linhas, box, total_eur, desconto, data_pedido,
-                       forma_pagamento, status, notas, origem)
+                       forma_pagamento, status, notas, origem, referencia, entrega)
   values (
     v_cliente_id, v_linhas, v_box, v_total, 0,
     current_date, v_pag, 'pendente',
-    btrim(concat_ws(' · ',
-      'Pedido da loja online',
-      case when v_entrega is not null then 'quer para ' || to_char(v_entrega::date, 'DD/MM') end,
-      nullif(left(v_notas, 400), '')
-    )),
-    'loja'
+    left(v_notas, 400),
+    'loja', v_ref, v_entrega
   )
   returning id into v_pedido_id;
 
@@ -366,16 +460,150 @@ begin
   return jsonb_build_object(
     'ok', true,
     'pedidoId', v_pedido_id,
-    'referencia', upper(right(replace(v_pedido_id, '-', ''), 5)),
+    'referencia', v_ref,
     'total', v_total
   );
 end $$;
 
 -- ────────────────────────────────────────────────────────────────────────────
--- 3) Permissões: o visitante anónimo só pode chamar estas duas funções
+-- 3) Acompanhar pedido (referência + telemóvel)
+-- ────────────────────────────────────────────────────────────────────────────
+create or replace function loja_ver_pedido(p_ref text, p_tel text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_ref text := upper(btrim(coalesce(p_ref, '')));
+  v_p   pedidos%rowtype;
+  v_cli clientes%rowtype;
+  v_cfg configuracao%rowtype;
+  v_linhas jsonb := '[]'::jsonb;
+  v_par record;
+  v_ln  jsonb;
+  v_nome text;
+  v_detalhe text;
+  v_estado text;
+  v_seguinte text;
+  v_tipo text;
+  v_box_size int;
+begin
+  if length(v_ref) < 4 or length(regexp_replace(coalesce(p_tel, ''), '\D', '', 'g')) < 6 then
+    return jsonb_build_object('ok', false, 'motivo',
+      'Indica a referência e o telemóvel do pedido.');
+  end if;
+
+  select * into v_p from pedidos
+   where referencia = v_ref and origem = 'loja'
+   limit 1;
+  if not found then
+    return jsonb_build_object('ok', false, 'motivo',
+      'Não encontrámos este pedido. Confirma a referência e o telemóvel.');
+  end if;
+
+  select * into v_cli from clientes where id = v_p.cliente_id;
+  if not found or loja_tel_norm(v_cli.telefone) is distinct from loja_tel_norm(p_tel) then
+    return jsonb_build_object('ok', false, 'motivo',
+      'Não encontrámos este pedido. Confirma a referência e o telemóvel.');
+  end if;
+
+  select * into v_cfg from configuracao where id = 'main';
+  v_box_size := coalesce((v_cfg.box_config->>'size')::int, 4);
+
+  if v_p.box is not null and v_p.box->'counts' is not null then
+    v_detalhe := '';
+    for v_par in
+      select key as id, floor(coalesce(value::numeric, 0))::int as qty
+      from jsonb_each_text(v_p.box->'counts')
+    loop
+      if v_par.qty <= 0 then continue; end if;
+      select coalesce(nullif(short, ''), nome) into v_nome
+        from cookies_catalogo where id = v_par.id;
+      v_detalhe := v_detalhe || case when v_detalhe = '' then '' else ', ' end
+                 || v_par.qty || '× ' || coalesce(v_nome, v_par.id);
+    end loop;
+    v_linhas := v_linhas || jsonb_build_object(
+      'nome', format('Box de %s', v_box_size),
+      'detalhe', v_detalhe,
+      'qty', 1,
+      'subtotal', coalesce((v_p.box->>'priceEur')::numeric, 0)
+    );
+  end if;
+
+  for v_ln in select value from jsonb_array_elements(coalesce(v_p.linhas, '[]'::jsonb))
+  loop
+    v_nome := nullif(v_ln->>'customLabel', '');
+    if v_nome is null then
+      select coalesce(nullif(nome, ''), id) into v_nome
+        from cookies_catalogo where id = v_ln->>'cookieId';
+      v_nome := coalesce(v_nome, v_ln->>'cookieId');
+    end if;
+    v_linhas := v_linhas || jsonb_build_object(
+      'nome', v_nome,
+      'detalhe', '',
+      'qty', coalesce((v_ln->>'qty')::int, 1),
+      'subtotal', coalesce((v_ln->>'preco')::numeric, 0) * coalesce((v_ln->>'qty')::int, 1)
+    );
+  end loop;
+
+  v_tipo := coalesce(v_p.entrega->>'tipo', '');
+
+  case v_p.status
+    when 'pendente' then
+      v_estado := 'Recebemos — vamos confirmar contigo';
+      v_seguinte := case v_p.forma_pagamento
+        when 'MB WAY' then 'Vamos enviar-te o pedido de pagamento MB WAY para o número que deixaste.'
+        when 'Multibanco' then 'Vamos enviar-te os dados para transferência ou uma referência Multibanco.'
+        when 'Dinheiro' then
+          case when v_tipo = 'levantar'
+            then 'Pagas em dinheiro quando levantares. Falamos contigo em breve.'
+            else 'Pagas em dinheiro na entrega. Falamos contigo em breve.'
+          end
+        else 'Falamos contigo em breve para confirmar tudo.'
+      end;
+    when 'pago' then
+      v_estado := 'Confirmado — estamos a preparar';
+      v_seguinte := case when v_tipo = 'levantar'
+        then 'Avisamos quando puderes vir buscar.'
+        else 'Avisamos quando formos a caminho.'
+      end;
+    when 'entregue' then
+      v_estado := case when v_tipo = 'levantar'
+        then 'Já foi levantado'
+        else 'Já foi entregue'
+      end;
+      v_seguinte := 'Obrigado — até à próxima fornada.';
+    when 'cancelado' then
+      v_estado := 'Este pedido foi cancelado';
+      v_seguinte := 'Se tiveres dúvidas, fala connosco.';
+    else
+      v_estado := 'Pedido registado';
+      v_seguinte := 'Falamos contigo em breve.';
+  end case;
+
+  return jsonb_build_object(
+    'ok', true,
+    'referencia', v_p.referencia,
+    'status', v_p.status,
+    'estado', v_estado,
+    'seguinte', v_seguinte,
+    'total', v_p.total_eur,
+    'pagamento', v_p.forma_pagamento,
+    'linhas', v_linhas,
+    'entrega', coalesce(v_p.entrega, '{}'::jsonb)
+  );
+end $$;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 4) Permissões: o visitante anónimo só pode chamar estas funções
 -- ────────────────────────────────────────────────────────────────────────────
 revoke all on function loja_tel_norm(text)       from public, anon, authenticated;
+revoke all on function loja_nova_referencia()    from public, anon, authenticated;
 revoke all on function loja_cardapio()           from public, anon, authenticated;
 revoke all on function loja_criar_pedido(jsonb)  from public, anon, authenticated;
-grant execute on function loja_cardapio()          to anon, authenticated;
-grant execute on function loja_criar_pedido(jsonb) to anon, authenticated;
+revoke all on function loja_ver_pedido(text, text) from public, anon, authenticated;
+grant execute on function loja_cardapio()             to anon, authenticated;
+grant execute on function loja_criar_pedido(jsonb)    to anon, authenticated;
+grant execute on function loja_ver_pedido(text, text) to anon, authenticated;

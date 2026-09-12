@@ -167,10 +167,17 @@ create table if not exists configuracao (
 
 -- colunas acrescentadas depois da 1ª versão (idempotente p/ tabelas já criadas)
 alter table vendas add column if not exists demo_flavor_id text;
+alter table pedidos add column if not exists origem text not null default 'app';
+alter table pedidos add column if not exists referencia text;
+alter table pedidos add column if not exists entrega jsonb;
+create unique index if not exists idx_pedidos_referencia
+  on pedidos (referencia) where referencia is not null;
 
 -- Tasting Box: 1 cookie de 50g de cada sabor ativo no cardápio, preço fixo.
 alter table configuracao add column if not exists tasting_box_config jsonb
   not null default '{"price":16}'::jsonb;
+alter table configuracao add column if not exists loja_instrucoes_levantamento text not null default '';
+alter table configuracao add column if not exists loja_instrucoes_entrega text not null default '';
 
 -- ---------- Índices úteis para relatórios/consultas ----------
 create index if not exists idx_vendas_created_at on vendas (created_at desc);

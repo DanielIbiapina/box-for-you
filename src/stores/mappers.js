@@ -66,15 +66,15 @@ export const MAPPERS = {
     },
     ['totalEur', 'desconto'],
   ),
-  pedidos: makeMapper(
-    {
-      id: 'id', clienteId: 'cliente_id', linhas: 'linhas', box: 'box',
-      totalEur: 'total_eur', desconto: 'desconto', dataPedido: 'data_pedido',
-      formaPagamento: 'forma_pagamento', status: 'status', notas: 'notas', criadoEm: 'criado_em',
-      origem: 'origem',
-    },
-    ['totalEur', 'desconto'],
-  ),
+      pedidos: makeMapper(
+        {
+          id: 'id', clienteId: 'cliente_id', linhas: 'linhas', box: 'box',
+          totalEur: 'total_eur', desconto: 'desconto', dataPedido: 'data_pedido',
+          formaPagamento: 'forma_pagamento', status: 'status', notas: 'notas', criadoEm: 'criado_em',
+          origem: 'origem', referencia: 'referencia', entrega: 'entrega',
+        },
+        ['totalEur', 'desconto'],
+      ),
   custos_fixos: makeMapper(
     { id: 'id', nome: 'nome', valorPadrao: 'valor_padrao' },
     ['valorPadrao'],
@@ -101,6 +101,8 @@ export function configToApp(row) {
     moeda: row?.moeda ?? '€',
     metaLucroMensal: Number(row?.meta_lucro_mensal ?? 0),
     formasPagamento: row?.formas_pagamento ?? [],
+    instrucoesLevantamento: row?.loja_instrucoes_levantamento ?? '',
+    instrucoesEntrega: row?.loja_instrucoes_entrega ?? '',
   }
 }
 export function configToRow(patch) {
@@ -110,5 +112,7 @@ export function configToRow(patch) {
   if (patch.moeda !== undefined) r.moeda = patch.moeda
   if (patch.metaLucroMensal !== undefined) r.meta_lucro_mensal = patch.metaLucroMensal
   if (patch.formasPagamento !== undefined) r.formas_pagamento = patch.formasPagamento
+  if (patch.instrucoesLevantamento !== undefined) r.loja_instrucoes_levantamento = patch.instrucoesLevantamento
+  if (patch.instrucoesEntrega !== undefined) r.loja_instrucoes_entrega = patch.instrucoesEntrega
   return r
 }

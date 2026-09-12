@@ -72,6 +72,16 @@ function pedidoSummary(p, cookies) {
   return parts.join(' · ') || '—'
 }
 
+function entregaLabel(e) {
+  if (!e?.tipo) return ''
+  const data = e.data
+    ? parseDate(e.data).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' })
+    : ''
+  if (e.tipo === 'levantar') return ['Levantar', data].filter(Boolean).join(' · ')
+  const morada = [e.morada, e.localidade, e.cp].filter(Boolean).join(', ')
+  return ['Entrega', data, morada].filter(Boolean).join(' · ')
+}
+
 function deductPedidoStock(linhas, box, deductSale) {
   const items = (linhas ?? [])
     .filter((l) => !l.customLabel && !String(l.cookieId).startsWith('custom-'))
@@ -97,7 +107,7 @@ function restorePedidoStock(linhas, box, adjustCookies) {
 }
 
 const EMPTY_CLIENTE = { nome: '', telefone: '', instagram: '', email: '', notas: '' }
-const EMPTY_PEDIDO  = { clienteId: '', status: 'pendente', formaPagamento: 'Dinheiro', notas: '', dataPedido: '', desconto: 0 }
+const EMPTY_PEDIDO  = { clienteId: '', status: 'pendente', formaPagamento: 'Dinheiro', notas: '', dataPedido: '', desconto: 0, referencia: '', entrega: null }
 
 // ─── Ícones SVG ──────────────────────────────────────────────────────────────
 
@@ -262,6 +272,8 @@ export function Vendas() {
       notas: p.notas,
       dataPedido: p.dataPedido?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
       desconto: p.desconto ?? 0,
+      referencia: p.referencia ?? '',
+      entrega: p.entrega ?? null,
     })
     const cart = {}
     const custom = []
@@ -704,10 +716,20 @@ export function Vendas() {
                           </span>
                         )}
                         {p.origem === 'loja' && <ChipLoja />}
+                        {p.referencia && (
+                          <span className="bfy-num text-[11px] font-black" style={{ color: 'var(--color-accent-dark)' }}>
+                            #{p.referencia}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs truncate ink-3">
                         {pedidoSummary(p, cookies)}
                       </p>
+                      {entregaLabel(p.entrega) && (
+                        <p className="text-[11px] font-semibold ink-2 truncate">
+                          {entregaLabel(p.entrega)}
+                        </p>
+                      )}
                       {p.notas && (
                         <p className="text-[11px] italic truncate ink-3">
                           {p.notas}
@@ -889,10 +911,18 @@ function PedidoCard({ pedido, cookies, st, onEdit, onDelete }) {
             · {pedido.formaPagamento}
           </span>
           {pedido.origem === 'loja' && <ChipLoja />}
+          {pedido.referencia && (
+            <span className="bfy-num text-[11px] font-black" style={{ color: 'var(--color-accent-dark)' }}>
+              #{pedido.referencia}
+            </span>
+          )}
         </div>
         <p className="text-xs truncate ink-3">
           {pedidoSummary(pedido, cookies)}
         </p>
+        {entregaLabel(pedido.entrega) && (
+          <p className="text-[11px] font-semibold ink-2">{entregaLabel(pedido.entrega)}</p>
+        )}
         {pedido.notas && (
           <p className="text-[11px] italic ink-3">{pedido.notas}</p>
         )}
@@ -1001,6 +1031,19 @@ function PedidoModal({
   return (
     <Modal title={title} onClose={onClose} size="md">
       <form onSubmit={onSave} className="space-y-4">
+        {(form.referencia || entregaLabel(form.entrega)) && (
+          <div className="bfy-sunk p-3 space-y-1">
+            {form.referencia && (
+              <p className="text-sm font-bold">
+                Referência loja <span className="bfy-num" style={{ color: 'var(--color-accent-dark)' }}>#{form.referencia}</span>
+              </p>
+            )}
+            {entregaLabel(form.entrega) && (
+              <p className="text-xs ink-2">{entregaLabel(form.entrega)}</p>
+            )}
+          </div>
+        )}
+
         {/* Cliente */}
         <label className="block">
           <span className="bfy-label">Cliente</span>

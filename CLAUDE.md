@@ -86,12 +86,19 @@ Nav icons are served from [`public/icons/`](public/icons/) as `/icons/nav-*.png`
 ## Storefront (`src/loja/`)
 
 The public page never touches tables: RLS still admits authenticated users only.
-Anonymous visitors may execute exactly two SECURITY DEFINER functions, defined in
+Anonymous visitors may execute exactly three SECURITY DEFINER functions, defined in
 [`supabase/loja.sql`](supabase/loja.sql):
 
-- `loja_cardapio()` — active flavors, box prices, stock
+- `loja_cardapio()` — active flavors, box prices, stock, pickup/delivery copy
 - `loja_criar_pedido(jsonb)` — validates, **recomputes the total server-side**,
-  creates the client + order (`origem: 'loja'`, `status: 'pendente'`) and deducts stock
+  creates the client + order (`origem: 'loja'`, `status: 'pendente'`, unique
+  `referencia`, structured `entrega`) and deducts stock
+- `loja_ver_pedido(referencia, telefone)` — public order lookup; both values
+  required, phone must match the customer
+
+The cart lives in `localStorage` (`bfy:loja-cart-v1`) so a refresh does not
+empty it; the order of record is still Postgres. Checkout asks **Levantar** or
+**Entrega** (address only for delivery). Success is `/?p=XXXXXX`.
 
 Prices sent by the browser are ignored by design. When changing anything about
 pricing or stock, change it in the SQL function too — otherwise the store and the

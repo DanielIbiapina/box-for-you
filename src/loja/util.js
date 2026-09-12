@@ -84,3 +84,74 @@ export const totalCarrinho = (linhas) => linhas.reduce((s, l) => s + l.subtotal,
 
 export const totalItens = (cart, caixas) =>
   Object.values(cart).reduce((s, q) => s + q, 0) + caixas.length
+
+export function fmtData(iso) {
+  if (!iso) return ''
+  const d = new Date(iso.length === 10 ? `${iso}T12:00:00` : iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('pt-PT', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+/**
+ * Corta o saco ao stock actual: caixas incompletas caem, avulsos e rascunho
+ * descem até ao que ainda há. Mini/Tasting têm o próprio balde.
+ */
+export function clampCarrinho(cardapio, cart, caixas, draft) {
+  if (!cardapio) return { cart: {}, caixas: [], draft: null }
+  const stock = Object.fromEntries((cardapio.cookies ?? []).map((c) => [c.id, Math.max(0, c.stock ?? 0)]))
+
+  const nextCaixas = []
+  for (const caixa of caixas ?? []) {
+    const ok = Object.entries(caixa).every(([id, q]) => q <= 0 || (stock[id] ?? 0) >= q)
+    if (!ok) continue
+    for (const [id, q] of Object.entries(caixa)) {
+      if (q > 0) stock[id] = (stock[id] ?? 0) - q
+    }
+    nextCaixas.push(caixa)
+  }
+
+  let nextDraft = null
+  if (draft && typeof draft === 'object') {
+    const clamped = {}
+    let any = false
+    for (const [id, q] of Object.entries(draft)) {
+      const n = Math.min(Math.max(0, q ?? 0), Math.max(0, stock[id] ?? 0))
+      if (n > 0) {
+        clamped[id] = n
+        stock[id] = (stock[id] ?? 0) - n
+        any = true
+      } else {
+        clamped[id] = 0
+      }
+    }
+    nextDraft = any ? clamped : null
+  }
+
+  const nextCart = {}
+  for (const [id, q] of Object.entries(cart ?? {})) {
+    if (!q) continue
+    if (id === MINI_BOX_ID) {
+      const n = Math.min(q, Math.max(0, cardapio.miniBox?.stock ?? 0))
+      if (n > 0) nextCart[id] = n
+    } else if (id === TASTING_BOX_ID) {
+      const n = Math.min(q, Math.max(0, cardapio.tastingBox?.stock ?? 0))
+      if (n > 0) nextCart[id] = n
+    } else {
+      const n = Math.min(q, Math.max(0, stock[id] ?? 0))
+      if (n > 0) {
+        nextCart[id] = n
+        stock[id] = (stock[id] ?? 0) - n
+      }
+    }
+  }
+
+  return { cart: nextCart, caixas: nextCaixas, draft: nextDraft }
+}
+
+export function podeDuplicarCaixa(counts, cardapio, cart, caixas, draft) {
+  return Object.entries(counts ?? {}).every(([id, q]) => {
+    if (!q) return true
+    const c = findCookie(cardapio, id)
+    return c ? disponivel(c, cart, caixas, draft) >= q : false
+  })
+}

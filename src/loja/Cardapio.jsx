@@ -7,7 +7,7 @@ export function Cardapio({ cardapio, cart, caixas, boxDraft, onMais, onMenos }) 
 
   if (cookies.length === 0) {
     return (
-      <Secao id="cardapio" eyebrow="Cardápio" titulo="Estamos a preparar o forno">
+      <Secao id="cardapio" titulo="Estamos a preparar o forno">
         <p className="text-sm ink-2">
           Neste momento não há sabores disponíveis. Volta daqui a pouco!
         </p>
@@ -18,9 +18,8 @@ export function Cardapio({ cardapio, cart, caixas, boxDraft, onMais, onMenos }) 
   return (
     <Secao
       id="cardapio"
-      eyebrow="Passo 1"
-      titulo="Escolhe os teus cookies"
-      descricao="Todos feitos à mão, em pequenos lotes. Carrega no + para juntar ao teu pedido."
+      titulo="Os cookies"
+      descricao="Todos feitos à mão, em pequenos lotes. Toca no cartão para juntar ao pedido."
     >
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
         {cookies.map((c) => {
@@ -34,11 +33,15 @@ export function Cardapio({ cardapio, cart, caixas, boxDraft, onMais, onMenos }) 
               className="cookie-card"
               data-escolhido={qty > 0}
               data-esgotado={esgotado}
+              onClick={() => { if (!esgotado && livre > 0) onMais(c.id) }}
             >
               <div className="cookie-face mb-2.5">
                 {c.image
-                  ? <img src={c.image} alt={c.nome} loading="lazy" />
+                  ? <img src={c.image} alt="" loading="lazy" />
                   : <span aria-hidden="true">{c.emoji || '🍪'}</span>}
+                {qty > 0 && (
+                  <span className="cookie-qty" aria-label={`${qty} no pedido`}>{qty}</span>
+                )}
               </div>
 
               <h3 className="bfy-card-title text-sm leading-tight">{c.nome}</h3>

@@ -1,15 +1,28 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Cardapio } from './Cardapio'
 import { Caixas } from './Caixas'
 import { Checkout } from './Checkout'
-import { Sucesso } from './Sucesso'
+import { Pedido } from './Sucesso'
 import { Aviso } from './ui'
 import { criarPedido, fetchCardapio, isSupabaseConfigured } from './api'
 import {
   fmtEuro, linhasCarrinho, totalCarrinho, totalItens,
   findCookie, disponivel, disponivelMini, disponivelTasting,
+  clampCarrinho, podeDuplicarCaixa,
   MINI_BOX_ID, TASTING_BOX_ID,
 } from './util'
+import {
+  lerCarrinho, gravarCarrinho, limparCarrinho,
+  lerContacto, lerUltimoPedido, gravarUltimoPedido,
+  refDaUrl, irParaPedido, sairDoPedido,
+} from './storage'
+
+const ANCORAS = [
+  { href: '#cardapio', label: 'Cookies' },
+  { href: '#box', label: 'Box' },
+  { href: '#mini', label: 'Mini' },
+  { href: '#tasting', label: 'Tasting' },
+]
 
 export function Loja() {
   const [cardapio, setCardapio] = useState(null)
@@ -17,24 +30,36 @@ export function Loja() {
   const [erroCarga, setErroCarga] = useState('')
   const [recarga, setRecarga] = useState(0)
 
-  const [cart, setCart] = useState({})
-  const [caixas, setCaixas] = useState([])
-  const [draft, setDraft] = useState(null)
+  const [boot] = useState(lerCarrinho)
+  const [cart, setCart] = useState(boot.cart)
+  const [caixas, setCaixas] = useState(boot.caixas)
+  const [draft, setDraft] = useState(boot.draft)
 
   const [aberto, setAberto] = useState(false)
-  const [sucesso, setSucesso] = useState(null)
+  const [pedidoRef, setPedidoRef] = useState(() => refDaUrl())
 
-  /** Pede o cardápio outra vez — depois de um pedido ou de um sabor esgotar. */
   const carregar = () => setRecarga((n) => n + 1)
 
+  const sacoRef = useRef({ cart, caixas, draft })
+  sacoRef.current = { cart, caixas, draft }
+
   useEffect(() => {
-    if (!isSupabaseConfigured) return
+    if (!isSupabaseConfigured) return undefined
     let vivo = true
     fetchCardapio()
       .then((dados) => {
         if (!vivo) return
         setCardapio(dados)
         setErroCarga('')
+        const next = clampCarrinho(
+          dados,
+          sacoRef.current.cart,
+          sacoRef.current.caixas,
+          sacoRef.current.draft,
+        )
+        setCart(next.cart)
+        setCaixas(next.caixas)
+        setDraft(next.draft)
       })
       .catch((e) => {
         console.error(e)
@@ -44,7 +69,16 @@ export function Loja() {
     return () => { vivo = false }
   }, [recarga])
 
-  // ── carrinho ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    gravarCarrinho({ cart, caixas, draft })
+  }, [cart, caixas, draft])
+
+  useEffect(() => {
+    const onPop = () => setPedidoRef(refDaUrl())
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
   function mais(id) {
     if (!podeJuntar(id)) return
     setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }))
@@ -68,46 +102,76 @@ export function Loja() {
     return c ? disponivel(c, cart, caixas, draft) > 0 : false
   }
 
-  function removerLinha(l) {
-    if (l.tipo === 'caixa') setCaixas((cs) => cs.filter((_, i) => i !== l.indice))
-    else setCart((c) => { const p = { ...c }; delete p[l.key]; return p })
+  function ajustarLinha(l, delta) {
+    if (l.tipo === 'caixa') {
+      if (delta < 0) setCaixas((cs) => cs.filter((_, i) => i !== l.indice))
+      else if (podeDuplicarCaixa(caixas[l.indice], cardapio, cart, caixas, draft)) {
+        setCaixas((cs) => [...cs, { ...cs[l.indice] }])
+      }
+      return
+    }
+    if (delta > 0) mais(l.key)
+    else menos(l.key)
+  }
+
+  function podeMaisLinha(l) {
+    if (l.tipo === 'caixa') {
+      return podeDuplicarCaixa(caixas[l.indice], cardapio, cart, caixas, draft)
+    }
+    return podeJuntar(l.key)
   }
 
   function limpar() {
     setCart({})
     setCaixas([])
     setDraft(null)
+    limparCarrinho()
   }
 
-  // ── envio ────────────────────────────────────────────────────────────────
   async function enviar(form) {
     const resposta = await criarPedido({
       cliente: {
         nome: form.nome,
         telefone: form.telefone,
-        email: form.email,
       },
       itens: Object.entries(cart)
         .filter(([, q]) => q > 0)
         .map(([id, qty]) => ({ id, qty })),
       caixas,
       pagamento: form.pagamento,
-      entrega: form.entrega,
+      entrega: {
+        tipo: form.tipo,
+        data: form.data,
+        morada: form.morada,
+        localidade: form.localidade,
+        cp: form.cp,
+      },
       notas: form.notas,
     })
 
     if (resposta?.ok) {
-      setSucesso({ ...resposta, pagamento: form.pagamento })
+      gravarUltimoPedido({
+        referencia: resposta.referencia,
+        telefone: form.telefone,
+        total: resposta.total,
+        pagamento: form.pagamento,
+      })
       setAberto(false)
       limpar()
-      carregar()          // o stock mudou
+      carregar()
+      irParaPedido(resposta.referencia)
+      setPedidoRef(resposta.referencia)
     } else if (resposta?.esgotado) {
-      carregar()          // mostra o stock real por baixo do painel
+      carregar()
     }
     return resposta
   }
 
-  // ── estados de carregamento ──────────────────────────────────────────────
+  function fecharPedido() {
+    sairDoPedido()
+    setPedidoRef('')
+  }
+
   if (!isSupabaseConfigured) {
     return (
       <Centro>
@@ -137,18 +201,43 @@ export function Loja() {
   const linhas = linhasCarrinho(cardapio, cart, caixas)
   const total = totalCarrinho(linhas)
   const nItens = totalItens(cart, caixas)
+  const ultimo = lerUltimoPedido()
+  const telPedido = (ultimo?.referencia === pedidoRef ? ultimo.telefone : '') || lerContacto().telefone
 
   return (
-    <div className="loja-body" style={{ paddingBottom: nItens > 0 ? '5.5rem' : 0 }}>
+    <div className="loja-body" style={{ paddingBottom: nItens > 0 && !aberto && !pedidoRef ? '5.5rem' : 0 }}>
       <header className="loja-top">
         <div className="loja-wrap py-3 flex items-center justify-between gap-4">
           <p className="loja-brand text-xl">{cardapio.negocio.nome}</p>
-          {nItens > 0 && (
-            <button type="button" className="btn-accent btn-sm" onClick={() => setAberto(true)}>
-              🛒 {nItens} · <span className="bfy-num">{fmtEuro(total)}</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {(ultimo || pedidoRef) && (
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => {
+                  const ref = pedidoRef || ultimo.referencia
+                  if (!ref) return
+                  if (ref !== pedidoRef) irParaPedido(ref)
+                  setPedidoRef(ref)
+                }}
+              >
+                O meu pedido
+              </button>
+            )}
+            {nItens > 0 && !pedidoRef && (
+              <button type="button" className="btn-accent btn-sm" onClick={() => setAberto(true)}>
+                {nItens} · <span className="bfy-num">{fmtEuro(total)}</span>
+              </button>
+            )}
+          </div>
         </div>
+        <nav className="loja-ancoras" aria-label="Cardápio">
+          <div className="loja-wrap flex gap-1 overflow-x-auto">
+            {ANCORAS.map((a) => (
+              <a key={a.href} href={a.href} className="loja-ancora">{a.label}</a>
+            ))}
+          </div>
+        </nav>
       </header>
 
       <Hero nome={cardapio.negocio.nome} />
@@ -188,7 +277,7 @@ export function Loja() {
         </div>
       </footer>
 
-      {nItens > 0 && !aberto && !sucesso && (
+      {nItens > 0 && !aberto && !pedidoRef && (
         <div className="loja-cartbar">
           <div className="loja-wrap flex items-center justify-between gap-4 !px-0 sm:!px-6">
             <div>
@@ -198,28 +287,29 @@ export function Loja() {
               <p className="bfy-num font-black text-lg">{fmtEuro(total)}</p>
             </div>
             <button type="button" className="btn-accent px-6 py-3" onClick={() => setAberto(true)}>
-              Ver pedido
+              Continuar
             </button>
           </div>
         </div>
       )}
 
-      {aberto && (
+      {aberto && !pedidoRef && (
         <Checkout
           cardapio={cardapio}
           cart={cart}
           caixas={caixas}
           onFechar={() => setAberto(false)}
-          onRemoverLinha={removerLinha}
+          onAjustarLinha={ajustarLinha}
+          onPodeMais={podeMaisLinha}
           onEnviar={enviar}
         />
       )}
 
-      {sucesso && (
-        <Sucesso
-          resultado={sucesso}
-          pagamento={sucesso.pagamento}
-          onNovo={() => setSucesso(null)}
+      {pedidoRef && (
+        <Pedido
+          referencia={pedidoRef}
+          telefoneInicial={telPedido}
+          onNovo={fecharPedido}
         />
       )}
     </div>
@@ -237,15 +327,15 @@ function Centro({ children }) {
 function Hero({ nome }) {
   return (
     <section className="loja-hero">
-      <div className="loja-wrap py-10 md:py-16 grid md:grid-cols-2 gap-8 items-center">
-        <div className="space-y-5">
-          <p className="bfy-chip bfy-chip-accent">🍪 Feitos à mão, todos os dias</p>
+      <div className="loja-wrap loja-hero-inner grid md:grid-cols-2 gap-5 md:gap-8 items-center">
+        <div className="space-y-3 md:space-y-5">
+          <p className="bfy-chip bfy-chip-accent">Feitos à mão, todos os dias</p>
           <h1 className="loja-hero-title">
             Cookies que<br />valem a viagem.
           </h1>
-          <p className="text-base md:text-lg ink-2 max-w-md">
-            Escolhe os teus sabores, monta a tua caixa e faz o pedido em menos
-            de um minuto. Nós tratamos do resto.
+          <p className="text-sm md:text-lg ink-2 max-w-md">
+            Escolhe, diz se levantas ou se entregamos, e fica com um código.
+            O pagamento combinamos depois.
           </p>
           <a href="#cardapio" className="btn-primary px-6 py-3 text-base">
             Escolher os meus cookies
@@ -267,8 +357,8 @@ function Hero({ nome }) {
 function ComoFunciona() {
   const passos = [
     ['Escolhes', 'Cookies avulsos, uma Box montada por ti ou uma caixa pronta.'],
-    ['Confirmamos', 'Ligamos ou mandamos mensagem para o teu telemóvel a acertar tudo.'],
-    ['Combinamos', 'Pagas por MB WAY, Multibanco ou em dinheiro na entrega.'],
+    ['Dizes como recebes', 'Levantas connosco ou entregamos na tua morada.'],
+    ['Combinamos o pagamento', 'MB WAY, Multibanco ou dinheiro — nada é cobrado no site.'],
   ]
   return (
     <section className="loja-wrap py-9 md:py-12">

@@ -1,6 +1,6 @@
 /**
- * A loja fala com o Supabase por HTTP direto, sem o supabase-js: são só dois
- * RPC públicos, não há sessão nem realtime. Poupa ~110 kB gzip à página que
+ * A loja fala com o Supabase por HTTP direto, sem o supabase-js: só RPCs
+ * públicos, sem sessão nem realtime. Poupa ~110 kB gzip à página que
  * o cliente abre no telemóvel — que é exatamente onde isso pesa.
  */
 const URL_BASE = import.meta.env.VITE_SUPABASE_URL
@@ -33,3 +33,7 @@ export const fetchCardapio = () => rpc('loja_cardapio')
  * Devolve { ok:true, pedidoId, referencia, total } ou { ok:false, motivo, campo }.
  */
 export const criarPedido = (pedido) => rpc('loja_criar_pedido', { p: pedido })
+
+/** Consulta pública: referência + telemóvel. Sem os dois, o servidor recusa. */
+export const verPedido = (referencia, telefone) =>
+  rpc('loja_ver_pedido', { p_ref: referencia, p_tel: telefone })
