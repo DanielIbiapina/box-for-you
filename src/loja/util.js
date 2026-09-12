@@ -50,12 +50,12 @@ export function linhasCarrinho(cardapio, cart, caixas) {
     if (!qty) continue
     if (id === MINI_BOX_ID) {
       linhas.push({
-        key: id, emoji: '🎁', nome: 'Mini Box', detalhe: 'cookies mini sortidos',
+        key: id, image: '', nome: 'Mini Box', detalhe: 'cookies mini sortidos',
         qty, unit: cardapio.miniBox.price, subtotal: qty * cardapio.miniBox.price, tipo: 'item',
       })
     } else if (id === TASTING_BOX_ID) {
       linhas.push({
-        key: id, emoji: '🥄', nome: 'Tasting Box',
+        key: id, image: '', nome: 'Tasting Box',
         detalhe: `1 mini de cada um dos ${cardapio.tastingBox.sabores} sabores`,
         qty, unit: cardapio.tastingBox.price, subtotal: qty * cardapio.tastingBox.price, tipo: 'item',
       })
@@ -63,15 +63,17 @@ export function linhasCarrinho(cardapio, cart, caixas) {
       const c = findCookie(cardapio, id)
       if (!c) continue
       linhas.push({
-        key: id, emoji: c.emoji, nome: c.nome, detalhe: 'cookie individual',
+        key: id, image: c.image, nome: c.nome, detalhe: 'cookie individual',
         qty, unit: c.price, subtotal: qty * c.price, tipo: 'item',
       })
     }
   }
 
   caixas.forEach((counts, i) => {
+    const primeira = Object.entries(counts).find(([, q]) => q > 0)?.[0]
     linhas.push({
-      key: `caixa-${i}`, indice: i, emoji: '📦',
+      key: `caixa-${i}`, indice: i,
+      image: findCookie(cardapio, primeira)?.image ?? '',
       nome: `Box de ${cardapio.box.size}`, detalhe: resumoCaixa(counts, cardapio),
       qty: 1, unit: cardapio.box.price, subtotal: cardapio.box.price, tipo: 'caixa',
     })

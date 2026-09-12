@@ -16,13 +16,7 @@ import {
   lerContacto, lerUltimoPedido, gravarUltimoPedido,
   refDaUrl, irParaPedido, sairDoPedido,
 } from './storage'
-
-const ANCORAS = [
-  { href: '#cardapio', label: 'Cookies' },
-  { href: '#box', label: 'Box' },
-  { href: '#mini', label: 'Mini' },
-  { href: '#tasting', label: 'Tasting' },
-]
+import { deslizarAte, toqueJuntar, toquePedidoFeito } from './sensacao'
 
 export function Loja() {
   const [cardapio, setCardapio] = useState(null)
@@ -37,6 +31,7 @@ export function Loja() {
 
   const [aberto, setAberto] = useState(false)
   const [pedidoRef, setPedidoRef] = useState(() => refDaUrl())
+  const [recemCriado, setRecemCriado] = useState(false)
 
   const carregar = () => setRecarga((n) => n + 1)
 
@@ -81,6 +76,7 @@ export function Loja() {
 
   function mais(id) {
     if (!podeJuntar(id)) return
+    toqueJuntar()
     setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }))
   }
 
@@ -106,6 +102,7 @@ export function Loja() {
     if (l.tipo === 'caixa') {
       if (delta < 0) setCaixas((cs) => cs.filter((_, i) => i !== l.indice))
       else if (podeDuplicarCaixa(caixas[l.indice], cardapio, cart, caixas, draft)) {
+        toqueJuntar()
         setCaixas((cs) => [...cs, { ...cs[l.indice] }])
       }
       return
@@ -150,6 +147,7 @@ export function Loja() {
     })
 
     if (resposta?.ok) {
+      toquePedidoFeito()
       gravarUltimoPedido({
         referencia: resposta.referencia,
         telefone: form.telefone,
@@ -159,6 +157,7 @@ export function Loja() {
       setAberto(false)
       limpar()
       carregar()
+      setRecemCriado(true)
       irParaPedido(resposta.referencia)
       setPedidoRef(resposta.referencia)
     } else if (resposta?.esgotado) {
@@ -170,6 +169,7 @@ export function Loja() {
   function fecharPedido() {
     sairDoPedido()
     setPedidoRef('')
+    setRecemCriado(false)
   }
 
   if (!isSupabaseConfigured) {
@@ -184,7 +184,11 @@ export function Loja() {
   }
 
   if (carregando && !cardapio) {
-    return <Centro><p className="text-sm font-semibold ink-2">A tirar os cookies do forno…</p></Centro>
+    return (
+      <Centro fundo="var(--color-primary)">
+        <img className="loja-logo loja-logo-pulse" src="/hero-crumb.png" alt="Crumb Lab" />
+      </Centro>
+    )
   }
 
   if (erroCarga && !cardapio) {
@@ -203,12 +207,15 @@ export function Loja() {
   const nItens = totalItens(cart, caixas)
   const ultimo = lerUltimoPedido()
   const telPedido = (ultimo?.referencia === pedidoRef ? ultimo.telefone : '') || lerContacto().telefone
+  const nAvulsos = Object.entries(cart)
+    .filter(([id, q]) => q > 0 && id !== MINI_BOX_ID && id !== TASTING_BOX_ID)
+    .reduce((s, [, q]) => s + q, 0)
 
   return (
     <div className="loja-body" style={{ paddingBottom: nItens > 0 && !aberto && !pedidoRef ? '5.5rem' : 0 }}>
       <header className="loja-top">
-        <div className="loja-wrap py-3 flex items-center justify-between gap-4">
-          <p className="loja-brand text-xl">{cardapio.negocio.nome}</p>
+        <div className="loja-wrap py-2.5 flex items-center justify-between gap-4">
+          <img className="loja-logo" src="/hero-crumb.png" alt="Crumb Lab" />
           <div className="flex items-center gap-2">
             {(ultimo || pedidoRef) && (
               <button
@@ -231,16 +238,7 @@ export function Loja() {
             )}
           </div>
         </div>
-        <nav className="loja-ancoras" aria-label="Cardápio">
-          <div className="loja-wrap flex gap-1 overflow-x-auto">
-            {ANCORAS.map((a) => (
-              <a key={a.href} href={a.href} className="loja-ancora">{a.label}</a>
-            ))}
-          </div>
-        </nav>
       </header>
-
-      <Hero nome={cardapio.negocio.nome} />
 
       <Cardapio
         cardapio={cardapio}
@@ -251,29 +249,37 @@ export function Loja() {
         onMenos={menos}
       />
 
+      {nAvulsos >= 2 && caixas.length === 0 && !draft && (
+        <div className="loja-wrap">
+          <button
+            type="button"
+            className="loja-sugestao"
+            onClick={() => deslizarAte('box')}
+          >
+            Numa Box de {cardapio.box.size} fica mais em conta.
+          </button>
+        </div>
+      )}
+
       <Caixas
         cardapio={cardapio}
         cart={cart}
         caixas={caixas}
         draft={draft}
         setDraft={setDraft}
-        onAddCaixa={(counts) => setCaixas((cs) => [...cs, counts])}
+        onAddCaixa={(counts) => {
+          toqueJuntar()
+          setCaixas((cs) => [...cs, counts])
+        }}
         onRemoveCaixa={(i) => setCaixas((cs) => cs.filter((_, k) => k !== i))}
         onMais={mais}
         onMenos={menos}
       />
 
-      <ComoFunciona />
-
       <footer className="loja-footer">
         <div className="loja-wrap text-center space-y-1">
-          <p className="loja-brand text-lg" style={{ color: 'var(--ink-on-dark)' }}>
-            {cardapio.negocio.nome}
-          </p>
+          <img className="loja-logo loja-logo-on-dark mx-auto" src="/hero-crumb.png" alt="" />
           <p className="text-sm">cookies. coffee. repeat</p>
-          <p className="text-xs" style={{ color: 'var(--ink-on-dark-3)' }}>
-            Feitos à mão, em pequenos lotes.
-          </p>
         </div>
       </footer>
 
@@ -309,6 +315,7 @@ export function Loja() {
         <Pedido
           referencia={pedidoRef}
           telefoneInicial={telPedido}
+          recemCriado={recemCriado}
           onNovo={fecharPedido}
         />
       )}
@@ -316,66 +323,13 @@ export function Loja() {
   )
 }
 
-function Centro({ children }) {
+function Centro({ children, fundo }) {
   return (
-    <div className="loja-body flex items-center justify-center p-6">
-      <div className="w-full max-w-sm">{children}</div>
+    <div
+      className="loja-body flex items-center justify-center p-6"
+      style={fundo ? { background: fundo } : undefined}
+    >
+      <div className="w-full max-w-sm flex flex-col items-center">{children}</div>
     </div>
-  )
-}
-
-function Hero({ nome }) {
-  return (
-    <section className="loja-hero">
-      <div className="loja-wrap loja-hero-inner grid md:grid-cols-2 gap-5 md:gap-8 items-center">
-        <div className="space-y-3 md:space-y-5">
-          <p className="bfy-chip bfy-chip-accent">Feitos à mão, todos os dias</p>
-          <h1 className="loja-hero-title">
-            Cookies que<br />valem a viagem.
-          </h1>
-          <p className="text-sm md:text-lg ink-2 max-w-md">
-            Escolhe, diz se levantas ou se entregamos, e fica com um código.
-            O pagamento combinamos depois.
-          </p>
-          <a href="#cardapio" className="btn-primary px-6 py-3 text-base">
-            Escolher os meus cookies
-          </a>
-        </div>
-        <div className="justify-self-center">
-          <img
-            className="loja-hero-img"
-            src="/hero-crumb.png"
-            alt={`Cookies da ${nome}`}
-            onError={(e) => { e.currentTarget.style.display = 'none' }}
-          />
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function ComoFunciona() {
-  const passos = [
-    ['Escolhes', 'Cookies avulsos, uma Box montada por ti ou uma caixa pronta.'],
-    ['Dizes como recebes', 'Levantas connosco ou entregamos na tua morada.'],
-    ['Combinamos o pagamento', 'MB WAY, Multibanco ou dinheiro — nada é cobrado no site.'],
-  ]
-  return (
-    <section className="loja-wrap py-9 md:py-12">
-      <div className="bfy-card p-5 md:p-7">
-        <h2 className="bfy-title text-xl mb-4">Como funciona</h2>
-        <ol className="grid sm:grid-cols-3 gap-4">
-          {passos.map(([titulo, texto], i) => (
-            <li key={titulo} className="flex gap-3">
-              <span className="passo-num" aria-hidden="true">{i + 1}</span>
-              <div>
-                <p className="font-bold text-sm ink-1">{titulo}</p>
-                <p className="text-sm ink-2 mt-0.5">{texto}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </section>
   )
 }

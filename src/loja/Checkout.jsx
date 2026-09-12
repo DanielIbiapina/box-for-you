@@ -4,15 +4,14 @@ import { fmtEuro, linhasCarrinho, totalCarrinho } from './util'
 import { gravarContacto, lerContacto } from './storage'
 
 const PAGAMENTOS = [
-  { id: 'MB WAY',     emoji: '📱', nota: 'Enviamos o pedido de pagamento. Não pagas agora.' },
-  { id: 'Multibanco', emoji: '🏧', nota: 'Enviamos referência ou IBAN. Não pagas agora.' },
-  { id: 'Dinheiro',   emoji: '💶', nota: 'Pagas no levantamento ou na entrega.' },
+  { id: 'MB WAY', nota: 'Enviamos o pedido de pagamento.' },
+  { id: 'Dinheiro', nota: 'Pagas no levantamento ou na entrega.' },
 ]
 
 const PASSOS = [
   { id: 'resumo',  label: 'Pedido' },
   { id: 'entrega', label: 'Receber' },
-  { id: 'dados',   label: 'Dados' },
+  { id: 'dados',   label: 'Nome' },
 ]
 
 const hoje = () => {
@@ -27,7 +26,7 @@ const FALLBACK_ENTREGA = 'Entregamos na morada que indicares. Combinamos o horá
 
 /**
  * Painel do pedido em três passos: rever, como recebe, contacto.
- * Sem pagamento online — a irmã confirma pelo telemóvel e combina a entrega.
+ * Sem pagamento online. MB WAY ou dinheiro; combinam depois.
  */
 export function Checkout({
   cardapio, cart, caixas, onFechar, onAjustarLinha, onPodeMais, onEnviar,
@@ -121,8 +120,8 @@ export function Checkout({
             </p>
             <h2 className="bfy-title text-xl">
               {passo === 'resumo' && 'O teu pedido'}
-              {passo === 'entrega' && 'Como recebes'}
-              {passo === 'dados' && 'Onde te encontramos'}
+              {passo === 'entrega' && 'Como queres receber?'}
+              {passo === 'dados' && 'Como te chamamos?'}
             </h2>
           </div>
           <button type="button" className="btn-icon" onClick={onFechar} aria-label="Fechar">✕</button>
@@ -137,12 +136,12 @@ export function Checkout({
         {passo === 'resumo' && (
           <div className="p-5 space-y-4">
             {linhas.length === 0 ? (
-              <p className="text-sm ink-2">O pedido está vazio. Escolhe uns cookies primeiro.</p>
+              <p className="text-sm ink-2">O pedido está vazio.</p>
             ) : (
               <ul className="space-y-2">
                 {linhas.map((l) => (
                   <li key={l.key} className="bfy-card p-3.5 flex items-center gap-3">
-                    <span className="text-xl" aria-hidden="true">{l.emoji}</span>
+                    <LinhaFoto linha={l} />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold ink-1">{l.nome}</p>
                       <p className="text-xs ink-3 truncate">{l.detalhe}</p>
@@ -173,7 +172,7 @@ export function Checkout({
               Continuar
             </button>
             <button type="button" className="btn-ghost btn-block" onClick={onFechar}>
-              Escolher mais cookies
+              Escolher mais
             </button>
           </div>
         )}
@@ -284,7 +283,7 @@ export function Checkout({
 
             <fieldset>
               <legend className="bfy-label">Como preferes pagar? *</legend>
-              <p className="text-xs ink-3 mb-2">Não pagas agora — combinamos contigo depois.</p>
+              <p className="text-xs ink-3 mb-2">Não pagas agora. Combinamos contigo.</p>
               <div className="space-y-2">
                 {PAGAMENTOS.map((p) => (
                   <label
@@ -300,7 +299,6 @@ export function Checkout({
                       onChange={set('pagamento')}
                       className="accent-[var(--color-accent-dark)] w-4 h-4"
                     />
-                    <span className="text-xl" aria-hidden="true">{p.emoji}</span>
                     <span className="min-w-0">
                       <span className="block text-sm font-bold ink-1">{p.id}</span>
                       <span className="block text-xs ink-3">{p.nota}</span>
@@ -345,4 +343,11 @@ export function Checkout({
       </div>
     </div>
   )
+}
+
+function LinhaFoto({ linha }) {
+  if (linha.image) {
+    return <img className="linha-foto" src={linha.image} alt="" />
+  }
+  return <span className="linha-foto linha-foto-vazia" aria-hidden="true" />
 }

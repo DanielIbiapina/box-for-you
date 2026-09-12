@@ -1,13 +1,12 @@
-import { Stepper, Secao } from './ui'
+import { Stepper } from './ui'
+import { toqueJuntar } from './sensacao'
 import {
   fmtEuro, disponivel, disponivelMini, disponivelTasting,
   contarCaixa, resumoCaixa, MINI_BOX_ID, TASTING_BOX_ID,
 } from './util'
 
 /**
- * Caixas: a Box montada pelo cliente (escolhe N sabores) e as duas caixas
- * prontas. A Box é o produto com mais margem — por isso vem primeiro e é a
- * única com um construtor visual.
+ * Caixas: a Box montada pelo cliente e as duas caixas prontas.
  */
 export function Caixas({
   cardapio, cart, caixas, draft, setDraft,
@@ -23,6 +22,7 @@ export function Caixas({
   }
 
   function juntar(id) {
+    toqueJuntar()
     setDraft((d) => ({ ...d, [id]: (d[id] ?? 0) + 1 }))
   }
 
@@ -48,16 +48,13 @@ export function Caixas({
 
   return (
     <>
-      <Secao
-        id="box"
-        titulo={`Box de ${size}`}
-        descricao={`Escolhes os ${size} sabores — podes repetir. Sai mais em conta do que unidade a unidade.`}
-      >
+      <section id="box" className="loja-wrap loja-secao">
         <div className="bfy-card p-4 md:p-6">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <p className="text-sm ink-2 max-w-md">
-              Toca num sabor para encher as ranhuras. Toca numa ranhura cheia para tirar.
-            </p>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="loja-section-title">Box de {size}</h2>
+              <p className="text-sm ink-2 mt-1">Escolhe {size}. Podes repetir.</p>
+            </div>
             <p className="bfy-num font-black text-xl" style={{ color: 'var(--color-accent-dark)' }}>
               {fmtEuro(cardapio.box.price)}
             </p>
@@ -67,7 +64,7 @@ export function Caixas({
             <ul className="mt-4 space-y-2">
               {caixas.map((counts, i) => (
                 <li key={i} className="bfy-sunk px-3.5 py-2.5 flex items-center gap-3">
-                  <span className="text-lg" aria-hidden="true">📦</span>
+                  <MiniFotos counts={counts} cookies={cookies} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold ink-1">Box de {size}</p>
                     <p className="text-xs ink-3 truncate">{resumoCaixa(counts, cardapio)}</p>
@@ -85,7 +82,7 @@ export function Caixas({
 
           {!draft ? (
             <button type="button" className="btn-accent mt-4" onClick={comecar} disabled={cookies.length === 0}>
-              {caixas.length > 0 ? 'Montar outra caixa' : 'Montar a minha caixa'}
+              {caixas.length > 0 ? 'Montar outra' : 'Montar a minha'}
             </button>
           ) : (
             <div className="mt-5 space-y-4">
@@ -106,7 +103,11 @@ export function Caixas({
                         disabled={!id}
                         aria-label={c ? `Tirar ${c.nome}` : `Ranhura ${i + 1} vazia`}
                       >
-                        {c ? (c.emoji || '🍪') : '·'}
+                        {c?.image
+                          ? <img src={c.image} alt="" />
+                          : c
+                            ? <span className="cookie-prato cookie-prato-mini" />
+                            : null}
                       </button>
                     )
                   })}
@@ -128,7 +129,9 @@ export function Caixas({
                       onClick={() => juntar(c.id)}
                       title={livre <= 0 ? 'Sem stock' : `Juntar ${c.nome}`}
                     >
-                      <span aria-hidden="true">{c.emoji || '🍪'}</span>
+                      {c.image
+                        ? <img className="chip-foto" src={c.image} alt="" />
+                        : <span className="cookie-prato cookie-prato-chip" />}
                       {c.short || c.nome}
                       {n > 0 && <strong className="bfy-num">×{n}</strong>}
                     </button>
@@ -149,14 +152,13 @@ export function Caixas({
             </div>
           )}
         </div>
-      </Secao>
+      </section>
 
       <div className="loja-wrap pb-9 md:pb-12 grid sm:grid-cols-2 gap-3 md:gap-4">
         <CaixaPronta
           id="mini"
-          emoji="🎁"
           nome="Mini Box"
-          descricao="Cookies mini sortidos, para provar sem compromisso."
+          descricao="Cookies mini sortidos."
           preco={cardapio.miniBox.price}
           qty={cart[MINI_BOX_ID] ?? 0}
           livre={livreMini}
@@ -166,9 +168,8 @@ export function Caixas({
         />
         <CaixaPronta
           id="tasting"
-          emoji="🥄"
           nome="Tasting Box"
-          descricao={`Um mini cookie de 50g de cada um dos ${cardapio.tastingBox.sabores} sabores do momento.`}
+          descricao={`Um mini de 50g de cada um dos ${cardapio.tastingBox.sabores} sabores.`}
           preco={cardapio.tastingBox.price}
           qty={cart[TASTING_BOX_ID] ?? 0}
           livre={livreTasting}
@@ -181,28 +182,48 @@ export function Caixas({
   )
 }
 
-function CaixaPronta({ id, emoji, nome, descricao, preco, qty, livre, esgotado, onMais, onMenos }) {
+function MiniFotos({ counts, cookies }) {
+  const fotos = Object.entries(counts)
+    .filter(([, q]) => q > 0)
+    .flatMap(([id, q]) => Array.from({ length: q }, () => cookies.find((c) => c.id === id)))
+    .filter(Boolean)
+    .slice(0, 4)
+  return (
+    <span className="mini-fotos" aria-hidden="true">
+      {fotos.map((c, i) => (
+        <span key={`${c.id}-${i}`} className="mini-foto">
+          {c.image ? <img src={c.image} alt="" /> : <span className="cookie-prato cookie-prato-mini" />}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function CaixaPronta({ id, nome, descricao, preco, qty, livre, esgotado, onMais, onMenos }) {
   return (
     <article
       id={id}
-      className="cookie-card !p-5"
+      className="cookie-card cookie-card-caixa"
       data-escolhido={qty > 0}
       data-esgotado={esgotado}
       onClick={() => { if (!esgotado && livre > 0) onMais() }}
     >
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="bfy-title text-lg">
-          <span aria-hidden="true">{emoji}</span> {nome}
-        </h3>
-        <p className="bfy-num font-black text-lg" style={{ color: 'var(--color-accent-dark)' }}>
-          {fmtEuro(preco)}
-        </p>
+      <div className="cookie-face cookie-face-caixa">
+        <span className="cookie-prato" aria-hidden="true" />
+        {qty > 0 && (
+          <span className="cookie-qty" aria-label={`${qty} no pedido`}>{qty}</span>
+        )}
+        {esgotado && <span className="cookie-esgotado">Esgotado</span>}
       </div>
-      <p className="text-sm ink-2 mt-1.5 mb-4">{descricao}</p>
-      <div className="mt-auto">
-        {esgotado
-          ? <span className="badge-critico">Esgotado</span>
-          : <Stepper qty={qty} label={nome} onMenos={onMenos} onMais={onMais} podeMais={livre > 0} />}
+      <div className="cookie-meta">
+        <h3 className="cookie-nome">{nome}</h3>
+        <p className="text-sm ink-2 mt-0.5">{descricao}</p>
+        <p className="cookie-preco bfy-num mt-2">{fmtEuro(preco)}</p>
+        {!esgotado && qty > 0 && (
+          <div className="cookie-acoes">
+            <Stepper qty={qty} label={nome} onMenos={onMenos} onMais={onMais} podeMais={livre > 0} />
+          </div>
+        )}
       </div>
     </article>
   )

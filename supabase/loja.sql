@@ -153,7 +153,7 @@ end $$;
 --   "cliente":   { "nome": "...", "telefone": "...", "instagram": "", "email": "" },
 --   "itens":     [ { "id": "nutella|mini-box|tasting-box", "qty": 2 } ],
 --   "caixas":    [ { "nutella": 2, "pistache": 2 } ],
---   "pagamento": "MB WAY | Multibanco | Dinheiro",
+--   "pagamento": "MB WAY | Dinheiro",
 --   "entrega":   { "tipo": "levantar"|"entrega", "data": "YYYY-MM-DD",
 --                  "morada": "...", "localidade": "...", "cp": "..." },
 --   "notas":     "..."
@@ -219,7 +219,7 @@ begin
   if length(regexp_replace(v_tel, '\D', '', 'g')) < 6 then
     return jsonb_build_object('ok', false, 'campo', 'telefone', 'motivo', 'Precisamos de um telemóvel para confirmar o pedido.');
   end if;
-  if v_pag not in ('MB WAY', 'Multibanco', 'Dinheiro') then
+  if v_pag not in ('MB WAY', 'Dinheiro') then
     return jsonb_build_object('ok', false, 'campo', 'pagamento', 'motivo', 'Escolhe uma forma de pagamento.');
   end if;
 
@@ -365,7 +365,7 @@ begin
     return jsonb_build_object('ok', false, 'motivo', 'O carrinho está vazio.');
   end if;
   if v_unidades > 200 then
-    return jsonb_build_object('ok', false, 'motivo', 'Pedido demasiado grande para a loja — fala connosco diretamente.');
+    return jsonb_build_object('ok', false, 'motivo', 'Pedido demasiado grande para a loja. Fala connosco diretamente.');
   end if;
 
   -- ── stock: tranca as linhas antes de ler, para dois clientes em simultâneo
@@ -552,10 +552,9 @@ begin
 
   case v_p.status
     when 'pendente' then
-      v_estado := 'Recebemos — vamos confirmar contigo';
+      v_estado := 'Recebemos. Vamos confirmar contigo.';
       v_seguinte := case v_p.forma_pagamento
         when 'MB WAY' then 'Vamos enviar-te o pedido de pagamento MB WAY para o número que deixaste.'
-        when 'Multibanco' then 'Vamos enviar-te os dados para transferência ou uma referência Multibanco.'
         when 'Dinheiro' then
           case when v_tipo = 'levantar'
             then 'Pagas em dinheiro quando levantares. Falamos contigo em breve.'
@@ -564,7 +563,7 @@ begin
         else 'Falamos contigo em breve para confirmar tudo.'
       end;
     when 'pago' then
-      v_estado := 'Confirmado — estamos a preparar';
+      v_estado := 'Confirmado. Estamos a preparar.';
       v_seguinte := case when v_tipo = 'levantar'
         then 'Avisamos quando puderes vir buscar.'
         else 'Avisamos quando formos a caminho.'
@@ -574,7 +573,7 @@ begin
         then 'Já foi levantado'
         else 'Já foi entregue'
       end;
-      v_seguinte := 'Obrigado — até à próxima fornada.';
+      v_seguinte := 'Obrigado. Até à próxima fornada.';
     when 'cancelado' then
       v_estado := 'Este pedido foi cancelado';
       v_seguinte := 'Se tiveres dúvidas, fala connosco.';

@@ -22,19 +22,6 @@ export function Stepper({ qty, onMenos, onMais, podeMais, label }) {
   )
 }
 
-export function Secao({ id, eyebrow, titulo, descricao, children }) {
-  return (
-    <section id={id} className="loja-wrap py-9 md:py-12">
-      <header className="mb-5 md:mb-7">
-        {eyebrow && <p className="bfy-eyebrow mb-1.5">{eyebrow}</p>}
-        <h2 className="loja-section-title">{titulo}</h2>
-        {descricao && <p className="mt-2 text-sm md:text-base ink-2 max-w-lg">{descricao}</p>}
-      </header>
-      {children}
-    </section>
-  )
-}
-
 export function Aviso({ tom = 'erro', children }) {
   const cor = tom === 'erro'
     ? { background: 'var(--color-danger-soft)', color: '#8C3123', border: '1px solid rgba(179,64,47,0.3)' }

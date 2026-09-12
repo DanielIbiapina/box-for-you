@@ -1,111 +1,142 @@
-/* ═══════════════════════════════════════════════════════════════════════════
-   Loja pública — assenta nos tokens de src/index.css (mesma marca da app).
-   Só o que a loja precisa e o design system ainda não tinha.
-   ═══════════════════════════════════════════════════════════════════════════ */
+/* Loja pública. Tokens em src/index.css. */
 
 .loja-body { min-height: 100dvh; background: var(--color-bg); }
 
-/* ── Barra do topo ──────────────────────────────────────────────────────── */
+/* ── Topo ───────────────────────────────────────────────────────────────── */
 .loja-top {
   position: sticky; top: 0; z-index: 30;
-  background: color-mix(in srgb, var(--color-bg) 88%, transparent);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--line-1);
+  background: var(--color-primary);
 }
 .loja-wrap { width: 100%; max-width: 64rem; margin-inline: auto; padding-inline: 1rem; }
 @media (min-width: 768px) { .loja-wrap { padding-inline: 1.5rem; } }
 
-.loja-brand {
-  font-family: var(--font-title); font-weight: 900;
-  font-variation-settings: 'SOFT' 40, 'WONK' 1;
-  letter-spacing: -0.02em; color: var(--color-accent-dark);
-  line-height: 1;
+.loja-logo {
+  display: block;
+  height: 2.35rem;
+  width: auto;
+  max-width: 9.5rem;
+  object-fit: contain;
+  object-position: left center;
+}
+.loja-logo-pulse { animation: loja-respirar 1.6s ease-in-out infinite; max-width: 12rem; height: auto; }
+@keyframes loja-respirar {
+  0%, 100% { opacity: .7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.03); }
 }
 
-/* ── Âncoras do cardápio ────────────────────────────────────────────────── */
-.loja-ancoras {
-  border-top: 1px solid var(--line-1);
-  padding-block: 0.35rem;
+.loja-top .btn-ghost {
+  color: var(--ink-on-dark);
+  background: transparent;
+  border-color: rgba(239, 228, 203, 0.22);
 }
-.loja-ancora {
-  flex-shrink: 0;
-  padding: 0.4rem 0.75rem;
-  border-radius: var(--radius-pill);
-  font-size: var(--text-xs);
+.loja-top .btn-ghost:hover { background: rgba(239, 228, 203, 0.08); }
+
+.loja-secao { padding-top: 1rem; padding-bottom: 1.25rem; }
+@media (min-width: 768px) { .loja-secao { padding-top: 1.5rem; padding-bottom: 1.75rem; } }
+
+#box, #mini, #tasting, #cardapio { scroll-margin-top: 4.25rem; }
+
+.loja-sugestao {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.5rem;
+  padding: 0.85rem 1rem;
+  border: none;
+  border-radius: var(--radius-card);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-dark);
   font-weight: 700;
-  color: var(--ink-2);
-  text-decoration: none;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
 }
-.loja-ancora:hover { color: var(--color-accent-dark); background: var(--color-accent-soft); }
+.loja-sugestao:hover { filter: brightness(0.98); }
 
-#cardapio, #box, #mini, #tasting { scroll-margin-top: 7rem; }
-
-/* ── Hero ───────────────────────────────────────────────────────────────── */
-.loja-hero {
-  background:
-    radial-gradient(120% 90% at 82% 8%, rgba(194,75,41,0.14), transparent 60%),
-    var(--color-bg);
-}
-.loja-hero-inner { padding-block: 1.1rem; }
-@media (min-width: 768px) { .loja-hero-inner { padding-block: 2.25rem; } }
-.loja-hero-title {
-  font-family: var(--font-title); font-weight: 900;
-  font-variation-settings: 'SOFT' 40, 'WONK' 1;
-  letter-spacing: -0.025em; line-height: 1.02;
-  font-size: clamp(1.85rem, 7.5vw, 4rem);
-  color: var(--ink-1);
-}
-.loja-hero-img {
-  width: 100%; max-width: 9.5rem; height: auto;
-  filter: drop-shadow(0 18px 30px rgba(29,16,8,0.22));
-}
-@media (min-width: 768px) { .loja-hero-img { max-width: 18rem; } }
-
-/* ── Secções ────────────────────────────────────────────────────────────── */
 .loja-section-title {
   font-family: var(--font-title); font-weight: 900;
   font-variation-settings: 'SOFT' 40, 'WONK' 1;
   letter-spacing: -0.02em; line-height: 1.1;
-  font-size: clamp(1.5rem, 5vw, 2rem);
+  font-size: clamp(1.35rem, 4.5vw, 1.85rem);
   color: var(--ink-1);
 }
 
-/* ── Cartão de sabor ────────────────────────────────────────────────────── */
+/* ── Cartão de sabor (foto primeiro) ────────────────────────────────────── */
 .cookie-card {
   position: relative; display: flex; flex-direction: column;
   background: var(--color-surface);
   border: 1px solid var(--line-1);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
-  padding: 0.875rem;
+  overflow: hidden;
   cursor: pointer;
+  padding: 0;
   transition: border-color .15s, box-shadow .15s, transform .12s;
 }
 .cookie-card:hover { border-color: rgba(154,59,28,0.3); box-shadow: var(--shadow-pop); }
+.cookie-card:active:not([data-esgotado='true']) { transform: scale(0.97); }
 .cookie-card[data-escolhido='true'] {
   border-color: var(--color-accent-dark);
   box-shadow: 0 0 0 3px rgba(154,59,28,0.13), var(--shadow-card);
 }
-.cookie-card[data-esgotado='true'] { opacity: 0.55; box-shadow: none; cursor: default; }
-.cookie-card[data-esgotado='true']:hover { border-color: var(--line-1); box-shadow: none; }
+.cookie-card[data-esgotado='true'] { cursor: default; }
+.cookie-card[data-esgotado='true']:hover { border-color: var(--line-1); box-shadow: var(--shadow-card); }
+.cookie-card[data-esgotado='true'] .cookie-face img,
+.cookie-card[data-esgotado='true'] .cookie-prato {
+  filter: grayscale(0.2) brightness(1.04);
+  opacity: 0.72;
+}
 
 .cookie-face {
   position: relative;
-  display: grid; place-items: center;
   aspect-ratio: 1 / 1; width: 100%;
-  border-radius: 12px; overflow: hidden;
   background: var(--color-surface-sunk);
-  font-size: clamp(2rem, 11vw, 3rem); line-height: 1;
+  overflow: hidden;
 }
-.cookie-face img { width: 100%; height: 100%; object-fit: cover; }
+.cookie-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cookie-face-caixa { aspect-ratio: 16 / 10; }
+
+.cookie-prato {
+  display: block; width: 100%; height: 100%;
+  background:
+    radial-gradient(ellipse 62% 52% at 50% 54%, #F7EFE3 0%, #E8D9C4 72%, #E0D0B8 100%);
+}
+.cookie-prato-mini { width: 100%; height: 100%; border-radius: 6px; }
+.cookie-prato-chip { width: 1.15rem; height: 1.15rem; border-radius: 5px; flex-shrink: 0; }
+
 .cookie-qty {
-  position: absolute; top: 0.4rem; right: 0.4rem;
+  position: absolute; top: 0.45rem; right: 0.45rem;
   min-width: 1.5rem; height: 1.5rem; padding-inline: 0.35rem;
   border-radius: 999px;
   display: grid; place-items: center;
   background: var(--color-accent-dark); color: #fff;
   font-size: 0.75rem; font-weight: 800; font-variant-numeric: tabular-nums;
+  animation: pill-in .2s ease-out;
 }
+@keyframes pill-in {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.cookie-esgotado {
+  position: absolute; left: 0.5rem; bottom: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: rgba(29,16,8,0.72); color: #fff;
+  font-size: 0.6875rem; font-weight: 800;
+}
+
+.cookie-meta { padding: 0.7rem 0.75rem 0.85rem; }
+.cookie-nome {
+  font-family: var(--font-title); font-weight: 700;
+  font-size: var(--text-sm); line-height: 1.2; color: var(--ink-1);
+}
+.cookie-preco {
+  margin-top: 0.2rem;
+  font-size: var(--text-xs); font-weight: 700; color: var(--ink-3);
+}
+.cookie-acoes { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.55rem; }
+
+.cookie-card-caixa { cursor: pointer; }
 
 /* ── Stepper ────────────────────────────────────────────────────────────── */
 .stepper { display: flex; align-items: center; gap: 0.5rem; }
@@ -114,10 +145,10 @@
   font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink-1);
 }
 
-/* ── Chips de escolha (box builder) ─────────────────────────────────────── */
+/* ── Chips da Box ───────────────────────────────────────────────────────── */
 .chip-sabor {
   display: inline-flex; align-items: center; gap: 0.4rem;
-  padding: 0.45rem 0.7rem; border-radius: var(--radius-pill);
+  padding: 0.35rem 0.65rem 0.35rem 0.35rem; border-radius: var(--radius-pill);
   border: 1.5px solid var(--line-2); background: var(--color-surface);
   font-size: var(--text-sm); font-weight: 600; color: var(--ink-1);
   cursor: pointer; transition: border-color .12s, background .12s, transform .08s;
@@ -130,22 +161,43 @@
   background: var(--color-accent-soft);
   color: var(--color-accent-dark);
 }
+.chip-foto {
+  width: 1.35rem; height: 1.35rem; border-radius: 6px;
+  object-fit: cover; flex-shrink: 0;
+}
 
-/* Ranhuras da caixa a encher */
 .box-slots { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .box-slot {
-  width: 2.5rem; height: 2.5rem; border-radius: 10px;
-  display: grid; place-items: center; font-size: 1.15rem;
+  width: 2.75rem; height: 2.75rem; border-radius: 10px;
+  display: grid; place-items: center;
   border: 1.5px dashed var(--line-2); background: var(--color-surface-sunk);
-  color: var(--ink-4); padding: 0; cursor: default;
+  padding: 0; cursor: default; overflow: hidden;
   font-family: inherit; appearance: none;
 }
+.box-slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .box-slot[data-cheio='true'] {
   border-style: solid; border-color: var(--color-accent-dark);
-  background: var(--color-accent-soft);
   cursor: pointer;
 }
 .box-slot:disabled { cursor: default; }
+
+.mini-fotos { display: flex; flex-shrink: 0; }
+.mini-foto {
+  width: 1.6rem; height: 1.6rem; border-radius: 6px; overflow: hidden;
+  border: 1.5px solid var(--color-surface);
+  margin-left: -0.35rem;
+}
+.mini-foto:first-child { margin-left: 0; }
+.mini-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.linha-foto {
+  width: 2.5rem; height: 2.5rem; border-radius: 8px;
+  object-fit: cover; flex-shrink: 0; background: var(--color-surface-sunk);
+}
+.linha-foto-vazia {
+  display: block;
+  background: radial-gradient(ellipse 62% 52% at 50% 54%, #F7EFE3 0%, #E8D9C4 72%, #E0D0B8 100%);
+}
 
 .loja-passos {
   display: flex; gap: 0.4rem; padding: 0 1.25rem 0.75rem;
@@ -158,7 +210,16 @@
 .loja-passos li[data-ativo='true'],
 .loja-passos li[data-feito='true'] { background: var(--color-accent-dark); }
 
-/* ── Barra do carrinho ──────────────────────────────────────────────────── */
+.loja-mascote {
+  width: 5.5rem; height: auto; margin-inline: auto;
+  filter: drop-shadow(0 10px 18px rgba(29,16,8,0.18));
+}
+.loja-mascote-in { animation: mascote-in .55s ease-out; }
+@keyframes mascote-in {
+  from { transform: translateY(10px) scale(0.92); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
 .loja-cartbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
   background: var(--color-primary); color: var(--ink-on-dark);
@@ -168,7 +229,6 @@
 }
 @keyframes cartbar-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
-/* ── Painel (checkout / carrinho) ───────────────────────────────────────── */
 .sheet-backdrop {
   position: fixed; inset: 0; z-index: 50;
   background: rgba(29,16,8,0.5); backdrop-filter: blur(3px);
@@ -194,15 +254,16 @@
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
 }
 
-/* ── Passos "como funciona" ─────────────────────────────────────────────── */
-.passo-num {
-  width: 2rem; height: 2rem; flex-shrink: 0;
-  display: grid; place-items: center; border-radius: 50%;
-  background: var(--color-accent-dark); color: #fff;
-  font-weight: 900; font-size: var(--text-sm);
-}
-
 .loja-footer {
   background: var(--color-primary); color: var(--ink-on-dark-2);
   padding: 2rem 0 calc(2rem + env(safe-area-inset-bottom));
+}
+.loja-footer .loja-logo { margin-inline: auto; max-width: 10rem; height: 2.6rem; object-position: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cookie-card, .cookie-qty, .loja-mascote-in, .loja-cartbar, .sheet, .loja-logo-pulse {
+    animation: none !important;
+    transition: none !important;
+  }
+  .cookie-card:active:not([data-esgotado='true']) { transform: none; }
 }

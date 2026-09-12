@@ -203,7 +203,7 @@ export function Configuracoes() {
             rows={2}
             value={form.instrucoesLevantamento ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, instrucoesLevantamento: e.target.value }))}
-            placeholder="Ex.: Levantamento em Lisboa — combinamos o sítio por mensagem."
+            placeholder="Ex.: Levantamento em Lisboa. Combinamos o sítio por mensagem."
           />
         </Field>
 

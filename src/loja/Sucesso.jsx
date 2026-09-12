@@ -11,8 +11,8 @@ function entregaTexto(e) {
   return ['Entrega', dia, morada].filter(Boolean).join(' · ')
 }
 
-/** Página do pedido — sucesso e acompanhamento via /?p=XXXXXX. */
-export function Pedido({ referencia, telefoneInicial, onNovo }) {
+/** Página do pedido: sucesso e acompanhamento via /?p=XXXXXX. */
+export function Pedido({ referencia, telefoneInicial, recemCriado, onNovo }) {
   const [tel, setTel] = useState(telefoneInicial || '')
   const [dados, setDados] = useState(null)
   const [erro, setErro] = useState('')
@@ -74,13 +74,17 @@ export function Pedido({ referencia, telefoneInicial, onNovo }) {
     <div className="sheet-backdrop">
       <div className="sheet" role="dialog" aria-modal="true" aria-label="O teu pedido">
         <div className="p-7 space-y-5">
-          <div className="text-center space-y-2">
-            <div className="text-5xl" aria-hidden="true">🍪</div>
+          <div className="text-center space-y-3">
+            <img
+              className={recemCriado ? 'loja-mascote loja-mascote-in' : 'loja-mascote'}
+              src="/mascote-cramb.png"
+              alt=""
+            />
             <h2 className="loja-section-title">
-              {dados ? dados.estado : 'O teu pedido'}
+              {dados ? dados.estado : recemCriado ? 'Já está connosco.' : 'O teu pedido'}
             </h2>
             <p className="text-sm ink-2">
-              Guarda a referência — é com ela que acompanhamos tudo.
+              Guarda o código. É com ele que acompanhamos o pedido.
             </p>
           </div>
 
@@ -90,7 +94,7 @@ export function Pedido({ referencia, telefoneInicial, onNovo }) {
               #{referencia}
             </p>
             <button type="button" className="btn-ghost btn-sm" onClick={copiar}>
-              {copiado ? 'Copiado' : 'Copiar referência'}
+              {copiado ? 'Copiado' : 'Copiar código'}
             </button>
           </div>
 
