@@ -22,6 +22,25 @@ export function Stepper({ qty, onMenos, onMais, podeMais, label }) {
   )
 }
 
+export function Foto({ src, className = 'menu-foto' }) {
+  if (!src) return <span className={`${className} cookie-prato`} aria-hidden="true" />
+  return <img className={className} src={src} alt="" loading="lazy" />
+}
+
+export function BotaoMais({ onClick, disabled, label }) {
+  return (
+    <button
+      type="button"
+      className="menu-mais"
+      onClick={(e) => { e.stopPropagation(); onClick?.() }}
+      disabled={disabled}
+      aria-label={label}
+    >
+      +
+    </button>
+  )
+}
+
 export function Aviso({ tom = 'erro', children }) {
   const cor = tom === 'erro'
     ? { background: 'var(--color-danger-soft)', color: '#8C3123', border: '1px solid rgba(179,64,47,0.3)' }

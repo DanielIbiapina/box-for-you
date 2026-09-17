@@ -39,12 +39,6 @@ export function toqueJuntar() {
   beep(a, { freq: 620, dur: 0.05, tipo: 'sine', ganho: 0.02 })
 }
 
-export function deslizarAte(id) {
-  const el = document.getElementById(id)
-  if (!el) return
-  el.scrollIntoView({ behavior: quieto() ? 'auto' : 'smooth', block: 'start' })
-}
-
 export function toquePedidoFeito() {
   if (quieto()) return
   try { navigator.vibrate?.([10, 50, 16]) } catch { /* */ }

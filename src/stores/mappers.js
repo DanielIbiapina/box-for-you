@@ -41,8 +41,11 @@ export const MAPPERS = {
       id: 'id', nome: 'nome', unidade: 'unidade',
       estoqueAtual: 'estoque_atual', estoqueMinimo: 'estoque_minimo',
       custoPorUnidade: 'custo_por_unidade',
+      quantidadeCompra: 'quantidade_compra',
+      unidadeCompra: 'unidade_compra',
+      precoCompra: 'preco_compra',
     },
-    ['estoqueAtual', 'estoqueMinimo', 'custoPorUnidade'],
+    ['estoqueAtual', 'estoqueMinimo', 'custoPorUnidade', 'quantidadeCompra', 'precoCompra'],
   ),
   movimentacoes: makeMapper(
     {

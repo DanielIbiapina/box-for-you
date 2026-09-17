@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Cardapio } from './Cardapio'
-import { Caixas } from './Caixas'
+import { Menu } from './Menu'
 import { Checkout } from './Checkout'
 import { Pedido } from './Sucesso'
 import { Aviso } from './ui'
@@ -16,7 +15,7 @@ import {
   lerContacto, lerUltimoPedido, gravarUltimoPedido,
   refDaUrl, irParaPedido, sairDoPedido,
 } from './storage'
-import { deslizarAte, toqueJuntar, toquePedidoFeito } from './sensacao'
+import { toqueJuntar, toquePedidoFeito } from './sensacao'
 
 export function Loja() {
   const [cardapio, setCardapio] = useState(null)
@@ -207,12 +206,10 @@ export function Loja() {
   const nItens = totalItens(cart, caixas)
   const ultimo = lerUltimoPedido()
   const telPedido = (ultimo?.referencia === pedidoRef ? ultimo.telefone : '') || lerContacto().telefone
-  const nAvulsos = Object.entries(cart)
-    .filter(([id, q]) => q > 0 && id !== MINI_BOX_ID && id !== TASTING_BOX_ID)
-    .reduce((s, [, q]) => s + q, 0)
+  const temSaco = nItens > 0 && !aberto && !pedidoRef
 
   return (
-    <div className="loja-body" style={{ paddingBottom: nItens > 0 && !aberto && !pedidoRef ? '5.5rem' : 0 }}>
+    <div className="loja-body" style={{ paddingBottom: temSaco ? '5.5rem' : 0 }}>
       <header className="loja-top">
         <div className="loja-wrap py-2.5 flex items-center justify-between gap-4">
           <img className="loja-logo" src="/hero-crumb.png" alt="Crumb Lab" />
@@ -240,33 +237,13 @@ export function Loja() {
         </div>
       </header>
 
-      <Cardapio
-        cardapio={cardapio}
-        cart={cart}
-        caixas={caixas}
-        boxDraft={draft}
-        onMais={mais}
-        onMenos={menos}
-      />
-
-      {nAvulsos >= 2 && caixas.length === 0 && !draft && (
-        <div className="loja-wrap">
-          <button
-            type="button"
-            className="loja-sugestao"
-            onClick={() => deslizarAte('box')}
-          >
-            Numa Box de {cardapio.box.size} fica mais em conta.
-          </button>
-        </div>
-      )}
-
-      <Caixas
+      <Menu
         cardapio={cardapio}
         cart={cart}
         caixas={caixas}
         draft={draft}
         setDraft={setDraft}
+        temSaco={temSaco}
         onAddCaixa={(counts) => {
           toqueJuntar()
           setCaixas((cs) => [...cs, counts])
@@ -283,7 +260,7 @@ export function Loja() {
         </div>
       </footer>
 
-      {nItens > 0 && !aberto && !pedidoRef && (
+      {temSaco && (
         <div className="loja-cartbar">
           <div className="loja-wrap flex items-center justify-between gap-4 !px-0 sm:!px-6">
             <div>

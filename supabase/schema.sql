@@ -29,6 +29,9 @@ create table if not exists ingredientes (
   estoque_atual     numeric not null default 0,
   estoque_minimo    numeric not null default 0,
   custo_por_unidade numeric not null default 0,
+  quantidade_compra numeric not null default 0,  -- quanto vem na embalagem (na unidade_compra)
+  unidade_compra    text    not null default '', -- g, kg, ml, L…; vazio = mesma unidade do stock
+  preco_compra      numeric not null default 0,  -- quanto pagas por uma embalagem
   updated_at        timestamptz not null default now()
 );
 
@@ -166,6 +169,9 @@ create table if not exists configuracao (
 );
 
 -- colunas acrescentadas depois da 1ª versão (idempotente p/ tabelas já criadas)
+alter table ingredientes add column if not exists quantidade_compra numeric not null default 0;
+alter table ingredientes add column if not exists unidade_compra    text    not null default '';
+alter table ingredientes add column if not exists preco_compra      numeric not null default 0;
 alter table vendas add column if not exists demo_flavor_id text;
 alter table pedidos add column if not exists origem text not null default 'app';
 alter table pedidos add column if not exists referencia text;

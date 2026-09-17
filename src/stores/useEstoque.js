@@ -2,6 +2,42 @@ import { useData } from './DataProvider'
 
 export const UNIDADES = ['g', 'kg', 'ml', 'L', 'unidade', 'colher (sopa)', 'colher (chá)', 'xícara']
 
+const MASSA  = { g: 1, kg: 1000 }
+const VOLUME = { ml: 1, L: 1000 }
+const GRUPOS = [MASSA, VOLUME]
+
+/** Converte quantidade entre unidades do mesmo grupo (g↔kg, ml↔L). */
+export function converterQtd(qtd, de, para) {
+  const n = parseFloat(qtd)
+  if (!n) return 0
+  if (!de || !para || de === para) return n
+  for (const grupo of GRUPOS) {
+    if (de in grupo && para in grupo) return n * grupo[de] / grupo[para]
+  }
+  return n
+}
+
+export function unidadesCompraDe(unidade) {
+  if (unidade in MASSA) return ['g', 'kg']
+  if (unidade in VOLUME) return ['ml', 'L']
+  return [unidade]
+}
+
+/** Quantidade de UMA embalagem, já na unidade do stock (ex.: 2 kg → 2000 g). */
+export function qtdEmbalagemNaUnidade(ing) {
+  const qtd = parseFloat(ing?.quantidadeCompra) || 0
+  if (qtd <= 0) return 0
+  const unidadeStock = ing.unidade || 'g'
+  return converterQtd(qtd, ing.unidadeCompra || unidadeStock, unidadeStock)
+}
+
+export function custoPorUnidadeCalculado(precoCompra, quantidadeCompra, unidadeCompra, unidade) {
+  const preco = parseFloat(precoCompra) || 0
+  const qtd = converterQtd(quantidadeCompra, unidadeCompra || unidade, unidade)
+  if (preco <= 0 || qtd <= 0) return 0
+  return preco / qtd
+}
+
 export function useEstoque() {
   const { ingredientes, movimentacoes, createRow, updateRow, removeRow } = useData()
 

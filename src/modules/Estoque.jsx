@@ -1,12 +1,19 @@
 import { useState } from 'react'
-import { useEstoque, UNIDADES } from '../stores/useEstoque'
+import {
+  useEstoque, UNIDADES,
+  unidadesCompraDe, qtdEmbalagemNaUnidade, custoPorUnidadeCalculado,
+} from '../stores/useEstoque'
 import { useCookies } from '../stores/useCookies'
 import { useEstoqueCookies } from '../stores/useEstoqueCookies'
 import { Modal } from '../components/Modal'
 import { Icon } from '../components/Icon'
 import { SearchInput } from '../components/SearchInput'
 
-const EMPTY_ING = { nome: '', unidade: 'g', custoPorUnidade: '', estoqueAtual: '', estoqueMinimo: '' }
+const EMPTY_ING = {
+  nome: '', unidade: 'g',
+  quantidadeCompra: '', unidadeCompra: 'g', precoCompra: '',
+  custoPorUnidade: '', estoqueAtual: '', estoqueMinimo: '',
+}
 
 const STATUS_CONFIG = {
   ok:      { label: 'OK',      className: 'badge-ok' },
@@ -21,6 +28,17 @@ function fmtQtd(v) {
 
 function fmtCusto(v) {
   return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(parseFloat(v) || 0)
+}
+
+function fmtCustoUnidade(v) {
+  const n = parseFloat(v) || 0
+  if (n > 0 && n < 0.01) {
+    return new Intl.NumberFormat('pt-PT', {
+      style: 'currency', currency: 'EUR',
+      minimumFractionDigits: 4, maximumFractionDigits: 6,
+    }).format(n)
+  }
+  return fmtCusto(n)
 }
 
 function Field({ label, children }) {
@@ -64,7 +82,7 @@ export function Estoque() {
   const [modal,     setModal]     = useState(null)
   const [form,      setForm]      = useState(EMPTY_ING)
   const [movModal,  setMovModal]  = useState(null)
-  const [movForm,   setMovForm]   = useState({ tipo: 'entrada', quantidade: '', motivo: '' })
+  const [movForm,   setMovForm]   = useState({ tipo: 'entrada', quantidade: '', embalagens: '', motivo: '' })
   const [histModal, setHistModal] = useState(null)
   const [search,    setSearch]    = useState('')
 
@@ -77,8 +95,13 @@ export function Estoque() {
 
   function openNew() { setForm({ ...EMPTY_ING }); setModal('new') }
   function openEdit(ing) {
+    const unidade = ing.unidade || 'g'
+    const unidadeCompra = ing.unidadeCompra || unidade
     setForm({
-      nome: ing.nome, unidade: ing.unidade,
+      nome: ing.nome, unidade,
+      quantidadeCompra: ing.quantidadeCompra || '',
+      unidadeCompra: unidadesCompraDe(unidade).includes(unidadeCompra) ? unidadeCompra : unidade,
+      precoCompra: ing.precoCompra || '',
       custoPorUnidade: ing.custoPorUnidade ?? '',
       estoqueAtual: ing.estoqueAtual ?? '',
       estoqueMinimo: ing.estoqueMinimo ?? '',
@@ -86,11 +109,20 @@ export function Estoque() {
     setModal(ing.id)
   }
 
+  const custoForm = custoPorUnidadeCalculado(
+    form.precoCompra, form.quantidadeCompra, form.unidadeCompra, form.unidade,
+  )
+
   function handleSave(e) {
     e.preventDefault()
     const dados = {
       nome: form.nome.trim(), unidade: form.unidade,
-      custoPorUnidade: parseFloat(form.custoPorUnidade) || 0,
+      quantidadeCompra: parseFloat(form.quantidadeCompra) || 0,
+      unidadeCompra: form.unidadeCompra || form.unidade,
+      precoCompra: parseFloat(form.precoCompra) || 0,
+      custoPorUnidade: custoForm
+        ? parseFloat(custoForm.toFixed(8))
+        : parseFloat(form.custoPorUnidade) || 0,
       estoqueAtual:    parseFloat(form.estoqueAtual)    || 0,
       estoqueMinimo:   parseFloat(form.estoqueMinimo)   || 0,
     }
@@ -98,12 +130,39 @@ export function Estoque() {
     setModal(null)
   }
 
+  const movIng = movModal ? ingredientes.find((i) => i.id === movModal) : null
+  const qtdPorEmbalagem = qtdEmbalagemNaUnidade(movIng)
+  const entradaPorEmbalagem = movForm.tipo === 'entrada' && qtdPorEmbalagem > 0
+  const nEmbalagens = parseFloat(movForm.embalagens) || 0
+  const qtdEntradaEmb = nEmbalagens > 0
+    ? parseFloat((nEmbalagens * qtdPorEmbalagem).toFixed(4))
+    : 0
+
   function handleMovimentacao(e) {
     e.preventDefault()
-    const qtd = parseFloat(movForm.quantidade)
-    if (!qtd || qtd <= 0) return
-    registrarMovimentacao({ ingredienteId: movModal, tipo: movForm.tipo, quantidade: qtd, motivo: movForm.motivo })
+    let qtd
+    let motivo = movForm.motivo
+    if (entradaPorEmbalagem) {
+      if (!nEmbalagens || nEmbalagens <= 0) return
+      qtd = qtdEntradaEmb
+      if (!motivo.trim()) {
+        motivo = `${fmtQtd(nEmbalagens)} embalagem${nEmbalagens !== 1 ? 'ns' : ''}`
+      }
+    } else {
+      qtd = parseFloat(movForm.quantidade)
+      if (!qtd || qtd <= 0) return
+    }
+    registrarMovimentacao({ ingredienteId: movModal, tipo: movForm.tipo, quantidade: qtd, motivo })
     setMovModal(null)
+  }
+
+  function setUnidadeForm(unidade) {
+    const opcoes = unidadesCompraDe(unidade)
+    setForm((f) => ({
+      ...f,
+      unidade,
+      unidadeCompra: opcoes.includes(f.unidadeCompra) ? f.unidadeCompra : unidade,
+    }))
   }
 
   const histIngrediente = histModal ? ingredientes.find((i) => i.id === histModal) : null
@@ -242,7 +301,10 @@ export function Estoque() {
                           {ing.nome}
                         </p>
                         <p className="text-[11px] mt-0.5 truncate ink-3">
-                          {ing.unidade} · {fmtCusto(ing.custoPorUnidade)}
+                          {(parseFloat(ing.quantidadeCompra) || 0) > 0
+                            ? `emb. ${fmtQtd(ing.quantidadeCompra)} ${ing.unidadeCompra || ing.unidade}`
+                            : ing.unidade}
+                          {ing.custoPorUnidade > 0 && ` · ${fmtCustoUnidade(ing.custoPorUnidade)}/${ing.unidade}`}
                         </p>
                       </div>
                       <span className={sc.className}>{sc.label}</span>
@@ -265,11 +327,11 @@ export function Estoque() {
                     <div className="flex items-center gap-1 mt-auto min-w-0">
                       <button
                         className="btn-accent btn-sm flex-1 min-w-0"
-                        onClick={() => { setMovForm({ tipo: 'entrada', quantidade: '', motivo: '' }); setMovModal(ing.id) }}
+                        onClick={() => { setMovForm({ tipo: 'entrada', quantidade: '', embalagens: '', motivo: '' }); setMovModal(ing.id) }}
                       ><Icon name="mais" size={15} /> Entrada</button>
                       <button
                         className="btn-ghost btn-sm flex-1 min-w-0"
-                        onClick={() => { setMovForm({ tipo: 'saida', quantidade: '', motivo: '' }); setMovModal(ing.id) }}
+                        onClick={() => { setMovForm({ tipo: 'saida', quantidade: '', embalagens: '', motivo: '' }); setMovModal(ing.id) }}
                       >− Saída</button>
                       <button className="btn-icon-sm" title="Editar" onClick={() => openEdit(ing)}><Icon name="editar" size={14} /></button>
                       <button
@@ -575,7 +637,7 @@ export function Estoque() {
         <Modal
           title={modal === 'new' ? 'Novo Ingrediente' : 'Editar Ingrediente'}
           onClose={() => setModal(null)}
-          size="sm"
+          size="md"
         >
           <form onSubmit={handleSave} className="space-y-4">
             <Field label="Nome *">
@@ -587,26 +649,15 @@ export function Estoque() {
                 placeholder="Ex: Farinha de trigo"
               />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Unidade de medida">
-                <select
-                  className="bfy-input"
-                  value={form.unidade}
-                  onChange={(e) => setForm((f) => ({ ...f, unidade: e.target.value }))}
-                >
-                  {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
-              </Field>
-              <Field label="Custo por unidade (€)">
-                <input
-                  className="bfy-input"
-                  type="number" min="0" step="0.01"
-                  value={form.custoPorUnidade}
-                  onChange={(e) => setForm((f) => ({ ...f, custoPorUnidade: e.target.value }))}
-                  placeholder="0,00"
-                />
-              </Field>
-            </div>
+            <Field label="Unidade de medida">
+              <select
+                className="bfy-input"
+                value={form.unidade}
+                onChange={(e) => setUnidadeForm(e.target.value)}
+              >
+                {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Estoque atual">
                 <input
@@ -626,6 +677,67 @@ export function Estoque() {
                   placeholder="0"
                 />
               </Field>
+            </div>
+            <div
+              className="rounded-2xl p-3 space-y-3"
+              style={{ background: 'var(--color-surface-sunk)' }}
+            >
+              <div>
+                <p className="text-xs font-bold" style={{ color: 'var(--color-text)' }}>Como compras</p>
+                <p className="bfy-hint">
+                  Ex.: açúcar de 2 kg, mascavo de 1 kg, manteiga de 250 g. O custo por {form.unidade} calcula-se sozinho.
+                </p>
+              </div>
+              <div className="grid grid-cols-[1fr_5.5rem] gap-2">
+                <Field label="Quantidade da embalagem">
+                  <input
+                    className="bfy-input"
+                    type="number" min="0" step="0.01"
+                    value={form.quantidadeCompra}
+                    onChange={(e) => setForm((f) => ({ ...f, quantidadeCompra: e.target.value }))}
+                    placeholder="Ex: 2"
+                  />
+                </Field>
+                <Field label="Unidade">
+                  {unidadesCompraDe(form.unidade).length > 1 ? (
+                    <select
+                      className="bfy-input"
+                      value={form.unidadeCompra}
+                      onChange={(e) => setForm((f) => ({ ...f, unidadeCompra: e.target.value }))}
+                    >
+                      {unidadesCompraDe(form.unidade).map((u) => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input className="bfy-input" disabled value={form.unidade} />
+                  )}
+                </Field>
+              </div>
+              <Field label="Preço da embalagem (€)">
+                <input
+                  className="bfy-input"
+                  type="number" min="0" step="0.01"
+                  value={form.precoCompra}
+                  onChange={(e) => setForm((f) => ({ ...f, precoCompra: e.target.value }))}
+                  placeholder="Ex: 1,89"
+                />
+              </Field>
+              {custoForm > 0 ? (
+                <p className="text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
+                  Custo: {fmtCustoUnidade(custoForm)} / {form.unidade}
+                </p>
+              ) : (
+                <Field label={`Custo por ${form.unidade} (€)`}>
+                  <input
+                    className="bfy-input"
+                    type="number" min="0" step="any"
+                    value={form.custoPorUnidade}
+                    onChange={(e) => setForm((f) => ({ ...f, custoPorUnidade: e.target.value }))}
+                    placeholder="opcional, se ainda não souberes a embalagem"
+                  />
+                </Field>
+              )}
             </div>
             <div className="flex gap-3 pt-2">
               {modal !== 'new' && (
@@ -663,15 +775,43 @@ export function Estoque() {
                 </button>
               ))}
             </div>
-            <Field label={`Quantidade (${ingredientes.find((i) => i.id === movModal)?.unidade ?? ''})`}>
-              <input
-                className="bfy-input"
-                type="number" min="0.01" step="0.01" required
-                value={movForm.quantidade}
-                onChange={(e) => setMovForm((f) => ({ ...f, quantidade: e.target.value }))}
-                placeholder="Ex: 500"
-              />
-            </Field>
+            {entradaPorEmbalagem ? (
+              <>
+                <p className="text-sm ink-3">
+                  Cada embalagem:{' '}
+                  <strong style={{ color: 'var(--color-text)' }}>
+                    {fmtQtd(movIng.quantidadeCompra)} {movIng.unidadeCompra || movIng.unidade}
+                  </strong>
+                  {(movIng.unidadeCompra || movIng.unidade) !== movIng.unidade && (
+                    <> ({fmtQtd(qtdPorEmbalagem)} {movIng.unidade})</>
+                  )}
+                </p>
+                <Field label="Quantas embalagens compraste?">
+                  <input
+                    className="bfy-input"
+                    type="number" min="1" step="1" required
+                    value={movForm.embalagens}
+                    onChange={(e) => setMovForm((f) => ({ ...f, embalagens: e.target.value }))}
+                    placeholder="Ex: 1"
+                  />
+                </Field>
+                {qtdEntradaEmb > 0 && (
+                  <p className="text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
+                    Entra {fmtQtd(qtdEntradaEmb)} {movIng.unidade} no estoque
+                  </p>
+                )}
+              </>
+            ) : (
+              <Field label={`Quantidade (${movIng?.unidade ?? ''})`}>
+                <input
+                  className="bfy-input"
+                  type="number" min="0.01" step="0.01" required
+                  value={movForm.quantidade}
+                  onChange={(e) => setMovForm((f) => ({ ...f, quantidade: e.target.value }))}
+                  placeholder="Ex: 500"
+                />
+              </Field>
+            )}
             <Field label="Motivo (opcional)">
               <input
                 className="bfy-input"
