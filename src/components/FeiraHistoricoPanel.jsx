@@ -8,6 +8,7 @@ const PAYMENT_FILTERS = [
   { id: 'mbway', label: 'MB WAY' },
   { id: 'multibanco', label: 'Multibanco' },
   { id: 'gratis', label: 'Provas' },
+  { id: 'fidelidade', label: 'Fidelidade' },
 ]
 
 const PAYMENT_LABELS = {
@@ -15,6 +16,7 @@ const PAYMENT_LABELS = {
   mbway: 'MB WAY',
   multibanco: 'Multibanco',
   gratis: 'Prova grátis',
+  fidelidade: 'Fidelidade',
 }
 
 const fmtEuro = (v) =>
@@ -43,7 +45,7 @@ function paymentLabel(id) {
 }
 
 export function FeiraHistoricoPanel({ evento, sales, catalog }) {
-  const { total, vendas, demos, dayBreakdown, evSales } = summarizeEvent(
+  const { total, vendas, demos, fidelidades, dayBreakdown, evSales } = summarizeEvent(
     sales,
     evento,
     catalog,
@@ -54,15 +56,15 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
   const [paymentFilter, setPaymentFilter] = useState('all')
 
   const dayStats = useMemo(() => {
-    if (selectedDay === 'all') return { total, vendas, demos }
+    if (selectedDay === 'all') return { total, vendas, demos, fidelidades }
     const d = dayBreakdown.find((x) => x.day === selectedDay)
     return d
-      ? { total: d.total, vendas: d.vendas, demos: d.demos }
-      : { total: 0, vendas: 0, demos: 0 }
-  }, [selectedDay, total, vendas, demos, dayBreakdown])
+      ? { total: d.total, vendas: d.vendas, demos: d.demos, fidelidades: d.fidelidades }
+      : { total: 0, vendas: 0, demos: 0, fidelidades: 0 }
+  }, [selectedDay, total, vendas, demos, fidelidades, dayBreakdown])
 
   const dayScopedSales = useMemo(() => {
-    const list = evSales.filter((s) => (s.totalEur ?? 0) > 0 || s.kind === 'demo' || (s.desconto ?? 0) > 0)
+    const list = evSales.filter((s) => (s.totalEur ?? 0) > 0 || s.kind === 'demo' || s.kind === 'fidelidade' || (s.desconto ?? 0) > 0)
     if (selectedDay === 'all') return list
     return list.filter((s) => saleDayKey(s) === selectedDay)
   }, [evSales, selectedDay])
@@ -71,6 +73,9 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
     if (paymentFilter === 'all') return dayScopedSales
     if (paymentFilter === 'gratis') {
       return dayScopedSales.filter((s) => s.kind === 'demo' || s.paymentId === 'gratis')
+    }
+    if (paymentFilter === 'fidelidade') {
+      return dayScopedSales.filter((s) => s.kind === 'fidelidade' || s.paymentId === 'fidelidade')
     }
     return dayScopedSales.filter((s) => s.paymentId === paymentFilter)
   }, [dayScopedSales, paymentFilter])
@@ -113,7 +118,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-2 mt-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
           {[
             {
               label: selectedDay === 'all' ? 'Caixa total' : 'Caixa do dia',
@@ -122,6 +127,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
             },
             { label: 'Vendas', value: dayStats.vendas },
             { label: 'Demos', value: dayStats.demos },
+            { label: 'Fidelidade', value: dayStats.fidelidades ?? 0 },
           ].map(({ label, value, accent }) => (
             <div
               key={label}
@@ -166,6 +172,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
                 <p className="text-[11px] ink-3">
                   {d.vendas} venda{d.vendas !== 1 ? 's' : ''}
                   {d.demos > 0 ? ` · ${d.demos} demo${d.demos !== 1 ? 's' : ''}` : ''}
+                  {d.fidelidades > 0 ? ` · ${d.fidelidades} fidelidade${d.fidelidades !== 1 ? 's' : ''}` : ''}
                 </p>
               </div>
               <span className="font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
@@ -267,9 +274,11 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
                   {describePosSale(s, catalog)}
                 </p>
                 <p className="mt-0.5 ink-3">
-                  {s.kind === 'demo' || s.paymentId === 'gratis'
-                    ? 'Prova grátis'
-                    : paymentLabel(s.paymentId)}
+                  {s.kind === 'fidelidade' || s.paymentId === 'fidelidade'
+                    ? 'Fidelidade'
+                    : s.kind === 'demo' || s.paymentId === 'gratis'
+                      ? 'Prova grátis'
+                      : paymentLabel(s.paymentId)}
                   {(s.desconto ?? 0) > 0 ? ` · desconto −${fmtEuro(s.desconto)}` : ''}
                 </p>
               </div>
@@ -278,7 +287,7 @@ export function FeiraHistoricoPanel({ evento, sales, catalog }) {
         </div>
       )}
 
-      {dayStats.vendas === 0 && dayStats.demos === 0 && (
+      {dayStats.vendas === 0 && dayStats.demos === 0 && (dayStats.fidelidades ?? 0) === 0 && (
         <p className="text-sm text-center py-4 ink-3">
           {selectedDay === 'all'
             ? 'Sem vendas POS associadas a esta feira.'

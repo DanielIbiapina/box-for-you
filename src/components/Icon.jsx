@@ -202,6 +202,13 @@ const PATHS = {
     </>
   ),
   estrela: <path d="m12 3 2.6 5.6 6 .8-4.4 4.2 1.1 6L12 16.8 6.7 19.6l1.1-6L3.4 9.4l6-.8z" />,
+  fidelidade: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 9.5h18" />
+      <path d="m8 15 1.6 1.6L13.5 12.5" />
+    </>
+  ),
   utilizador: (
     <>
       <circle cx="12" cy="8" r="4" />

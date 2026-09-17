@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useReceitas } from '../stores/useReceitas'
 import { useEstoque } from '../stores/useEstoque'
 import { Icon } from '../components/Icon'
+import { custoIngredientesReceita, tipoComponente } from '../lib/receitaExpand'
 
 function fmtBRL(v) {
   return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(v)
@@ -23,27 +24,20 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
   }, [initialReceitaId])
 
   const receita = receitas.find((r) => r.id === receitaId)
+  const tipo = tipoComponente(receita)
+  const isCookie = tipo === 'cookie'
 
-  const custoPorCookieIngredientes = useMemo(() => {
-    if (!receita || !receita.rendimento) return 0
-    let total = 0
-    for (const ing of receita.ingredientes ?? []) {
-      const ingEstoque = ing.ingredienteId
-        ? ingredientes.find((i) => i.id === ing.ingredienteId)
-        : null
-      if (ingEstoque && ingEstoque.custoPorUnidade) {
-        total += ingEstoque.custoPorUnidade * (ing.quantidade ?? 0)
-      }
-    }
-    return total / receita.rendimento
-  }, [receita, ingredientes])
+  const custoLoteIngredientes = useMemo(
+    () => custoIngredientesReceita(receita, receitas, ingredientes),
+    [receita, receitas, ingredientes],
+  )
 
   const rendimento = receita?.rendimento || 1
-  const custosExtras =
-    parseFloat(embalagem) +
-    parseFloat(taxaFeira) / rendimento +
-    parseFloat(outros)
-  const custoTotal = custoPorCookieIngredientes + custosExtras
+  const custoPorUnidadeIngredientes = rendimento ? custoLoteIngredientes / rendimento : 0
+  const custosExtras = isCookie
+    ? parseFloat(embalagem) + parseFloat(taxaFeira) / rendimento + parseFloat(outros)
+    : 0
+  const custoTotal = custoPorUnidadeIngredientes + custosExtras
   const precoSugerido =
     margemDesejada > 0 && margemDesejada < 100
       ? custoTotal / (1 - margemDesejada / 100)
@@ -53,28 +47,42 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
   const lucroUnitario = precoFinal - custoTotal
   const lucroReceita = lucroUnitario * (receita?.rendimento ?? 0)
 
-  const rows = [
-    {
-      label: 'Custo dos ingredientes (por cookie)',
-      value: custoPorCookieIngredientes,
-      note: custoPorCookieIngredientes === 0 ? 'liga ingredientes ao estoque na receita' : '',
-    },
-    { label: 'Embalagem (por cookie)', value: parseFloat(embalagem) || 0 },
-    {
-      label: 'Taxa de feira (por cookie)',
-      value: (parseFloat(taxaFeira) || 0) / rendimento,
-      note: 'taxa total da feira ÷ rendimento',
-    },
-    { label: 'Outros custos (por cookie)', value: parseFloat(outros) || 0 },
-    { label: 'Custo total por cookie', value: custoTotal, bold: true },
-    { label: 'Preço de venda sugerido', value: precoFinal, bold: true, accent: true },
-    { label: 'Lucro por cookie', value: lucroUnitario, bold: true, green: lucroUnitario > 0 },
-    {
-      label: `Lucro por fornada (${receita?.rendimento ?? '—'} cookies)`,
-      value: lucroReceita,
-      bold: true,
-    },
-  ]
+  const rows = isCookie
+    ? [
+      {
+        label: 'Custo dos ingredientes (por cookie)',
+        value: custoPorUnidadeIngredientes,
+        note: custoPorUnidadeIngredientes === 0 ? 'liga ingredientes ao estoque (e bases/recheios) na receita' : '',
+      },
+      { label: 'Embalagem (por cookie)', value: parseFloat(embalagem) || 0 },
+      {
+        label: 'Taxa de feira (por cookie)',
+        value: (parseFloat(taxaFeira) || 0) / rendimento,
+        note: 'taxa total da feira ÷ rendimento',
+      },
+      { label: 'Outros custos (por cookie)', value: parseFloat(outros) || 0 },
+      { label: 'Custo total por cookie', value: custoTotal, bold: true },
+      { label: 'Preço de venda sugerido', value: precoFinal, bold: true, accent: true },
+      { label: 'Lucro por cookie', value: lucroUnitario, bold: true, green: lucroUnitario > 0 },
+      {
+        label: `Lucro por fornada (${receita?.rendimento ?? '—'} cookies)`,
+        value: lucroReceita,
+        bold: true,
+      },
+    ]
+    : [
+      {
+        label: 'Custo da fornada',
+        value: custoLoteIngredientes,
+        note: custoLoteIngredientes === 0 ? 'liga ingredientes ao estoque na receita' : '',
+      },
+      {
+        label: 'Custo por grama',
+        value: custoPorUnidadeIngredientes,
+        bold: true,
+        accent: true,
+      },
+    ]
 
   return (
     <div className={embed ? 'space-y-4' : 'bfy-page bfy-page-flow'}>
@@ -111,17 +119,41 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
                 onChange={(e) => setReceitaId(e.target.value)}
               >
                 <option value="">— Escolher receita —</option>
-                {receitas.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.emoji ?? '🍪'} {r.nome} (rende {r.rendimento})
-                  </option>
-                ))}
+                {receitas.filter((r) => tipoComponente(r) === 'cookie').length > 0 && (
+                  <optgroup label="Cookies">
+                    {receitas.filter((r) => tipoComponente(r) === 'cookie').map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.emoji ?? '🍪'} {r.nome} (rende {r.rendimento} un.)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {receitas.filter((r) => tipoComponente(r) === 'base').length > 0 && (
+                  <optgroup label="Massas base">
+                    {receitas.filter((r) => tipoComponente(r) === 'base').map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.emoji ?? '🧱'} {r.nome} (rende {r.rendimento} g)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {receitas.filter((r) => tipoComponente(r) === 'recheio').length > 0 && (
+                  <optgroup label="Recheios">
+                    {receitas.filter((r) => tipoComponente(r) === 'recheio').map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.emoji ?? '🍫'} {r.nome} (rende {r.rendimento} g)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </label>
           </div>
 
           {receitaId && (
             <>
+              {isCookie && (
+              <>
               <div className="bfy-card p-5 space-y-3">
                 <h2
                   className="text-sm font-bold bfy-card-title"
@@ -196,6 +228,8 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
                   </label>
                 </div>
               </div>
+              </>
+              )}
 
               <div className="bfy-card p-5 overflow-x-auto">
                 <h2
@@ -240,6 +274,7 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
                   </tbody>
                 </table>
 
+                {isCookie && (
                 <div
                   className="mt-4 rounded-2xl p-4 flex items-center gap-4"
                   style={{
@@ -263,6 +298,7 @@ export function PrecificacaoPanel({ embed = false, initialReceitaId = '', onClos
                     </p>
                   </div>
                 </div>
+                )}
               </div>
             </>
           )}

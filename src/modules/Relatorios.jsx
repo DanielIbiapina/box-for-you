@@ -34,7 +34,7 @@ const fmtDate = (iso) =>
 const fmtTime = (iso) =>
   new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 
-const PAY_LABELS = { dinheiro: 'Dinheiro', mbway: 'MB WAY', multibanco: 'Multibanco', gratis: 'Grátis' }
+const PAY_LABELS = { dinheiro: 'Dinheiro', mbway: 'MB WAY', multibanco: 'Multibanco', gratis: 'Grátis', fidelidade: 'Fidelidade' }
 
 // ─── Ícones SVG ──────────────────────────────────────────────────────────────
 
@@ -62,6 +62,16 @@ function IconStar() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
       <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6Z" />
+    </svg>
+  )
+}
+
+function IconStamp() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M3 9.5h18" />
+      <path d="m8 15 1.6 1.6L13.5 12.5" />
     </svg>
   )
 }
@@ -107,7 +117,7 @@ function PosSaleRow({ sale, catalog }) {
         </p>
         <p className="text-[11px] mt-0.5 ink-3">
           {fmtDate(sale.createdAt)} · {fmtTime(sale.createdAt)}
-          {sale.paymentId && sale.paymentId !== 'gratis' && (
+          {sale.paymentId && sale.paymentId !== 'gratis' && sale.paymentId !== 'fidelidade' && (
             <span> · {PAY_LABELS[sale.paymentId] ?? sale.paymentId}</span>
           )}
         </p>
@@ -174,6 +184,9 @@ export function Relatorios() {
     const demos = salesPos.filter(
       (s) => (s.createdAt ?? '').startsWith(mesSelecionado) && s.kind === 'demo',
     ).length
+    const fidelidade = salesPos.filter(
+      (s) => (s.createdAt ?? '').startsWith(mesSelecionado) && s.kind === 'fidelidade',
+    ).length
     const diretasMes = pedidosVendas.filter(
       (p) => p.criadoEm.startsWith(mesSelecionado) && p.status !== 'cancelado',
     )
@@ -190,6 +203,7 @@ export function Relatorios() {
       posVendas: posVendas.length,
       diretasVendas: diretasMes.length,
       demos,
+      fidelidade,
       cookiesVendidos,
       ticketMedio: posVendas.length ? posReceita / posVendas.length : 0,
     }
@@ -287,6 +301,7 @@ export function Relatorios() {
       `Vendas diretas: ${statsMes.diretasVendas}`,
       `Cookies vendidos (POS): ${statsMes.cookiesVendidos}`,
       `Demos: ${statsMes.demos}`,
+      `Fidelidade: ${statsMes.fidelidade}`,
       '',
       'Top sabores:',
       ...rankingSabores.slice(0, 10).map((r, i) => `  ${i + 1}. ${r.label} — ${r.qty}`),
@@ -342,13 +357,14 @@ export function Relatorios() {
           ))}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
           {[
             { icon: <IconEuro />, value: fmtEuro(statsMes.totalReceita), label: 'Receita', accent: true },
             { icon: <IconTrend />, value: statsMes.posVendas, label: 'Vendas POS' },
             { icon: <IconReceipt />, value: statsMes.diretasVendas, label: 'Diretas' },
             { icon: <IconCart />, value: statsMes.cookiesVendidos, label: 'Cookies POS' },
             { icon: <IconStar />, value: statsMes.demos, label: 'Demos' },
+            { icon: <IconStamp />, value: statsMes.fidelidade, label: 'Fidelidade' },
             {
               icon: <IconEuro />,
               value: statsMes.ticketMedio ? fmtEuro(statsMes.ticketMedio) : '—',

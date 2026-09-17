@@ -92,10 +92,10 @@ create table if not exists clientes (
 -- ---------- Vendas (POS das feiras — cookies-sales:v1) ----------
 create table if not exists vendas (
   id          text primary key default gen_random_uuid()::text,
-  kind        text    not null default 'single',      -- 'single'|'box'|'demo'|'order'
+  kind        text    not null default 'single',      -- 'single'|'box'|'demo'|'fidelidade'|'order'
   lines       jsonb   not null default '[]'::jsonb,   -- [{ qty, productId, customLabel?, ... }]
   flavor_id   text,
-  demo_flavor_id text,                                 -- sabor da demonstração grátis
+  demo_flavor_id text,                                 -- sabor da prova grátis ou do cartão fidelidade
   box_flavors jsonb   not null default '[]'::jsonb,
   payment_id  text,
   total_eur   numeric not null default 0,

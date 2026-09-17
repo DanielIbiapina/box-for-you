@@ -25,10 +25,22 @@ export function filterSalesByDay(sales, dayKey) {
   return sales.filter((s) => isSaleOnDay(s, dayKey))
 }
 
+export function isGiveawayKind(kind) {
+  return kind === 'demo' || kind === 'fidelidade'
+}
+
+export function giveawayFlavorId(s) {
+  return s?.demoFlavorId || s?.flavorId || null
+}
+
 export function describePosSale(s, catalog, miniBoxPrice = 7) {
   if (s.kind === 'demo') {
-    const m = resolveProductMeta(s.demoFlavorId, catalog)
+    const m = resolveProductMeta(giveawayFlavorId(s), catalog)
     return `Demonstração · ${m.short}`
+  }
+  if (s.kind === 'fidelidade') {
+    const m = resolveProductMeta(giveawayFlavorId(s), catalog)
+    return `Fidelidade · ${m.short}`
   }
   if (s.kind === 'box') {
     const counts = {}
@@ -53,8 +65,12 @@ export function describePosSale(s, catalog, miniBoxPrice = 7) {
 
 export function posSaleDetailLines(s, catalog, miniBoxPrice = 7) {
   if (s.kind === 'demo') {
-    const m = resolveProductMeta(s.demoFlavorId, catalog)
+    const m = resolveProductMeta(giveawayFlavorId(s), catalog)
     return [{ label: m.nome, qty: 1, sub: 'Prova grátis' }]
+  }
+  if (s.kind === 'fidelidade') {
+    const m = resolveProductMeta(giveawayFlavorId(s), catalog)
+    return [{ label: m.nome, qty: 1, sub: 'Cartão fidelidade' }]
   }
   if (s.kind === 'box') {
     const counts = {}
@@ -80,8 +96,8 @@ export function posSaleDetailLines(s, catalog, miniBoxPrice = 7) {
 
 /**
  * Contagem de cookies vendidos por productId (inclui legacy e custom como id próprio).
- * Provas grátis (kind: 'demo') ficam de fora — não são vendas e têm contagem
- * própria em computePosMetrics().demoCount, para não contaminar rankings/relatórios.
+ * Provas grátis e cartão fidelidade ficam de fora — não são vendas e têm
+ * contagem própria em computePosMetrics(), para não contaminar rankings.
  */
 export function aggregateCookieCounts(sales, catalog) {
   const counts = {}
@@ -161,7 +177,9 @@ export function computePosMetrics(sales, catalog) {
   let total = 0
   const byCookie = Object.fromEntries(catalog.map((c) => [c.id, 0]))
   let miniBoxCount = 0
-  const demoCount = { total: 0, byFlavor: Object.fromEntries(catalog.map((c) => [c.id, 0])) }
+  const emptyByFlavor = () => Object.fromEntries(catalog.map((c) => [c.id, 0]))
+  const demoCount = { total: 0, byFlavor: emptyByFlavor() }
+  const fidelidadeCount = { total: 0, byFlavor: emptyByFlavor() }
   const byPayment = {
     dinheiro: { count: 0, eur: 0 },
     mbway: { count: 0, eur: 0 },
@@ -170,7 +188,7 @@ export function computePosMetrics(sales, catalog) {
 
   for (const s of sales) {
     total += s.totalEur ?? 0
-    if ((s.totalEur ?? 0) > 0 && s.paymentId && s.paymentId !== 'gratis' && byPayment[s.paymentId]) {
+    if ((s.totalEur ?? 0) > 0 && s.paymentId && s.paymentId !== 'gratis' && s.paymentId !== 'fidelidade' && byPayment[s.paymentId]) {
       byPayment[s.paymentId].count++
       byPayment[s.paymentId].eur += s.totalEur ?? 0
     }
@@ -181,7 +199,12 @@ export function computePosMetrics(sales, catalog) {
       }
     } else if (s.kind === 'demo') {
       demoCount.total++
-      if (demoCount.byFlavor[s.demoFlavorId] != null) demoCount.byFlavor[s.demoFlavorId]++
+      const fid = giveawayFlavorId(s)
+      if (demoCount.byFlavor[fid] != null) demoCount.byFlavor[fid]++
+    } else if (s.kind === 'fidelidade') {
+      fidelidadeCount.total++
+      const fid = giveawayFlavorId(s)
+      if (fidelidadeCount.byFlavor[fid] != null) fidelidadeCount.byFlavor[fid]++
     } else if (s.kind === 'box') {
       for (const fid of s.boxFlavors ?? []) {
         if (byCookie[fid] != null) byCookie[fid]++
@@ -190,5 +213,5 @@ export function computePosMetrics(sales, catalog) {
   }
 
   const revenueSales = sales.filter((s) => (s.totalEur ?? 0) > 0).length
-  return { total, byCookie, demoCount, byPayment, revenueSales, miniBoxCount }
+  return { total, byCookie, demoCount, fidelidadeCount, byPayment, revenueSales, miniBoxCount }
 }

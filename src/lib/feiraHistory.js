@@ -1,4 +1,4 @@
-import { filterSalesByDay, computePosMetrics, saleDayKey } from './salesAnalytics'
+import { filterSalesByDay, computePosMetrics, saleDayKey, isGiveawayKind } from './salesAnalytics'
 
 export function eventDays(ev) {
   if (ev?.dias?.length) return ev.dias
@@ -39,6 +39,7 @@ export function summarizeEvent(sales, ev, catalog) {
       total: metrics.total,
       vendas: daySales.filter((s) => (s.totalEur ?? 0) > 0).length,
       demos: daySales.filter((s) => s.kind === 'demo').length,
+      fidelidades: daySales.filter((s) => s.kind === 'fidelidade').length,
     }
   })
 
@@ -48,6 +49,7 @@ export function summarizeEvent(sales, ev, catalog) {
     total,
     vendas: paid.length,
     demos: evSales.filter((s) => s.kind === 'demo').length,
+    fidelidades: evSales.filter((s) => s.kind === 'fidelidade').length,
     dayBreakdown,
     evSales,
     cookiesVendidos,
@@ -79,7 +81,7 @@ export function formatEventDateRange(ev) {
 export function orphanFairDayEvents(sales, eventos) {
   const activeDays = new Set()
   for (const s of sales) {
-    if ((s.totalEur ?? 0) <= 0 && s.kind !== 'demo') continue
+    if ((s.totalEur ?? 0) <= 0 && !isGiveawayKind(s.kind)) continue
     const day = saleDayKey(s)
     if (day) activeDays.add(day)
   }
@@ -118,6 +120,7 @@ export function listFeirasWithStats(sales, eventos, catalog) {
       ({ ev, stats }) =>
         stats.vendas > 0 ||
         stats.demos > 0 ||
+        stats.fidelidades > 0 ||
         stats.total > 0 ||
         ev.status === 'concluida' ||
         ev.tipo === 'multi-dia',

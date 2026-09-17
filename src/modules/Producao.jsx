@@ -3,6 +3,7 @@ import { useReceitas } from '../stores/useReceitas'
 import { useEstoque } from '../stores/useEstoque'
 import { Modal } from '../components/Modal'
 import { Icon } from '../components/Icon'
+import { expandirIngredientes, agruparIngredientes, tipoComponente } from '../lib/receitaExpand'
 
 export function Producao() {
   const { receitas } = useReceitas()
@@ -21,35 +22,13 @@ export function Producao() {
   const [showConfirmFeira, setShowConfirmFeira] = useState(false)
 
   const receita = receitas.find((r) => r.id === receitaId)
-
-  // Expande ingredientes de uma receita, substituindo referências de massa base
-  // pelos sub-ingredientes da base, proporcionalmente.
-  function expandirIngredientes(ings, fator) {
-    const resultado = []
-    for (const ing of ings) {
-      if (ing.tipo === 'base' && ing.receitaBaseId) {
-        const base = receitas.find((r) => r.id === ing.receitaBaseId)
-        if (base && base.rendimento > 0) {
-          const proporcao = (ing.quantidade ?? 0) / base.rendimento * fator
-          for (const baseIng of base.ingredientes ?? []) {
-            if (baseIng.tipo === 'base') continue // sem aninhamento duplo
-            resultado.push({ ...baseIng, quantidade: (baseIng.quantidade ?? 0) * proporcao, _daBase: base.nome })
-          }
-        } else {
-          // Base não encontrada — mostra como item simples
-          resultado.push({ nome: ing.nome, quantidade: (ing.quantidade ?? 0) * fator, unidade: ing.unidade, ingredienteId: null, _daBase: ing.nome })
-        }
-      } else {
-        resultado.push({ ...ing, quantidade: (ing.quantidade ?? 0) * fator })
-      }
-    }
-    return resultado
-  }
+  const prodUnidade = receita && tipoComponente(receita) !== 'cookie' ? 'g' : 'cookies'
+  const prodLabel = prodUnidade === 'g' ? 'gramas' : 'cookies'
 
   const pesoMassaTotal = useMemo(() => {
     if (!receita) return 0
     const fator = quantidade / (receita.rendimento || 1)
-    const expandidos = expandirIngredientes(receita.ingredientes ?? [], fator)
+    const expandidos = expandirIngredientes(receita.ingredientes ?? [], fator, receitas)
     const totalPorBatch = expandidos
       .filter((i) => ['g', 'ml', 'kg', 'L'].includes(i.unidade))
       .reduce((sum, i) => {
@@ -62,7 +41,9 @@ export function Producao() {
   const ingredientesNecessarios = useMemo(() => {
     if (!receita) return []
     const fator = quantidade / (receita.rendimento || 1)
-    const expandidos = expandirIngredientes(receita.ingredientes ?? [], fator)
+    const expandidos = agruparIngredientes(
+      expandirIngredientes(receita.ingredientes ?? [], fator, receitas),
+    )
     return expandidos.map((ing) => {
       const ingEstoque = ing.ingredienteId
         ? ingredientes.find((i) => i.id === ing.ingredienteId)
@@ -84,7 +65,7 @@ export function Producao() {
       const r = receitas.find((x) => x.id === item.receitaId)
       if (!r) continue
       const fator = item.quantidade / (r.rendimento || 1)
-      const expandidos = expandirIngredientes(r.ingredientes ?? [], fator)
+      const expandidos = expandirIngredientes(r.ingredientes ?? [], fator, receitas)
       for (const ing of expandidos) {
         const ingEstoque = ing.ingredienteId
           ? ingredientes.find((i) => i.id === ing.ingredienteId)
@@ -119,7 +100,7 @@ export function Producao() {
     const itens = ingredientesNecessarios
       .filter((i) => i.ingredienteId)
       .map((i) => ({ ingredienteId: i.ingredienteId, quantidade: i.quantidade }))
-    baixarEstoqueProducao(itens, `Produção: ${receita?.nome} (${quantidade} cookies)`)
+    baixarEstoqueProducao(itens, `Produção: ${receita?.nome} (${quantidade} ${prodUnidade})`)
     setConfirmado(true)
     setShowConfirmModal(false)
   }
@@ -153,7 +134,7 @@ export function Producao() {
       if (!receita) return
       const lines = [
         `Produção: ${receita.nome}`,
-        `Quantidade: ${quantidade} cookies`,
+        `Quantidade: ${quantidade} ${prodUnidade}`,
         `Massa total estimada: ${pesoMassaTotal.toFixed(0)} g`,
         '',
         'INGREDIENTES:',
@@ -193,7 +174,7 @@ export function Producao() {
               onChange={(e) => setNovoSabor((n) => ({ ...n, receitaId: e.target.value }))}
             >
               <option value="">— Selecionar receita —</option>
-              {receitas.map((r) => (
+              {receitas.filter((r) => tipoComponente(r) === 'cookie').map((r) => (
                 <option key={r.id} value={r.id}>{r.emoji ?? '🍪'} {r.nome}</option>
               ))}
             </select>
@@ -431,7 +412,7 @@ export function Producao() {
           {/* Fase 1 */}
           <div className="bfy-card p-6 mb-4">
             <h2 className="text-base font-bold mb-4 bfy-card-title">
-              1. Quantos cookies você vai fazer?
+              1. Quanto vais produzir?
             </h2>
             <div className="space-y-4">
               <label className="block">
@@ -439,19 +420,48 @@ export function Producao() {
                 <select
                   className="bfy-input"
                   value={receitaId}
-                  onChange={(e) => { setReceitaId(e.target.value); setFase(1); setConfirmado(false) }}
+                  onChange={(e) => {
+                    const id = e.target.value
+                    setReceitaId(id)
+                    const r = receitas.find((x) => x.id === id)
+                    if (r) setQuantidade(r.rendimento || 1)
+                    setFase(1)
+                    setConfirmado(false)
+                  }}
                 >
                   <option value="">— Selecionar receita —</option>
-                  {receitas.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.emoji ?? '🍪'} {r.nome} (rende {r.rendimento})
-                    </option>
-                  ))}
+                  {receitas.filter((r) => tipoComponente(r) === 'cookie').length > 0 && (
+                    <optgroup label="Cookies">
+                      {receitas.filter((r) => tipoComponente(r) === 'cookie').map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.emoji ?? '🍪'} {r.nome} (rende {r.rendimento} un.)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {receitas.filter((r) => tipoComponente(r) === 'base').length > 0 && (
+                    <optgroup label="Massas base">
+                      {receitas.filter((r) => tipoComponente(r) === 'base').map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.emoji ?? '🧱'} {r.nome} (rende {r.rendimento} g)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {receitas.filter((r) => tipoComponente(r) === 'recheio').length > 0 && (
+                    <optgroup label="Recheios">
+                      {receitas.filter((r) => tipoComponente(r) === 'recheio').map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.emoji ?? '🍫'} {r.nome} (rende {r.rendimento} g)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </label>
 
               <label className="block">
-                <span className="bfy-label">Quantidade de cookies</span>
+                <span className="bfy-label">Quantidade ({prodLabel})</span>
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
@@ -463,14 +473,14 @@ export function Producao() {
                     type="number"
                     min="1"
                     value={quantidade}
-                    onChange={(e) => setQuantidade(parseInt(e.target.value) || 1)}
+                    onChange={(e) => setQuantidade(parseFloat(e.target.value) || 1)}
                   />
                   <button
                     type="button"
                     className="btn-ghost w-10 h-10 px-0 py-0 text-xl font-bold"
                     onClick={() => setQuantidade((q) => q + (receita?.rendimento ?? 1))}
                   >+</button>
-                  <span className="text-sm" style={{ color: 'var(--ink-3)' }}>cookies</span>
+                  <span className="text-sm" style={{ color: 'var(--ink-3)' }}>{prodUnidade}</span>
                 </div>
                 {receita && (
                   <p className="text-xs mt-1.5" style={{ color: 'var(--ink-3)' }}>
@@ -504,7 +514,7 @@ export function Producao() {
                       : 'Sem ingredientes em g/ml/kg/L'}
                   </p>
                   <p className="text-sm" style={{ color: 'var(--ink-3)' }}>
-                    para {quantidade} cookies de {receita.nome}
+                    para {quantidade} {prodUnidade} de {receita.nome}
                   </p>
                 </div>
               </div>

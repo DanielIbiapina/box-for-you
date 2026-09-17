@@ -9,7 +9,7 @@ import { useEventos } from '../stores/useEventos'
 import { useVendas } from '../stores/useVendas'
 import { listFeirasWithStats, formatEventDateRange } from '../lib/feiraHistory'
 import { menuCookies, MINI_BOX_ID, TASTING_BOX_ID } from '../lib/catalog'
-import { todayKey, filterSalesByDay, computePosMetrics, topFlavorsRanking } from '../lib/salesAnalytics'
+import { todayKey, filterSalesByDay, computePosMetrics, topFlavorsRanking, isGiveawayKind } from '../lib/salesAnalytics'
 import { isSupabaseConfigured } from '../lib/supabase'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -57,8 +57,36 @@ function formatBoxCountsSummary(boxCounts, cookies) {
     .join(' · ')
 }
 
+const GIVEAWAY = {
+  demo: {
+    title: 'Prova grátis',
+    hint: 'Seleciona o sabor dado a provar',
+    confirm: 'Confirmar prova grátis',
+    toast: 'Demonstração registada',
+    needFlavor: 'Escolhe o sabor para a demonstração.',
+    cancelCart: 'Demo cancelada — lista avulsa em uso.',
+    paymentId: 'gratis',
+    sub: 'Amostra',
+  },
+  fidelidade: {
+    title: 'Cartão fidelidade',
+    hint: 'Cartão completo — escolhe o sabor',
+    confirm: 'Confirmar fidelidade',
+    toast: 'Cartão fidelidade registado',
+    needFlavor: 'Escolhe o sabor do cartão fidelidade.',
+    cancelCart: 'Fidelidade cancelada — lista avulsa em uso.',
+    paymentId: 'fidelidade',
+    sub: 'Prémio',
+  },
+}
+
+function isGiveawayOrder(order) {
+  return isGiveawayKind(order?.kind)
+}
+
 function paymentLabel(id) {
   if (id === 'gratis') return 'Prova grátis'
+  if (id === 'fidelidade') return 'Fidelidade'
   return PAYMENTS.find((p) => p.id === id)?.label ?? id
 }
 
@@ -108,6 +136,10 @@ function saleDescription(s, cookies) {
     const m = productMeta(s.demoFlavorId, cookies)
     return `Demo (${m.short}) · grátis`
   }
+  if (s.kind === 'fidelidade') {
+    const m = productMeta(s.demoFlavorId || s.flavorId, cookies)
+    return `Fidelidade (${m.short}) · grátis`
+  }
   if (s.kind === 'order') {
     return (s.lines ?? [])
       .map((ln) => `${ln.qty}× ${productMeta(ln.productId, cookies, ln).short}`)
@@ -142,7 +174,7 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
   const [order,   setOrder]   = useState(null)
   const [payment, setPayment] = useState(null)
   const [desconto, setDesconto] = useState(0)
-  const [paymentFilter, setPaymentFilter] = useState('all') // 'all' | payment id | 'gratis'
+  const [paymentFilter, setPaymentFilter] = useState('all') // 'all' | payment id | 'gratis' | 'fidelidade'
   const [toast,   setToast]   = useState(null)
   const [historicoEvent, setHistoricoEvent] = useState(null)
   const toastRef = useRef(0)
@@ -180,8 +212,8 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
 
   function addToCart(productId) {
     setOrder((prev) => {
-      if (prev?.kind === 'demo') {
-        notify('Demo cancelada — lista avulsa em uso.')
+      if (isGiveawayOrder(prev)) {
+        notify(GIVEAWAY[prev.kind].cancelCart)
         return null
       }
       return prev
@@ -201,15 +233,18 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
     setOrder({ kind: 'box', boxCounts: initialBoxCounts(menuItems), demoFlavorId: null })
   }
 
-  function startDemo() {
+  function startGiveaway(kind) {
     setCart((prev) => {
       if (cartPieces(prev) > 0) notify('Lista avulsa limpa.')
       return {}
     })
-    setOrder({ kind: 'demo', boxCounts: initialBoxCounts(cookies), demoFlavorId: null })
+    setOrder({ kind, boxCounts: initialBoxCounts(cookies), demoFlavorId: null })
     setPayment(null)
     setDesconto(0)
   }
+
+  function startDemo() { startGiveaway('demo') }
+  function startFidelidade() { startGiveaway('fidelidade') }
 
   function changeBoxCount(flavorId, delta) {
     setOrder((prev) => {
@@ -224,12 +259,12 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
     })
   }
 
-  function setDemoFlavor(id) {
-    setOrder((prev) => prev?.kind === 'demo' ? { ...prev, demoFlavorId: id } : prev)
+  function setGiveawayFlavor(id) {
+    setOrder((prev) => isGiveawayOrder(prev) ? { ...prev, demoFlavorId: id } : prev)
   }
 
   function cancelCheckout() {
-    if (order?.kind === 'box' || order?.kind === 'demo') {
+    if (order?.kind === 'box' || isGiveawayOrder(order)) {
       setOrder(null)
       setPayment(null)
       setDesconto(0)
@@ -250,15 +285,16 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
       return
     }
 
-    if (order?.kind === 'demo') {
-      if (!order.demoFlavorId) { notify('Escolhe o sabor para a demonstração.'); return }
+    if (isGiveawayOrder(order)) {
+      const cfg = GIVEAWAY[order.kind]
+      if (!order.demoFlavorId) { notify(cfg.needFlavor); return }
       addSale({
-        kind: 'demo', demoFlavorId: order.demoFlavorId,
-        flavorId: null, boxFlavors: [], paymentId: 'gratis', totalEur: 0,
+        kind: order.kind, demoFlavorId: order.demoFlavorId,
+        flavorId: null, boxFlavors: [], paymentId: cfg.paymentId, totalEur: 0,
       })
       deductSale([{ cookieId: order.demoFlavorId, qty: 1 }])
       setOrder(null); setPayment(null); setDesconto(0)
-      notify('Demonstração registada')
+      notify(cfg.toast)
       return
     }
 
@@ -266,7 +302,7 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
     const hasBox = order?.kind === 'box'
     const boxReady = hasBox && boxFilled === boxConfig.size
 
-    if (!hasBox && nCart === 0) { notify('Adiciona itens ou escolhe BOX / Demo.'); return }
+    if (!hasBox && nCart === 0) { notify('Adiciona itens ou escolhe BOX, prova ou fidelidade.'); return }
     if (hasBox && !boxReady && nCart === 0) { notify(`Seleciona exatamente ${boxConfig.size} cookies na BOX.`); return }
     if (hasBox && !boxReady && nCart > 0) { notify(`Completa a BOX (${boxFilled}/${boxConfig.size}) ou remove-a para confirmar só os avulsos.`); return }
     if (!payment) { notify('Seleciona o método de pagamento.'); return }
@@ -349,7 +385,7 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
       `Gerado em: ${new Date().toLocaleString('pt-PT')}`,
       '',
       `Total: ${fmtEuro(metrics.total)}`,
-      `Vendas pagas: ${metrics.revenueSales}  ·  Demonstrações: ${metrics.demoCount.total}`,
+      `Vendas pagas: ${metrics.revenueSales}  ·  Demonstrações: ${metrics.demoCount.total}  ·  Fidelidade: ${metrics.fidelidadeCount.total}`,
       '',
       'Cookies vendidos:',
       ...cookies.map((c) => `  ${c.nome}: ${metrics.byCookie[c.id] ?? 0}`),
@@ -384,14 +420,17 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
   const descontoAplicado = Math.min(Math.max(0, Number(desconto) || 0), checkoutTotal)
   const totalFinal = Math.max(0, checkoutTotal - descontoAplicado)
 
-  const canConfirm = order?.kind === 'demo'
+  const canConfirm = isGiveawayOrder(order)
     ? !!order.demoFlavorId
     : order?.kind === 'box'
       ? boxReady && !!payment
       : nCart > 0 && !!payment
 
   function confirmBtnText() {
-    if (order?.kind === 'demo') return order.demoFlavorId ? 'Confirmar prova grátis' : 'Escolhe o sabor'
+    if (isGiveawayOrder(order)) {
+      const cfg = GIVEAWAY[order.kind]
+      return order.demoFlavorId ? cfg.confirm : 'Escolhe o sabor'
+    }
     if (order?.kind === 'box') {
       if (boxFilled < boxConfig.size) return `Faltam ${boxConfig.size - boxFilled} cookie(s) na BOX`
       if (!payment) return 'Escolhe o pagamento'
@@ -404,10 +443,12 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
   const todayRanking = useMemo(() => topFlavorsRanking(todaySales, cookies, 12), [todaySales, cookies])
   const maxRankBar = Math.max(...todayRanking.map((r) => r.qty), 1)
   const maxDemoBar = Math.max(...cookies.map((c) => metrics.demoCount.byFlavor[c.id] ?? 0), 1)
+  const maxFidelidadeBar = Math.max(...cookies.map((c) => metrics.fidelidadeCount.byFlavor[c.id] ?? 0), 1)
 
   const filteredTodaySales = useMemo(() => {
     if (paymentFilter === 'all') return todaySales
     if (paymentFilter === 'gratis') return todaySales.filter((s) => s.kind === 'demo' || s.paymentId === 'gratis')
+    if (paymentFilter === 'fidelidade') return todaySales.filter((s) => s.kind === 'fidelidade' || s.paymentId === 'fidelidade')
     return todaySales.filter((s) => s.paymentId === paymentFilter && (s.totalEur ?? 0) > 0)
   }, [todaySales, paymentFilter])
 
@@ -443,11 +484,12 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
           )}
 
           {/* Caixa de hoje */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: 'Caixa hoje', value: fmtEuro(metrics.total), destaque: true },
               { label: 'Vendas', value: metrics.revenueSales },
               { label: 'Provas', value: metrics.demoCount.total },
+              { label: 'Fidelidade', value: metrics.fidelidadeCount.total },
             ].map(({ label, value, destaque }) => (
               <div key={label} className="bfy-card p-4 text-center">
                 <p
@@ -714,7 +756,7 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                 em linha (ícone + texto + preço lado a lado) não cabia na coluna
                 estreita do Cardápio quando a tela de Caixa divide em 3 colunas
                 (≥1024px) — o texto ficava cortado/sumido no iPad. */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 shrink-0">
               {/* Tasting Box — 1 cookie de 50g de cada sabor do cardápio */}
               {(() => {
                 const n  = cart[TASTING_BOX_ID] ?? 0
@@ -875,6 +917,35 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                   </div>
                 </div>
               </button>
+
+              {/* Cartão fidelidade */}
+              <button
+                type="button"
+                onClick={startFidelidade}
+                className="relative rounded-2xl overflow-hidden flex flex-col transition-all active:scale-95"
+                style={{
+                  border:     order?.kind === 'fidelidade' ? '2.5px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
+                  boxShadow:  order?.kind === 'fidelidade' ? '0 4px 16px rgba(154,59,28,0.22)' : 'var(--shadow-card)',
+                  background: order?.kind === 'fidelidade' ? 'var(--color-accent-dark)' : 'var(--color-surface-sunk)',
+                }}
+              >
+                <div className="flex items-center justify-center py-3" style={{ background: 'rgba(0,0,0,0.04)' }}>
+                  <span style={{ color: order?.kind === 'fidelidade' ? '#fff' : 'var(--ink-2)' }}>
+                    <Icon name="fidelidade" size={24} />
+                  </span>
+                </div>
+                <div className="px-1.5 py-1.5 text-center shrink-0">
+                  <div className="text-[11px] font-bold truncate leading-tight" style={{ color: order?.kind === 'fidelidade' ? '#fff' : 'var(--color-text)' }}>
+                    Fidelidade
+                  </div>
+                  <div className="text-[10px] truncate leading-tight" style={{ color: order?.kind === 'fidelidade' ? 'rgba(255,255,255,0.5)' : 'rgba(29,16,8,0.4)' }}>
+                    Cartão completo
+                  </div>
+                  <div className="text-[11px] font-black tabular-nums" style={{ color: order?.kind === 'fidelidade' ? 'rgba(255,255,255,0.85)' : 'var(--color-accent-dark)' }}>
+                    {fmtEuro(0)}
+                  </div>
+                </div>
+              </button>
             </div>
           </div>
         </section>
@@ -960,14 +1031,14 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                   </div>
                 )}
 
-                {/* Demo */}
-                {order?.kind === 'demo' && (
+                {/* Demo / Fidelidade */}
+                {isGiveawayOrder(order) && (
                   <div className="bfy-card p-3 space-y-2">
                     <div className="flex items-center gap-2.5">
-                      <span className="ink-2"><Icon name="cookie" size={21} /></span>
+                      <span className="ink-2"><Icon name={order.kind === 'fidelidade' ? 'fidelidade' : 'cookie'} size={21} /></span>
                       <div>
-                        <div className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>Prova grátis</div>
-                        <div className="ink-3" style={{ fontSize: 'var(--text-xs)' }}>Seleciona o sabor dado a provar</div>
+                        <div className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>{GIVEAWAY[order.kind].title}</div>
+                        <div className="ink-3" style={{ fontSize: 'var(--text-xs)' }}>{GIVEAWAY[order.kind].hint}</div>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-1.5">
@@ -977,7 +1048,7 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                           <button
                             key={c.id}
                             type="button"
-                            onClick={() => setDemoFlavor(c.id)}
+                            onClick={() => setGiveawayFlavor(c.id)}
                             className="rounded-xl px-1 py-2 text-center transition-all"
                             style={{
                               border:     on ? '2px solid var(--color-accent-dark)' : '1.5px solid var(--line-2)',
@@ -997,7 +1068,7 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                 )}
 
                 {/* Lista avulsa — visível junto com BOX */}
-                {nCart > 0 && order?.kind !== 'demo' && (
+                {nCart > 0 && !isGiveawayOrder(order) && (
                   <div className="bfy-card p-3 space-y-2">
                     <div className="bfy-eyebrow mb-1">
                       Lista · {nCart} {nCart === 1 ? 'item' : 'itens'}
@@ -1073,7 +1144,7 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                 )}
 
                 {/* Pagamento */}
-                {order?.kind !== 'demo' && (nCart > 0 || boxReady || order?.kind === 'box') && (
+                {order?.kind !== 'demo' && order?.kind !== 'fidelidade' && (nCart > 0 || boxReady || order?.kind === 'box') && (
                   <div className="bfy-card p-3 space-y-1.5">
                     <div className="bfy-eyebrow mb-1">
                       Pagamento
@@ -1149,7 +1220,7 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                 {/* Botões */}
                 <div className="flex gap-2 mt-auto pt-1">
                   <button type="button" onClick={cancelCheckout} className="btn-ghost flex-1 py-3 text-sm">
-                    {order?.kind === 'box' ? 'Remover BOX' : order?.kind === 'demo' ? 'Cancelar' : 'Limpar'}
+                    {order?.kind === 'box' ? 'Remover BOX' : isGiveawayOrder(order) ? 'Cancelar' : 'Limpar'}
                   </button>
                   <button
                     type="button"
@@ -1176,13 +1247,14 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
           style={{ background: 'var(--color-bg)', borderColor: 'var(--line-1)' }}
         >
           <div className="p-3 space-y-3">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <StatCard label="Caixa hoje" value={fmtEuro(metrics.total)} accent />
-              <StatCard label="Demos" value={metrics.demoCount.total} />
               <StatCard
                 label="Ticket"
                 value={metrics.revenueSales ? fmtEuro(metrics.total / metrics.revenueSales) : '—'}
               />
+              <StatCard label="Demos" value={metrics.demoCount.total} />
+              <StatCard label="Fidelidade" value={metrics.fidelidadeCount.total} />
             </div>
 
             <SideBlock title="Cookies vendidos hoje">
@@ -1214,6 +1286,24 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                       <div
                         className="h-full rounded-full transition-all"
                         style={{ width: `${(qty / maxDemoBar) * 100}%`, background: 'var(--color-accent-dark)' }}
+                      />
+                    </div>
+                    <span className="w-5 text-right font-black tabular-nums" style={{ color: 'var(--color-text)' }}>{qty}</span>
+                  </div>
+                )
+              })}
+            </SideBlock>
+
+            <SideBlock title="Fidelidade por sabor">
+              {cookies.map((c) => {
+                const qty = metrics.fidelidadeCount.byFlavor[c.id] ?? 0
+                return (
+                  <div key={c.id} className="flex items-center gap-2 text-xs">
+                    <span className="w-24 font-semibold truncate ink-2">{c.short}</span>
+                    <div className="flex-1 rounded-full h-1.5 overflow-hidden" style={{ background: 'var(--color-surface-sunk)' }}>
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{ width: `${(qty / maxFidelidadeBar) * 100}%`, background: 'var(--color-accent)' }}
                       />
                     </div>
                     <span className="w-5 text-right font-black tabular-nums" style={{ color: 'var(--color-text)' }}>{qty}</span>
@@ -1257,6 +1347,8 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                 {[
                   { id: 'all', label: 'Todos' },
                   ...PAYMENTS,
+                  { id: 'gratis', label: 'Provas' },
+                  { id: 'fidelidade', label: 'Fidelidade' },
                 ].map((p) => (
                   <button
                     key={p.id}
@@ -1295,9 +1387,11 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
                       </div>
                       <div className="flex justify-between items-baseline mt-0.5">
                         <span className="text-[11px] ink-3">
-                          {(s.totalEur ?? 0) > 0 || (s.desconto ?? 0) > 0
-                            ? paymentLabel(s.paymentId)
-                            : 'Prova grátis'}
+                          {s.kind === 'fidelidade'
+                            ? 'Fidelidade'
+                            : (s.totalEur ?? 0) > 0 || (s.desconto ?? 0) > 0
+                              ? paymentLabel(s.paymentId)
+                              : 'Prova grátis'}
                           {(s.desconto ?? 0) > 0 ? ` · −${fmtEuro(s.desconto)}` : ''}
                         </span>
                         <span className="text-xs font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>

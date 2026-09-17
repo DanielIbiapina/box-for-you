@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useReceitas, CATEGORIAS } from '../stores/useReceitas'
-import { useEstoque } from '../stores/useEstoque'
+import { useEstoque, converterQtd } from '../stores/useEstoque'
 import { Modal } from '../components/Modal'
 import { Icon } from '../components/Icon'
 import { SearchInput } from '../components/SearchInput'
 import { PrecificacaoPanel } from './Precificacao'
+import { tipoComponente } from '../lib/receitaExpand'
 
 // ─── constantes ──────────────────────────────────────────────────────────────
 
@@ -25,6 +26,13 @@ const EMPTY = {
 }
 
 const BASE_GRADIENT = 'linear-gradient(135deg,#5D4037 0%,#8D6E63 100%)'
+const RECHEIO_GRADIENT = 'linear-gradient(135deg,#7A3B2E 0%,#C4785A 100%)'
+
+const TIPOS_FORM = [
+  { id: 'cookie', label: 'Cookie', hint: 'Receita de sabor, para assar e vender' },
+  { id: 'base', label: 'Massa base', hint: 'Reutilizável: baunilha, cacau…' },
+  { id: 'recheio', label: 'Recheio', hint: 'Reutilizável: brigadeiro, cremes…' },
+]
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -33,8 +41,16 @@ function catById(id) {
 }
 
 function catForReceita(r) {
-  if (r.ehReceitaBase) return { gradient: BASE_GRADIENT, label: 'Massa Base' }
+  const tipo = tipoComponente(r)
+  if (tipo === 'base') return { gradient: BASE_GRADIENT, label: 'Massa Base' }
+  if (tipo === 'recheio') return { gradient: RECHEIO_GRADIENT, label: 'Recheio' }
   return catById(r.categoria)
+}
+
+function labelRendimento(r) {
+  const n = parseFloat(r.rendimento) || 0
+  if (!n) return null
+  return tipoComponente(r) === 'cookie' ? `rende ${n} un.` : `rende ${n} g`
 }
 
 function SecTitle({ children }) {
@@ -54,6 +70,7 @@ const Divider = () => (
 
 function ReceitaCard({ receita, onClick }) {
   const cat = catForReceita(receita)
+  const tipo = tipoComponente(receita)
   const totalMin = (receita.tempoPreparo ?? 0) + (receita.tempoForno ?? 0)
 
   return (
@@ -73,21 +90,20 @@ function ReceitaCard({ receita, onClick }) {
       >
         {/* Emoji da receita */}
         <span style={{ fontSize: '3rem', lineHeight: 1, filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.18))' }}>
-          {receita.emoji ?? (receita.ehReceitaBase ? '🧱' : '🍪')}
+          {receita.emoji ?? (tipo === 'recheio' ? '🍫' : tipo === 'base' ? '🧱' : '🍪')}
         </span>
 
-        {/* Badge "Massa Base" */}
-        {receita.ehReceitaBase && (
+        {tipo !== 'cookie' && (
           <span
             className="absolute top-2 left-2 text-[11px] font-black px-2 py-0.5 rounded-full"
             style={{ background: 'rgba(0,0,0,0.4)', color: '#fff', letterSpacing: '0.04em' }}
           >
-            BASE
+            {tipo === 'recheio' ? 'RECHEIO' : 'BASE'}
           </span>
         )}
 
         {/* Badge "Cookie do Mês" */}
-        {receita.cookieDoMes && !receita.ehReceitaBase && (
+        {receita.cookieDoMes && tipo === 'cookie' && (
           <span
             className="absolute top-2 right-2 text-[11px] font-black px-2 py-0.5 rounded-full"
             style={{ background: '#fff', color: 'var(--color-accent-dark)', letterSpacing: '0.04em' }}
@@ -102,7 +118,7 @@ function ReceitaCard({ receita, onClick }) {
         {/* Categoria */}
         <span
           className="inline-block text-[11px] font-black uppercase tracking-widest mb-2"
-          style={{ color: receita.ehReceitaBase ? '#8D6E63' : 'var(--color-accent-dark)', opacity: 0.85 }}
+          style={{ color: tipo !== 'cookie' ? '#8D6E63' : 'var(--color-accent-dark)', opacity: 0.85 }}
         >
           {cat.label}
         </span>
@@ -126,9 +142,9 @@ function ReceitaCard({ receita, onClick }) {
 
         {/* Stats */}
         <div className="flex items-center gap-3 mt-auto">
-          {receita.rendimento > 0 && (
+          {labelRendimento(receita) && (
             <span className="text-[11px] font-semibold" style={{ color: 'var(--ink-3)' }}>
-              rende {receita.rendimento} un.
+              {labelRendimento(receita)}
             </span>
           )}
           {totalMin > 0 && (
@@ -152,27 +168,56 @@ function ReceitaCard({ receita, onClick }) {
 function ReceitaForm({ initial, onSave, onDelete, onClose }) {
   const { ingredientes: ingEstoque } = useEstoque()
   const { receitas } = useReceitas()
-  const baseReceitas = receitas.filter((r) => r.ehReceitaBase && r.id !== initial?.id)
   const [form, setForm] = useState({ ...EMPTY, ...initial, ingredientes: initial?.ingredientes ?? [] })
+  const tipo = tipoComponente(form)
+  const componentes = receitas.filter((r) => r.ehReceitaBase && r.id !== initial?.id)
+  const bases = componentes.filter((r) => tipoComponente(r) === 'base')
+  const recheios = componentes.filter((r) => tipoComponente(r) === 'recheio')
   const [novoIng, setNovoIng] = useState({ tipo: 'ingrediente', nome: '', ingredienteId: '', receitaBaseId: '', quantidade: '', unidade: 'g' })
 
   function set(key, val) {
     setForm((f) => ({ ...f, [key]: val }))
   }
 
+  function setTipo(next) {
+    setForm((f) => {
+      const atual = tipoComponente(f)
+      if (atual === next) return f
+      const patch = { ...f, cookieDoMes: next === 'cookie' ? f.cookieDoMes : false }
+      if (next === 'cookie') {
+        patch.ehReceitaBase = false
+        patch.categoria = f.categoria === 'base' || f.categoria === 'recheio' ? 'classico' : f.categoria
+        if (f.emoji === '🧱' || f.emoji === '🍫') patch.emoji = '🍪'
+        if (atual !== 'cookie' && f.rendimento === 500) patch.rendimento = 12
+      } else if (next === 'recheio') {
+        patch.ehReceitaBase = true
+        patch.categoria = 'recheio'
+        if (f.emoji === '🍪' || f.emoji === '🧱') patch.emoji = '🍫'
+        if (atual === 'cookie' && (f.rendimento === 12 || f.rendimento === 1)) patch.rendimento = 500
+      } else {
+        patch.ehReceitaBase = true
+        patch.categoria = 'base'
+        if (f.emoji === '🍪' || f.emoji === '🍫') patch.emoji = '🧱'
+        if (atual === 'cookie' && (f.rendimento === 12 || f.rendimento === 1)) patch.rendimento = 500
+      }
+      return patch
+    })
+  }
+
   function addIngrediente() {
     const qtd = parseFloat(novoIng.quantidade)
     if (!qtd || qtd <= 0) return
-    if (novoIng.tipo === 'base') {
+    if (novoIng.tipo === 'receita') {
       if (!novoIng.receitaBaseId) return
-      const base = baseReceitas.find((r) => r.id === novoIng.receitaBaseId)
-      if (!base) return
+      const sub = componentes.find((r) => r.id === novoIng.receitaBaseId)
+      if (!sub) return
+      const linhaTipo = tipoComponente(sub) === 'recheio' ? 'recheio' : 'base'
       set('ingredientes', [...form.ingredientes, {
-        tipo: 'base',
+        tipo: linhaTipo,
         receitaBaseId: novoIng.receitaBaseId,
-        nome: base.nome,
+        nome: sub.nome,
         quantidade: qtd,
-        unidade: novoIng.unidade,
+        unidade: novoIng.unidade || 'g',
       }])
     } else {
       let ing = { ...novoIng, quantidade: qtd }
@@ -220,6 +265,29 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
       </div>
 
       <div className="mb-4">
+        <span className="bfy-label">Tipo de receita</span>
+        <div className="grid grid-cols-3 gap-2">
+          {TIPOS_FORM.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTipo(t.id)}
+              className="px-2 py-2 rounded-xl text-sm font-bold transition-all text-center"
+              style={{
+                background: tipo === t.id ? (t.id === 'recheio' ? RECHEIO_GRADIENT : t.id === 'base' ? BASE_GRADIENT : catById(form.categoria === 'classico' || form.categoria === 'sazonal' ? form.categoria : 'classico').gradient) : 'transparent',
+                color: tipo === t.id ? '#fff' : 'var(--color-text)',
+                border: `2px solid ${tipo === t.id ? 'transparent' : 'var(--line-2)'}`,
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <p className="bfy-hint">{TIPOS_FORM.find((t) => t.id === tipo)?.hint}</p>
+      </div>
+
+      {tipo === 'cookie' && (
+      <div className="mb-4">
         <span className="bfy-label">Categoria</span>
         <div className="flex gap-2 flex-wrap">
           {CATEGORIAS.map((cat) => (
@@ -239,31 +307,8 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
           ))}
         </div>
       </div>
-
-      {/* Toggle: Receita Base */}
-      <div
-        className="flex items-center justify-between p-3 rounded-xl mb-4 cursor-pointer select-none"
-        style={{ background: form.ehReceitaBase ? 'rgba(93,64,55,0.1)' : 'var(--color-surface-sunk)' }}
-        onClick={() => set('ehReceitaBase', !form.ehReceitaBase)}
-      >
-        <div>
-          <p className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>Massa base</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--ink-3)' }}>
-            Massa reutilizável como ingrediente em outras receitas
-          </p>
-        </div>
-        <div
-          className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
-          style={{ background: form.ehReceitaBase ? '#8D6E63' : 'rgba(29,16,8,0.2)' }}
-        >
-          <span
-            className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all"
-            style={{ left: form.ehReceitaBase ? '1.25rem' : '0.125rem' }}
-          />
-        </div>
-      </div>
-
-      {form.categoria === 'sazonal' && !form.ehReceitaBase && (
+      )}
+      {tipo === 'cookie' && form.categoria === 'sazonal' && (
         <div
           className="flex items-center justify-between p-3 rounded-xl mb-4 cursor-pointer select-none"
           style={{ background: 'var(--color-surface-sunk)' }}
@@ -301,9 +346,22 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
 
       <div className="grid grid-cols-3 gap-3">
         <label className="block">
-          <span className="bfy-label">Rendimento (un.)</span>
-          <input className="bfy-input" type="number" min="1" value={form.rendimento}
-            onChange={(e) => set('rendimento', parseInt(e.target.value) || 1)} />
+          <span className="bfy-label">{tipo === 'cookie' ? 'Rendimento (un.)' : 'Rendimento da fornada (g)'}</span>
+          <input
+            className="bfy-input"
+            type="number"
+            min="1"
+            step={tipo === 'cookie' ? '1' : '1'}
+            value={form.rendimento}
+            onChange={(e) => set('rendimento', tipo === 'cookie'
+              ? parseInt(e.target.value) || 1
+              : parseFloat(e.target.value) || 1)}
+          />
+          {tipo !== 'cookie' && (
+            <span className="bfy-hint">
+              Quanto esta receita rende no total. No cookie usas só uma parte (ex.: 480 g desta base).
+            </span>
+          )}
         </label>
         <label className="block">
           <span className="bfy-label">Preparo (min)</span>
@@ -324,20 +382,24 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
 
       {form.ingredientes.length > 0 && (
         <div className="mb-3 space-y-1.5">
-          {form.ingredientes.map((ing, idx) => (
+          {form.ingredientes.map((ing, idx) => {
+            const linhaTipo = ing.tipo === 'recheio' ? 'recheio'
+              : (ing.tipo === 'base' || ing.receitaBaseId) ? 'base'
+                : null
+            return (
             <div key={idx} className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-              style={{ background: ing.tipo === 'base' ? 'rgba(93,64,55,0.07)' : 'var(--color-surface-sunk)' }}>
-              {ing.tipo === 'base'
-                ? <span className="flex-shrink-0" style={{ color: '#6D4C41' }}><Icon name="massa" size={16} /></span>
+              style={{ background: linhaTipo ? 'rgba(93,64,55,0.07)' : 'var(--color-surface-sunk)' }}>
+              {linhaTipo
+                ? <span className="flex-shrink-0" style={{ color: '#6D4C41' }}><Icon name={linhaTipo === 'recheio' ? 'festa' : 'massa'} size={16} /></span>
                 : <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: 'var(--color-accent)' }} />
               }
               <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
                 {ing.nome || '—'}
               </span>
-              {ing.tipo === 'base' && (
+              {linhaTipo && (
                 <span className="text-[11px] font-black uppercase px-1.5 py-0.5 rounded-full"
                   style={{ background: 'rgba(141,110,99,0.2)', color: '#8D6E63' }}>
-                  base
+                  {linhaTipo === 'recheio' ? 'recheio' : 'base'}
                 </span>
               )}
               <span className="text-sm tabular-nums" style={{ color: 'var(--ink-3)' }}>
@@ -350,7 +412,8 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
                 style={{ color: 'var(--color-danger)' }}
               >×</button>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -360,11 +423,11 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
           Adicionar ingrediente
         </p>
 
-        {/* Tabs: Ingrediente vs Massa Base */}
+        {/* Tabs: Ingrediente vs Receita */}
         <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--color-surface-sunk)' }}>
           {[
             { id: 'ingrediente', label: 'Ingrediente' },
-            { id: 'base', label: 'Massa base' },
+            { id: 'receita', label: 'Base / recheio' },
           ].map((t) => (
             <button
               key={t.id}
@@ -382,18 +445,32 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
           ))}
         </div>
 
-        {novoIng.tipo === 'base' ? (
-          baseReceitas.length > 0 ? (
-            <select className="bfy-input" value={novoIng.receitaBaseId}
-              onChange={(e) => setNovoIng((n) => ({ ...n, receitaBaseId: e.target.value }))}>
-              <option value="">— Selecionar massa base —</option>
-              {baseReceitas.map((r) => (
-                <option key={r.id} value={r.id}>{r.emoji ?? '🧱'} {r.nome}</option>
-              ))}
-            </select>
+        {novoIng.tipo === 'receita' ? (
+          componentes.length > 0 ? (
+            <>
+              <select className="bfy-input" value={novoIng.receitaBaseId}
+                onChange={(e) => setNovoIng((n) => ({ ...n, receitaBaseId: e.target.value }))}>
+                <option value="">— Selecionar receita —</option>
+                {bases.length > 0 && (
+                  <optgroup label="Massas base">
+                    {bases.map((r) => (
+                      <option key={r.id} value={r.id}>{r.emoji ?? '🧱'} {r.nome} · {r.rendimento} g</option>
+                    ))}
+                  </optgroup>
+                )}
+                {recheios.length > 0 && (
+                  <optgroup label="Recheios">
+                    {recheios.map((r) => (
+                      <option key={r.id} value={r.id}>{r.emoji ?? '🍫'} {r.nome} · {r.rendimento} g</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              <p className="bfy-hint">Põe só a quantidade que esta receita usa (ex.: 480 g de base, 40 g de brigadeiro).</p>
+            </>
           ) : (
             <p className="text-xs" style={{ color: 'var(--ink-3)' }}>
-              Cria uma receita e ativa "Massa base" para a usares aqui
+              Cria uma massa base ou um recheio para os usares aqui
             </p>
           )
         ) : (
@@ -423,7 +500,7 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
           <input className="bfy-input flex-1" type="number" min="0.01" step="0.1"
             placeholder="Quantidade" value={novoIng.quantidade}
             onChange={(e) => setNovoIng((n) => ({ ...n, quantidade: e.target.value }))} />
-          {(novoIng.tipo === 'base' || !novoIng.ingredienteId) && (
+          {(novoIng.tipo === 'receita' || !novoIng.ingredienteId) && (
             <select className="bfy-input" style={{ width: 130 }} value={novoIng.unidade}
               onChange={(e) => setNovoIng((n) => ({ ...n, unidade: e.target.value }))}>
               {UNIDADES_ING.map((u) => <option key={u} value={u}>{u}</option>)}
@@ -433,6 +510,18 @@ function ReceitaForm({ initial, onSave, onDelete, onClose }) {
             <Icon name="mais" size={15} /> Add
           </button>
         </div>
+        {novoIng.tipo === 'receita' && novoIng.receitaBaseId && parseFloat(novoIng.quantidade) > 0 && (() => {
+          const sub = componentes.find((r) => r.id === novoIng.receitaBaseId)
+          const rend = parseFloat(sub?.rendimento) || 0
+          if (!sub || rend <= 0) return null
+          const usada = converterQtd(novoIng.quantidade, novoIng.unidade || 'g', 'g') || parseFloat(novoIng.quantidade)
+          const pct = (usada / rend) * 100
+          return (
+            <p className="bfy-hint">
+              {pct.toFixed(0)}% da fornada de {sub.nome} ({sub.rendimento} g)
+            </p>
+          )
+        })()}
       </div>
 
       <Divider />
@@ -476,16 +565,20 @@ export function Receitas() {
 
   const filtradas = receitas.filter((r) => {
     const matchSearch = r.nome.toLowerCase().includes(search.toLowerCase())
+    const tipo = tipoComponente(r)
     const matchCat = catFiltro === 'todas'
-      || (catFiltro === 'base' && r.ehReceitaBase)
-      || (catFiltro !== 'base' && !r.ehReceitaBase && r.categoria === catFiltro)
+      || (catFiltro === 'base' && tipo === 'base')
+      || (catFiltro === 'recheio' && tipo === 'recheio')
+      || (catFiltro !== 'base' && catFiltro !== 'recheio' && tipo === 'cookie' && r.categoria === catFiltro)
     return matchSearch && matchCat
   })
 
-  // Bases primeiro, depois "cookie do mês", depois restante
+  // Bases e recheios primeiro, depois "cookie do mês", depois restante
   const ordenadas = [...filtradas].sort((a, b) => {
-    if (a.ehReceitaBase && !b.ehReceitaBase) return -1
-    if (!a.ehReceitaBase && b.ehReceitaBase) return 1
+    const ta = tipoComponente(a)
+    const tb = tipoComponente(b)
+    const rank = (t) => (t === 'base' ? 0 : t === 'recheio' ? 1 : 2)
+    if (rank(ta) !== rank(tb)) return rank(ta) - rank(tb)
     if (a.cookieDoMes && !b.cookieDoMes) return -1
     if (!a.cookieDoMes && b.cookieDoMes) return 1
     return 0
@@ -511,9 +604,10 @@ export function Receitas() {
   }
 
   // Totais por categoria para o header
-  const totalClassico = receitas.filter((r) => r.categoria === 'classico' && !r.ehReceitaBase).length
-  const totalSazonal  = receitas.filter((r) => r.categoria === 'sazonal' && !r.ehReceitaBase).length
-  const totalBase     = receitas.filter((r) => r.ehReceitaBase).length
+  const totalClassico = receitas.filter((r) => tipoComponente(r) === 'cookie' && r.categoria === 'classico').length
+  const totalSazonal  = receitas.filter((r) => tipoComponente(r) === 'cookie' && r.categoria === 'sazonal').length
+  const totalBase     = receitas.filter((r) => tipoComponente(r) === 'base').length
+  const totalRecheio  = receitas.filter((r) => tipoComponente(r) === 'recheio').length
 
   return (
     <div className="bfy-page">
@@ -527,6 +621,7 @@ export function Receitas() {
           <p className="text-sm mt-1" style={{ color: 'var(--ink-3)' }}>
             {totalClassico} clássica{totalClassico !== 1 ? 's' : ''} · {totalSazonal} sazonal{totalSazonal !== 1 ? 'is' : ''}
             {totalBase > 0 && ` · ${totalBase} base${totalBase !== 1 ? 's' : ''}`}
+            {totalRecheio > 0 && ` · ${totalRecheio} recheio${totalRecheio !== 1 ? 's' : ''}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -554,6 +649,7 @@ export function Receitas() {
           {[
             { id: 'todas', label: 'Todas' },
             { id: 'base', label: 'Massa base' },
+            { id: 'recheio', label: 'Recheio' },
             ...CATEGORIAS,
           ].map((cat) => (
             <button
