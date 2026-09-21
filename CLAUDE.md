@@ -96,9 +96,19 @@ Anonymous visitors may execute exactly three SECURITY DEFINER functions, defined
 - `loja_ver_pedido(referencia, telefone)` — public order lookup; both values
   required, phone must match the customer
 
-The cart lives in `localStorage` (`bfy:loja-cart-v1`) so a refresh does not
-empty it; the order of record is still Postgres. Checkout asks **Levantar** or
-**Entrega** (address only for delivery). Success is `/?p=XXXXXX`.
+The cart lives in `localStorage` (`bfy:loja-cart-v2`: `picks`, the flavors in
+tap order, plus `extras` for Mini/Tasting) so a refresh does not empty it; a v1
+cart is converted on first read. The order of record is still Postgres.
+
+There is no "Box or loose" choice: every `box.size` picks close a Box
+automatically (`util.agrupar`, only when the Box is cheaper than the loose
+price); the remainder goes as loose cookies. The client sends that split as
+`caixas` + `itens`, and the server re-prices it.
+
+Checkout is one decision per screen (`Checkout.jsx`): order → Levantar/Entrega
+→ day → address (delivery only) → contact → payment → confirm. Success is
+`/?p=XXXXXX`. Sounds live in `sensacao.js`, gesture animations in `voar.js`;
+both switch off under `prefers-reduced-motion`.
 
 Prices sent by the browser are ignored by design. When changing anything about
 pricing or stock, change it in the SQL function too — otherwise the store and the

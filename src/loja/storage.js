@@ -3,8 +3,10 @@
  * isto só evita perder o saco ao refresh e permite reabrir o último pedido.
  */
 
-const CART_KEY = 'bfy:loja-cart-v1'
+const CART_KEY = 'bfy:loja-cart-v2'
+const CART_KEY_V1 = 'bfy:loja-cart-v1'
 const CONTACTO_KEY = 'bfy:loja-contacto-v1'
+const EXTRA_IDS = ['mini-box', 'tasting-box']
 const ULTIMO_KEY = 'bfy:loja-ultimo-pedido'
 const TTL_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -23,42 +25,69 @@ function gravar(key, valor) {
   } catch { /* quota / modo privado */ }
 }
 
+const valido = (data) => data?.savedAt && Date.now() - data.savedAt <= TTL_MS
+
+const expandir = (counts) => Object.entries(counts ?? {})
+  .flatMap(([id, q]) => Array.from({ length: Math.max(0, Number(q) || 0) }, () => id))
+
+/**
+ * O saco é a lista de sabores pela ordem em que foram tocados (`picks`) e as
+ * caixas prontas (`extras`). Um saco do formato antigo (Box montada à mão +
+ * avulsos) é convertido uma vez, para ninguém perder o que já tinha escolhido.
+ */
 export function lerCarrinho() {
-  const data = ler(CART_KEY)
-  if (!data?.savedAt || Date.now() - data.savedAt > TTL_MS) {
-    try { localStorage.removeItem(CART_KEY) } catch { /* */ }
-    return { cart: {}, caixas: [], draft: null }
+  const v2 = ler(CART_KEY)
+  if (valido(v2)) {
+    return {
+      picks: Array.isArray(v2.picks) ? v2.picks.filter((x) => typeof x === 'string') : [],
+      extras: v2.extras && typeof v2.extras === 'object' ? v2.extras : {},
+    }
   }
-  return {
-    cart: data.cart && typeof data.cart === 'object' ? data.cart : {},
-    caixas: Array.isArray(data.caixas) ? data.caixas : [],
-    draft: data.draft && typeof data.draft === 'object' ? data.draft : null,
-  }
+
+  const v1 = ler(CART_KEY_V1)
+  try { localStorage.removeItem(CART_KEY_V1) } catch { /* */ }
+  if (!valido(v1)) return { picks: [], extras: {} }
+
+  const cart = v1.cart && typeof v1.cart === 'object' ? v1.cart : {}
+  const soltos = Object.fromEntries(Object.entries(cart).filter(([id]) => !EXTRA_IDS.includes(id)))
+  const extras = Object.fromEntries(Object.entries(cart).filter(([id, q]) => EXTRA_IDS.includes(id) && q > 0))
+  const picks = [
+    ...(Array.isArray(v1.caixas) ? v1.caixas.flatMap(expandir) : []),
+    ...expandir(v1.draft),
+    ...expandir(soltos),
+  ]
+  return { picks, extras }
 }
 
-export function gravarCarrinho({ cart, caixas, draft }) {
-  gravar(CART_KEY, { savedAt: Date.now(), cart, caixas, draft })
+export function gravarCarrinho({ picks, extras }) {
+  gravar(CART_KEY, { savedAt: Date.now(), picks, extras })
 }
 
 export function limparCarrinho() {
   try { localStorage.removeItem(CART_KEY) } catch { /* */ }
 }
 
+/** Contacto e morada ficam neste telemóvel, para o próximo pedido ser 3 toques. */
 export function lerContacto() {
-  const data = ler(CONTACTO_KEY)
-  if (!data) return { nome: '', telefone: '', tipo: '' }
+  const data = ler(CONTACTO_KEY) ?? {}
   return {
     nome: String(data.nome ?? ''),
     telefone: String(data.telefone ?? ''),
     tipo: data.tipo === 'levantar' || data.tipo === 'entrega' ? data.tipo : '',
+    morada: String(data.morada ?? ''),
+    localidade: String(data.localidade ?? ''),
+    cp: String(data.cp ?? ''),
   }
 }
 
-export function gravarContacto({ nome, telefone, tipo }) {
+export function gravarContacto({ nome, telefone, tipo, morada, localidade, cp }) {
   gravar(CONTACTO_KEY, {
     nome: nome ?? '',
     telefone: telefone ?? '',
     tipo: tipo === 'levantar' || tipo === 'entrega' ? tipo : '',
+    morada: morada ?? '',
+    localidade: localidade ?? '',
+    cp: cp ?? '',
   })
 }
 

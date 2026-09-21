@@ -1,4 +1,5 @@
 /** Peças pequenas partilhadas pela loja. */
+import { MIGALHAS } from './voar'
 
 export function Stepper({ qty, onMenos, onMais, podeMais, label }) {
   return (
@@ -24,20 +25,41 @@ export function Stepper({ qty, onMenos, onMais, podeMais, label }) {
 
 export function Foto({ src, className = 'menu-foto' }) {
   if (!src) return <span className={`${className} cookie-prato`} aria-hidden="true" />
-  return <img className={className} src={src} alt="" loading="lazy" />
+  return <img className={className} src={src} alt="" loading="lazy" draggable="false" />
 }
 
-export function BotaoMais({ onClick, disabled, label }) {
+export function IconeBox({ size = 16 }) {
   return (
-    <button
-      type="button"
-      className="menu-mais"
-      onClick={(e) => { e.stopPropagation(); onClick?.() }}
-      disabled={disabled}
-      aria-label={label}
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
     >
-      +
-    </button>
+      <path d="M21 8 12 3 3 8l9 5 9-5Z" />
+      <path d="M3 8v8l9 5 9-5V8" />
+      <path d="M12 13v8" />
+    </svg>
+  )
+}
+
+/** Explosão de migalhas: CSS faz o resto (.migalha em loja.css). */
+export function Migalhas({ atraso = '0s', escala = 1 }) {
+  return (
+    <span className="migalhas" aria-hidden="true">
+      {MIGALHAS.map((m, i) => (
+        <span
+          key={i}
+          className="migalha"
+          style={{
+            '--x': `calc(${m.x} * ${escala})`,
+            '--y': `calc(${m.y} * ${escala})`,
+            '--r': m.r,
+            '--c': m.c,
+            '--d': atraso,
+            borderRadius: m.t,
+          }}
+        />
+      ))}
+    </span>
   )
 }
 

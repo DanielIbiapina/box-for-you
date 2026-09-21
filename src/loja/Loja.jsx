@@ -1,21 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Menu } from './Menu'
+import { Bandeja } from './Bandeja'
 import { Checkout } from './Checkout'
 import { Pedido } from './Sucesso'
 import { Aviso } from './ui'
 import { criarPedido, fetchCardapio, isSupabaseConfigured } from './api'
 import {
-  fmtEuro, linhasCarrinho, totalCarrinho, totalItens,
-  findCookie, disponivel, disponivelMini, disponivelTasting,
-  clampCarrinho, podeDuplicarCaixa,
-  MINI_BOX_ID, TASTING_BOX_ID,
+  findCookie, livreSabor, livreExtra, contar, agrupar,
+  resumoPedido, payloadPedido, clampEscolha, poupancaPorBox,
 } from './util'
 import {
   lerCarrinho, gravarCarrinho, limparCarrinho,
   lerContacto, lerUltimoPedido, gravarUltimoPedido,
   refDaUrl, irParaPedido, sairDoPedido,
 } from './storage'
-import { toqueJuntar, toquePedidoFeito } from './sensacao'
+import { toqueJuntar, toqueTirar, toqueBoxFechada, toqueSemStock, toquePedidoFeito } from './sensacao'
+import { voar, saltar, abanar } from './voar'
 
 export function Loja() {
   const [cardapio, setCardapio] = useState(null)
@@ -24,9 +24,10 @@ export function Loja() {
   const [recarga, setRecarga] = useState(0)
 
   const [boot] = useState(lerCarrinho)
-  const [cart, setCart] = useState(boot.cart)
-  const [caixas, setCaixas] = useState(boot.caixas)
-  const [draft, setDraft] = useState(boot.draft)
+  const [picks, setPicks] = useState(boot.picks)
+  const [extras, setExtras] = useState(boot.extras)
+  /** A Box que acabou de fechar com o último toque — só vive até ao gesto seguinte. */
+  const [fechou, setFechou] = useState(null)
 
   const [aberto, setAberto] = useState(false)
   const [pedidoRef, setPedidoRef] = useState(() => refDaUrl())
@@ -34,8 +35,8 @@ export function Loja() {
 
   const carregar = () => setRecarga((n) => n + 1)
 
-  const sacoRef = useRef({ cart, caixas, draft })
-  sacoRef.current = { cart, caixas, draft }
+  const sacoRef = useRef({ picks, extras })
+  useEffect(() => { sacoRef.current = { picks, extras } }, [picks, extras])
 
   useEffect(() => {
     if (!isSupabaseConfigured) return undefined
@@ -45,15 +46,9 @@ export function Loja() {
         if (!vivo) return
         setCardapio(dados)
         setErroCarga('')
-        const next = clampCarrinho(
-          dados,
-          sacoRef.current.cart,
-          sacoRef.current.caixas,
-          sacoRef.current.draft,
-        )
-        setCart(next.cart)
-        setCaixas(next.caixas)
-        setDraft(next.draft)
+        const next = clampEscolha(dados, sacoRef.current.picks, sacoRef.current.extras)
+        setPicks(next.picks)
+        setExtras(next.extras)
       })
       .catch((e) => {
         console.error(e)
@@ -64,8 +59,8 @@ export function Loja() {
   }, [recarga])
 
   useEffect(() => {
-    gravarCarrinho({ cart, caixas, draft })
-  }, [cart, caixas, draft])
+    gravarCarrinho({ picks, extras })
+  }, [picks, extras])
 
   useEffect(() => {
     const onPop = () => setPedidoRef(refDaUrl())
@@ -73,67 +68,125 @@ export function Loja() {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  function mais(id) {
-    if (!podeJuntar(id)) return
-    toqueJuntar()
-    setCart((c) => ({ ...c, [id]: (c[id] ?? 0) + 1 }))
+  // Com uma folha aberta, a página por trás não rola.
+  const folhaAberta = aberto || Boolean(pedidoRef)
+  useEffect(() => {
+    if (!folhaAberta) return undefined
+    const antes = document.documentElement.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+    return () => { document.documentElement.style.overflow = antes }
+  }, [folhaAberta])
+
+  const resumo = useMemo(
+    () => (cardapio ? resumoPedido(picks, extras, cardapio) : null),
+    [picks, extras, cardapio],
+  )
+
+  // ── gestos no cardápio ──────────────────────────────────────────────────
+  function juntar(id, fotoEl = null, cardEl = null) {
+    const c = findCookie(cardapio, id)
+    if (!c) return
+    if (livreSabor(c, picks) <= 0) {
+      toqueSemStock()
+      abanar(cardEl)
+      return
+    }
+    const proximo = [...picks, id]
+    const size = cardapio.box.size
+    const fechouAgora = agrupar(proximo, cardapio).caixas.length > agrupar(picks, cardapio).caixas.length
+    if (fechouAgora) {
+      toqueBoxFechada()
+      setFechou({ ids: proximo.slice(-size), n: proximo.length })
+    } else {
+      toqueJuntar(((proximo.length - 1) % size) + 1)
+      setFechou(null)
+    }
+    saltar(fotoEl)
+    voar(fotoEl, document.querySelector(`[data-slot="${(proximo.length - 1) % size}"]`))
+    setPicks(proximo)
   }
 
-  function menos(id) {
-    setCart((c) => {
-      const n = (c[id] ?? 0) - 1
-      const proximo = { ...c }
-      if (n <= 0) delete proximo[id]
-      else proximo[id] = n
-      return proximo
+  function tirar(id) {
+    const i = picks.lastIndexOf(id)
+    if (i < 0) return
+    toqueTirar()
+    setFechou(null)
+    setPicks(picks.filter((_, k) => k !== i))
+  }
+
+  function juntarExtra(id, fotoEl = null, cardEl = null) {
+    if (livreExtra(cardapio, extras, id) <= 0) {
+      toqueSemStock()
+      abanar(cardEl)
+      return
+    }
+    toqueJuntar(4)
+    saltar(fotoEl)
+    voar(fotoEl, document.querySelector('[data-alvo="total"]'))
+    setFechou(null)
+    setExtras((e) => ({ ...e, [id]: (e[id] ?? 0) + 1 }))
+  }
+
+  function tirarExtra(id) {
+    toqueTirar()
+    setExtras((e) => {
+      const n = (e[id] ?? 0) - 1
+      const next = { ...e }
+      if (n <= 0) delete next[id]
+      else next[id] = n
+      return next
     })
   }
 
-  function podeJuntar(id) {
-    if (!cardapio) return false
-    if (id === MINI_BOX_ID) return disponivelMini(cardapio, cart) > 0
-    if (id === TASTING_BOX_ID) return disponivelTasting(cardapio, cart) > 0
-    const c = findCookie(cardapio, id)
-    return c ? disponivel(c, cart, caixas, draft) > 0 : false
+  // ── ajustes na revisão do pedido ────────────────────────────────────────
+  function tirarCaixa(inicio) {
+    toqueTirar()
+    setFechou(null)
+    setPicks(picks.filter((_, k) => k < inicio || k >= inicio + cardapio.box.size))
+  }
+
+  function podeRepetirCaixa(inicio) {
+    const ids = picks.slice(inicio, inicio + cardapio.box.size)
+    return Object.entries(contar(ids)).every(([id, q]) => livreSabor(findCookie(cardapio, id), picks) >= q)
+  }
+
+  /** Uma Box igual entra logo a seguir às Boxes cheias, para não baralhar com os soltos. */
+  function repetirCaixa(inicio) {
+    if (!podeRepetirCaixa(inicio)) {
+      toqueSemStock()
+      return
+    }
+    const size = cardapio.box.size
+    const ids = picks.slice(inicio, inicio + size)
+    const cheias = Math.floor(picks.length / size) * size
+    toqueBoxFechada()
+    setFechou(null)
+    setPicks([...picks.slice(0, cheias), ...ids, ...picks.slice(cheias)])
   }
 
   function ajustarLinha(l, delta) {
-    if (l.tipo === 'caixa') {
-      if (delta < 0) setCaixas((cs) => cs.filter((_, i) => i !== l.indice))
-      else if (podeDuplicarCaixa(caixas[l.indice], cardapio, cart, caixas, draft)) {
-        toqueJuntar()
-        setCaixas((cs) => [...cs, { ...cs[l.indice] }])
-      }
-      return
-    }
-    if (delta > 0) mais(l.key)
-    else menos(l.key)
+    if (l.tipo === 'avulso') return delta > 0 ? juntar(l.id) : tirar(l.id)
+    if (l.tipo === 'extra') return delta > 0 ? juntarExtra(l.id) : tirarExtra(l.id)
+    return undefined
   }
 
   function podeMaisLinha(l) {
-    if (l.tipo === 'caixa') {
-      return podeDuplicarCaixa(caixas[l.indice], cardapio, cart, caixas, draft)
-    }
-    return podeJuntar(l.key)
+    if (l.tipo === 'avulso') return livreSabor(findCookie(cardapio, l.id), picks) > 0
+    if (l.tipo === 'extra') return livreExtra(cardapio, extras, l.id) > 0
+    return false
   }
 
   function limpar() {
-    setCart({})
-    setCaixas([])
-    setDraft(null)
+    setPicks([])
+    setExtras({})
+    setFechou(null)
     limparCarrinho()
   }
 
   async function enviar(form) {
     const resposta = await criarPedido({
-      cliente: {
-        nome: form.nome,
-        telefone: form.telefone,
-      },
-      itens: Object.entries(cart)
-        .filter(([, q]) => q > 0)
-        .map(([id, qty]) => ({ id, qty })),
-      caixas,
+      cliente: { nome: form.nome, telefone: form.telefone },
+      ...payloadPedido(picks, extras, cardapio),
       pagamento: form.pagamento,
       entrega: {
         tipo: form.tipo,
@@ -201,56 +254,43 @@ export function Loja() {
     )
   }
 
-  const linhas = linhasCarrinho(cardapio, cart, caixas)
-  const total = totalCarrinho(linhas)
-  const nItens = totalItens(cart, caixas)
   const ultimo = lerUltimoPedido()
-  const telPedido = (ultimo?.referencia === pedidoRef ? ultimo.telefone : '') || lerContacto().telefone
-  const temSaco = nItens > 0 && !aberto && !pedidoRef
+  const contacto = lerContacto()
+  const telPedido = (ultimo?.referencia === pedidoRef ? ultimo.telefone : '') || contacto.telefone
+  const poupanca = poupancaPorBox(cardapio)
+  const comBandeja = !folhaAberta
 
   return (
-    <div className="loja-body" style={{ paddingBottom: temSaco ? '5.5rem' : 0 }}>
+    <div className="loja-body" data-bandeja={comBandeja}>
       <header className="loja-top">
-        <div className="loja-wrap py-2.5 flex items-center justify-between gap-4">
+        <div className="loja-wrap-largo py-2.5 flex items-center justify-between gap-4">
           <img className="loja-logo" src="/hero-crumb.png" alt="Crumb Lab" />
-          <div className="flex items-center gap-2">
-            {(ultimo || pedidoRef) && (
-              <button
-                type="button"
-                className="btn-ghost btn-sm"
-                onClick={() => {
-                  const ref = pedidoRef || ultimo.referencia
-                  if (!ref) return
-                  if (ref !== pedidoRef) irParaPedido(ref)
-                  setPedidoRef(ref)
-                }}
-              >
-                O meu pedido
-              </button>
-            )}
-            {nItens > 0 && !pedidoRef && (
-              <button type="button" className="btn-accent btn-sm" onClick={() => setAberto(true)}>
-                {nItens} · <span className="bfy-num">{fmtEuro(total)}</span>
-              </button>
-            )}
-          </div>
+          {(ultimo || pedidoRef) && (
+            <button
+              type="button"
+              className="btn-ghost btn-sm"
+              onClick={() => {
+                const ref = pedidoRef || ultimo.referencia
+                if (!ref) return
+                if (ref !== pedidoRef) irParaPedido(ref)
+                setPedidoRef(ref)
+              }}
+            >
+              O meu pedido
+            </button>
+          )}
         </div>
       </header>
 
       <Menu
         cardapio={cardapio}
-        cart={cart}
-        caixas={caixas}
-        draft={draft}
-        setDraft={setDraft}
-        temSaco={temSaco}
-        onAddCaixa={(counts) => {
-          toqueJuntar()
-          setCaixas((cs) => [...cs, counts])
-        }}
-        onRemoveCaixa={(i) => setCaixas((cs) => cs.filter((_, k) => k !== i))}
-        onMais={mais}
-        onMenos={menos}
+        picks={picks}
+        extras={extras}
+        poupancaBox={poupanca}
+        onJuntar={juntar}
+        onTirar={tirar}
+        onJuntarExtra={juntarExtra}
+        onTirarExtra={tirarExtra}
       />
 
       <footer className="loja-footer">
@@ -260,29 +300,26 @@ export function Loja() {
         </div>
       </footer>
 
-      {temSaco && (
-        <div className="loja-cartbar">
-          <div className="loja-wrap flex items-center justify-between gap-4 !px-0 sm:!px-6">
-            <div>
-              <p className="text-xs" style={{ color: 'var(--ink-on-dark-2)' }}>
-                {nItens} {nItens === 1 ? 'item' : 'itens'}
-              </p>
-              <p className="bfy-num font-black text-lg">{fmtEuro(total)}</p>
-            </div>
-            <button type="button" className="btn-accent px-6 py-3" onClick={() => setAberto(true)}>
-              Continuar
-            </button>
-          </div>
-        </div>
+      {comBandeja && (
+        <Bandeja
+          cardapio={cardapio}
+          resumo={resumo}
+          poupancaBox={poupanca}
+          fechou={fechou}
+          onAbrir={() => setAberto(true)}
+        />
       )}
 
       {aberto && !pedidoRef && (
         <Checkout
           cardapio={cardapio}
-          cart={cart}
-          caixas={caixas}
+          resumo={resumo}
+          poupancaBox={poupanca}
           onFechar={() => setAberto(false)}
-          onAjustarLinha={ajustarLinha}
+          onTirarCaixa={tirarCaixa}
+          onRepetirCaixa={repetirCaixa}
+          onPodeRepetirCaixa={podeRepetirCaixa}
+          onAjustar={ajustarLinha}
           onPodeMais={podeMaisLinha}
           onEnviar={enviar}
         />
@@ -293,6 +330,7 @@ export function Loja() {
           referencia={pedidoRef}
           telefoneInicial={telPedido}
           recemCriado={recemCriado}
+          nome={contacto.nome}
           onNovo={fecharPedido}
         />
       )}

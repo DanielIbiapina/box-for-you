@@ -1,285 +1,168 @@
-import { useState } from 'react'
-import { BotaoMais, Foto, Stepper } from './ui'
+import { useRef, useState } from 'react'
+import { IconeBox } from './ui'
 import {
-  fmtEuro, disponivel, disponivelMini, disponivelTasting,
-  contarCaixa, resumoCaixa, MINI_BOX_ID, TASTING_BOX_ID,
+  fmtEuro, livreSabor, livreExtra, vezes, precoExtra, MINI_BOX_ID, TASTING_BOX_ID,
 } from './util'
-import { toqueJuntar } from './sensacao'
 
-const TABS = [
-  { id: 'box', label: 'Box' },
-  { id: 'prontas', label: 'Prontas' },
-  { id: 'sabores', label: 'Sabores' },
-]
-
-function vazio(cookies) {
-  return Object.fromEntries(cookies.map((c) => [c.id, 0]))
+function saudacao() {
+  const h = new Date().getHours()
+  if (h >= 6 && h < 13) return 'Bom dia'
+  if (h >= 13 && h < 20) return 'Boa tarde'
+  return 'Boa noite'
 }
 
 /**
- * Um menu, três sítios. A Box é o pedido; Mini/Tasting vêm prontas;
- * sabores avulsos são o desvio, não o caminho principal.
+ * Os cookies são a montra: fotos grandes, um toque junta. Não há "Box ou
+ * avulso" para decidir à entrada — a cada 4 a Box fecha sozinha (ver util.agrupar).
  */
-export function Menu({
-  cardapio, cart, caixas, draft, setDraft,
-  onAddCaixa, onRemoveCaixa, onMais, onMenos, temSaco,
-}) {
-  const [tab, setTab] = useState('box')
-  const cookies = cardapio.cookies ?? []
+export function Menu({ cardapio, picks, extras, poupancaBox, onJuntar, onTirar, onJuntarExtra, onTirarExtra }) {
+  const [ola] = useState(saudacao)
   const size = cardapio.box.size
-  const preenchidos = draft ? contarCaixa(draft) : 0
-  const completa = preenchidos === size
-
-  function juntarSabor(id) {
-    const c = cookies.find((x) => x.id === id)
-    if (!c || preenchidos >= size) return
-    if (disponivel(c, cart, caixas, draft) <= 0) return
-    toqueJuntar()
-    setDraft((d) => {
-      const base = d ?? vazio(cookies)
-      return { ...base, [id]: (base[id] ?? 0) + 1 }
-    })
-  }
-
-  function tirarSabor(id) {
-    setDraft((d) => {
-      if (!d) return d
-      const next = { ...d, [id]: Math.max(0, (d[id] ?? 0) - 1) }
-      return contarCaixa(next) === 0 ? null : next
-    })
-  }
-
-  function confirmarBox() {
-    if (!draft || !completa) return
-    onAddCaixa(Object.fromEntries(Object.entries(draft).filter(([, q]) => q > 0)))
-    setDraft(null)
-  }
+  const cookies = [...(cardapio.cookies ?? [])]
+    .sort((a, b) => Number((a.stock ?? 0) <= 0) - Number((b.stock ?? 0) <= 0))
+  const fotos = cookies.filter((c) => c.image).map((c) => c.image)
 
   return (
-    <>
-      <nav className="loja-tabs" aria-label="O que queres levar">
-        <div className="loja-wrap loja-tabs-row">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              className="loja-tab"
-              data-ativo={tab === t.id}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </nav>
-
-      <div className="loja-wrap loja-secao">
-        {tab === 'box' && (
-          <Box
-            cardapio={cardapio}
-            cookies={cookies}
-            cart={cart}
-            caixas={caixas}
-            draft={draft}
-            size={size}
-            preenchidos={preenchidos}
-            completa={completa}
-            temSaco={temSaco}
-            onJuntarSabor={juntarSabor}
-            onTirarSabor={tirarSabor}
-            onConfirmar={confirmarBox}
-            onRemoveCaixa={onRemoveCaixa}
-          />
+    <main className="loja-menu">
+      <section className="loja-wrap-largo loja-ola">
+        <p className="loja-ola-oi">{ola}!</p>
+        <h1 className="loja-ola-titulo">O que te apetece hoje?</h1>
+        {poupancaBox > 0 && (
+          <p className="loja-ola-regra">
+            <span className="loja-ola-regra-icone"><IconeBox size={17} /></span>
+            <span>A cada {size} cookies fechamos uma Box e <b>poupas {fmtEuro(poupancaBox)}</b></span>
+          </p>
         )}
+      </section>
 
-        {tab === 'prontas' && (
-          <div className="menu-lista">
-            <LinhaProduto
-              nome="Mini Box"
-              detalhe="Cookies mini sortidos."
-              image=""
-              preco={cardapio.miniBox.price}
-              qty={cart[MINI_BOX_ID] ?? 0}
-              livre={disponivelMini(cardapio, cart)}
-              esgotado={(cardapio.miniBox.stock ?? 0) <= 0}
-              onMais={() => onMais(MINI_BOX_ID)}
-              onMenos={() => onMenos(MINI_BOX_ID)}
-            />
-            <LinhaProduto
-              nome="Tasting Box"
-              detalhe={`Um mini de 50g de cada um dos ${cardapio.tastingBox.sabores} sabores.`}
-              image=""
-              preco={cardapio.tastingBox.price}
-              qty={cart[TASTING_BOX_ID] ?? 0}
-              livre={disponivelTasting(cardapio, cart)}
-              esgotado={(cardapio.tastingBox.stock ?? 0) <= 0}
-              onMais={() => onMais(TASTING_BOX_ID)}
-              onMenos={() => onMenos(TASTING_BOX_ID)}
-            />
+      <section className="loja-wrap-largo" aria-label="Cookies">
+        {cookies.length === 0 ? (
+          <p className="text-sm ink-2 py-8">Neste momento não há cookies. Volta daqui a pouco.</p>
+        ) : (
+          <div className="cookie-grelha">
+            {cookies.map((c) => (
+              <CookieCard
+                key={c.id}
+                cookie={c}
+                qty={vezes(picks, c.id)}
+                livre={livreSabor(c, picks)}
+                onJuntar={onJuntar}
+                onTirar={onTirar}
+              />
+            ))}
           </div>
         )}
+      </section>
 
-        {tab === 'sabores' && (
-          cookies.length === 0
-            ? <p className="text-sm ink-2">Neste momento não há sabores. Volta daqui a pouco.</p>
-            : (
-              <div className="menu-lista">
-                {cookies.map((c) => {
-                  const qty = cart[c.id] ?? 0
-                  const livre = disponivel(c, cart, caixas, draft)
-                  return (
-                    <LinhaProduto
-                      key={c.id}
-                      nome={c.nome}
-                      image={c.image}
-                      preco={c.price}
-                      qty={qty}
-                      livre={livre}
-                      esgotado={(c.stock ?? 0) <= 0}
-                      onMais={() => onMais(c.id)}
-                      onMenos={() => onMenos(c.id)}
-                    />
-                  )
-                })}
-              </div>
-            )
-        )}
-      </div>
-    </>
+      <section className="loja-wrap-largo loja-especiais" aria-labelledby="titulo-especiais">
+        <h2 id="titulo-especiais" className="loja-h2">Caixas especiais</h2>
+        <div className="especiais-grelha">
+          <Especial
+            id={TASTING_BOX_ID}
+            titulo="Tasting Box"
+            texto={`Um mini de cada um dos ${cardapio.tastingBox.sabores} sabores. Para quem não se decide.`}
+            preco={precoExtra(cardapio, TASTING_BOX_ID)}
+            fotos={fotos.slice(0, 9)}
+            mosaico="tasting"
+            qty={extras[TASTING_BOX_ID] ?? 0}
+            livre={livreExtra(cardapio, extras, TASTING_BOX_ID)}
+            esgotado={(cardapio.tastingBox.stock ?? 0) <= 0}
+            onJuntar={onJuntarExtra}
+            onTirar={onTirarExtra}
+          />
+          <Especial
+            id={MINI_BOX_ID}
+            titulo="Mini Box"
+            texto="Cookies mini sortidos, para petiscar."
+            preco={precoExtra(cardapio, MINI_BOX_ID)}
+            fotos={fotos.slice(0, 4)}
+            mosaico="mini"
+            qty={extras[MINI_BOX_ID] ?? 0}
+            livre={livreExtra(cardapio, extras, MINI_BOX_ID)}
+            esgotado={(cardapio.miniBox.stock ?? 0) <= 0}
+            onJuntar={onJuntarExtra}
+            onTirar={onTirarExtra}
+          />
+        </div>
+      </section>
+    </main>
   )
 }
 
-function Box({
-  cardapio, cookies, cart, caixas, draft, size, preenchidos, completa,
-  temSaco, onJuntarSabor, onTirarSabor, onConfirmar, onRemoveCaixa,
-}) {
-  if (cookies.length === 0) {
-    return <p className="text-sm ink-2">Neste momento não há sabores. Volta daqui a pouco.</p>
-  }
+function CookieCard({ cookie, qty, livre, onJuntar, onTirar }) {
+  const foto = useRef(null)
+  const card = useRef(null)
+  const esgotado = (cookie.stock ?? 0) <= 0
+  const pouco = !esgotado && livre > 0 && livre <= 3
+
+  let etiqueta = null
+  if (esgotado) etiqueta = <span className="cookie-tag cookie-tag-fim">Esgotado</span>
+  else if (livre === 0) etiqueta = <span className="cookie-tag">Levas os últimos</span>
+  else if (pouco) etiqueta = <span className="cookie-tag">{livre === 1 ? 'Só 1!' : `Só ${livre}`}</span>
 
   return (
-    <div className="box-montar">
-      <header className="box-cabeca">
-        <div>
-          <h1 className="loja-section-title">Box de {size}</h1>
-          <p className="text-sm ink-2 mt-1">Escolhe {size}. Podes repetir.</p>
-        </div>
-        <p className="bfy-num font-black text-xl" style={{ color: 'var(--color-accent-dark)' }}>
-          {fmtEuro(cardapio.box.price)}
-        </p>
-      </header>
-
-      {caixas.length > 0 && (
-        <ul className="menu-lista box-feitas">
-          {caixas.map((counts, i) => (
-            <li key={i} className="menu-linha menu-linha-feita">
-              <MiniFotos counts={counts} cookies={cookies} />
-              <div className="menu-linha-txt">
-                <p className="menu-nome">Box de {size}</p>
-                <p className="menu-detalhe">{resumoCaixa(counts, cardapio)}</p>
-              </div>
-              <button type="button" className="btn-ghost btn-sm" onClick={() => onRemoveCaixa(i)}>
-                Tirar
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <div className="menu-lista">
-        {cookies.map((c) => {
-          const qty = draft?.[c.id] ?? 0
-          const livre = disponivel(c, cart, caixas, draft)
-          const esgotado = (c.stock ?? 0) <= 0
-          return (
-            <article key={c.id} className="menu-linha" data-esgotado={esgotado}>
-              <Foto src={c.image} />
-              <div className="menu-linha-txt">
-                <h2 className="menu-nome">{c.nome}</h2>
-                {esgotado && <p className="menu-detalhe">Esgotado</p>}
-                {!esgotado && livre <= 3 && livre > 0 && qty === 0 && (
-                  <p className="menu-detalhe">só {livre}</p>
-                )}
-              </div>
-              {esgotado ? (
-                <span className="menu-esgotado">Esgotado</span>
-              ) : (
-                <Stepper
-                  qty={qty}
-                  label={c.nome}
-                  onMenos={() => onTirarSabor(c.id)}
-                  onMais={() => onJuntarSabor(c.id)}
-                  podeMais={!completa && livre > 0}
-                />
-              )}
-            </article>
-          )
-        })}
-      </div>
-
-      <div
-        className="box-cta"
-        style={{ bottom: temSaco ? '5.25rem' : '0.5rem' }}
+    <div className="cookie-card" data-qty={qty > 0} data-esgotado={esgotado} ref={card}>
+      <button
+        type="button"
+        className="cookie-toque"
+        disabled={esgotado}
+        onClick={() => onJuntar(cookie.id, foto.current, card.current)}
+        aria-label={`Juntar ${cookie.nome}, ${fmtEuro(cookie.price)}${qty ? `. Tens ${qty}.` : ''}`}
       >
-        <p className="bfy-num font-bold ink-2">{preenchidos}/{size}</p>
+        <span className="cookie-prato">
+          {cookie.image
+            ? <img ref={foto} className="cookie-foto" src={cookie.image} alt="" loading="lazy" draggable="false" />
+            : <span ref={foto} className="cookie-emoji" aria-hidden="true">{cookie.emoji || '🍪'}</span>}
+          {etiqueta}
+          {qty > 0 && <span key={qty} className="cookie-qty" aria-hidden="true">{qty}</span>}
+        </span>
+        <span className="cookie-nome">{cookie.nome}</span>
+        <span className="cookie-preco bfy-num">{fmtEuro(cookie.price)}</span>
+      </button>
+      {qty > 0 && (
         <button
           type="button"
-          className="btn-primary flex-1 py-3"
-          disabled={!completa}
-          onClick={onConfirmar}
-        >
-          {completa
-            ? `Juntar Box · ${fmtEuro(cardapio.box.price)}`
-            : `Faltam ${size - preenchidos}`}
-        </button>
-      </div>
+          className="cookie-menos"
+          onClick={() => onTirar(cookie.id)}
+          aria-label={`Tirar um ${cookie.nome}`}
+        >−</button>
+      )}
     </div>
   )
 }
 
-function LinhaProduto({ image, nome, detalhe, preco, qty, livre, esgotado, onMais, onMenos }) {
+function Especial({ id, titulo, texto, preco, fotos, mosaico, qty, livre, esgotado, onJuntar, onTirar }) {
+  const foto = useRef(null)
+  const card = useRef(null)
   return (
-    <article className="menu-linha" data-esgotado={esgotado}>
-      <Foto src={image} />
-      <div className="menu-linha-txt">
-        <h2 className="menu-nome">{nome}</h2>
-        {detalhe && <p className="menu-detalhe">{detalhe}</p>}
-        <p className="menu-preco bfy-num">{fmtEuro(preco)}</p>
-      </div>
-      {esgotado ? (
-        <span className="menu-esgotado">Esgotado</span>
-      ) : qty > 0 ? (
-        <Stepper
-          qty={qty}
-          label={nome}
-          onMenos={onMenos}
-          onMais={onMais}
-          podeMais={livre > 0}
-        />
-      ) : (
-        <BotaoMais
-          onClick={onMais}
-          disabled={livre <= 0}
-          label={`Juntar ${nome}`}
-        />
-      )}
-    </article>
-  )
-}
-
-function MiniFotos({ counts, cookies }) {
-  const fotos = Object.entries(counts)
-    .filter(([, q]) => q > 0)
-    .flatMap(([id, q]) => Array.from({ length: q }, () => cookies.find((c) => c.id === id)))
-    .filter(Boolean)
-    .slice(0, 4)
-  return (
-    <span className="mini-fotos" aria-hidden="true">
-      {fotos.map((c, i) => (
-        <span key={`${c.id}-${i}`} className="mini-foto">
-          <Foto src={c.image} className="mini-foto-img" />
+    <div className="especial" data-qty={qty > 0} data-esgotado={esgotado} ref={card}>
+      <button
+        type="button"
+        className="especial-toque"
+        disabled={esgotado}
+        onClick={() => onJuntar(id, foto.current, card.current)}
+        aria-label={`Juntar ${titulo}, ${fmtEuro(preco)}${qty ? `. Tens ${qty}.` : ''}`}
+      >
+        <span ref={foto} className="especial-mosaico" data-tipo={mosaico} aria-hidden="true">
+          {fotos.map((src, i) => <img key={i} src={src} alt="" loading="lazy" draggable="false" />)}
         </span>
-      ))}
-    </span>
+        <span className="especial-txt">
+          <span className="especial-nome">{titulo}</span>
+          <span className="especial-detalhe">{texto}</span>
+          <span className="especial-preco bfy-num">
+            {esgotado ? 'Esgotado hoje' : livre === 0 ? 'Levas a última' : fmtEuro(preco)}
+          </span>
+        </span>
+        {qty > 0 && <span key={qty} className="cookie-qty especial-qty" aria-hidden="true">{qty}</span>}
+      </button>
+      {qty > 0 && (
+        <button
+          type="button"
+          className="cookie-menos especial-menos"
+          onClick={() => onTirar(id)}
+          aria-label={`Tirar uma ${titulo}`}
+        >−</button>
+      )}
+    </div>
   )
 }
