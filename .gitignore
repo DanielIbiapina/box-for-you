@@ -28,3 +28,6 @@ crumb-json.txt
 *.njsproj
 *.sln
 *.sw?
+
+# Fotos originais em alta resolução (pesadas, não vão pro site)
+fotos-originais/
