@@ -7,15 +7,36 @@ function reduzido() {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 }
 
-/** A foto do cookie salta para dentro da Box: um clone voa em arco até ao alvo. */
+/**
+ * Cópia para voar. Uma <img loading="lazy"> clonada herda o "lazy", e o Safari
+ * pode não a pintar a tempo dos 560 ms do voo — por isso uma foto vira uma
+ * <img> nova, sem lazy e com descodificação síncrona (já está em cache).
+ */
+function copiaParaVoar(origem) {
+  if (origem.tagName === 'IMG') {
+    const img = new Image()
+    img.decoding = 'sync'
+    img.src = origem.currentSrc || origem.src
+    img.alt = ''
+    return img
+  }
+  const clone = origem.cloneNode(true)
+  clone.removeAttribute('id')
+  for (const img of clone.querySelectorAll('img')) {
+    img.removeAttribute('loading')
+    img.decoding = 'sync'
+  }
+  return clone
+}
+
+/** A foto do cookie salta para dentro da Box: uma cópia voa em arco até ao alvo. */
 export function voar(origem, alvo) {
   if (!origem?.animate || !alvo || reduzido()) return
   const a = origem.getBoundingClientRect()
   const b = alvo.getBoundingClientRect()
   if (!a.width || !b.width) return
 
-  const clone = origem.cloneNode(true)
-  clone.removeAttribute('id')
+  const clone = copiaParaVoar(origem)
   clone.setAttribute('aria-hidden', 'true')
   clone.classList.add('voo')
   Object.assign(clone.style, {

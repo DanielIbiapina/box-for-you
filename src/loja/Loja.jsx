@@ -30,6 +30,8 @@ export function Loja() {
   const [fechou, setFechou] = useState(null)
 
   const [aberto, setAberto] = useState(false)
+  /** Box que o pedido abre já expandida (quando se toca no contador de Boxes). */
+  const [caixaAberta, setCaixaAberta] = useState(null)
   const [pedidoRef, setPedidoRef] = useState(() => refDaUrl())
   const [recemCriado, setRecemCriado] = useState(false)
 
@@ -139,6 +141,19 @@ export function Loja() {
   }
 
   // ── ajustes na revisão do pedido ────────────────────────────────────────
+  /** Tira um cookie de dentro de uma Box. A escolha volta a agrupar-se sozinha. */
+  function tirarNaPosicao(i) {
+    if (i < 0 || i >= picks.length) return
+    toqueTirar()
+    setFechou(null)
+    setPicks(picks.filter((_, k) => k !== i))
+  }
+
+  function abrirPedido(inicioCaixa = null) {
+    setCaixaAberta(inicioCaixa)
+    setAberto(true)
+  }
+
   function tirarCaixa(inicio) {
     toqueTirar()
     setFechou(null)
@@ -306,7 +321,8 @@ export function Loja() {
           resumo={resumo}
           poupancaBox={poupanca}
           fechou={fechou}
-          onAbrir={() => setAberto(true)}
+          onAbrir={() => abrirPedido()}
+          onAbrirCaixa={abrirPedido}
         />
       )}
 
@@ -315,7 +331,9 @@ export function Loja() {
           cardapio={cardapio}
           resumo={resumo}
           poupancaBox={poupanca}
+          caixaInicial={caixaAberta}
           onFechar={() => setAberto(false)}
+          onTirarDaCaixa={tirarNaPosicao}
           onTirarCaixa={tirarCaixa}
           onRepetirCaixa={repetirCaixa}
           onPodeRepetirCaixa={podeRepetirCaixa}

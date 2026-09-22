@@ -2,21 +2,45 @@
  * Micro-ritmo da loja: som curto e vibração, sempre a seguir a um gesto.
  * Cada cookie que entra na Box sobe uma nota (dó, ré, mi, sol) — a Box
  * fecha num acorde. O pedido feito é um sino, como o da caixa do mercado.
+ *
+ * O som não depende de "reduzir movimento" (isso é sobre animação); quem
+ * manda é o botão de silêncio do telemóvel. No iPhone não há vibração.
  */
 
 let ctx = null
 
-function quieto() {
-  return typeof window !== 'undefined'
-    && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-}
+// Sons de interface: misturam com a música de quem está a ouvir e respeitam o silêncio (Safari 17+).
+try {
+  if (typeof navigator !== 'undefined' && navigator.audioSession) navigator.audioSession.type = 'ambient'
+} catch { /* */ }
 
 function audio() {
   const AC = window.AudioContext || window.webkitAudioContext
   if (!AC) return null
   if (!ctx) ctx = new AC()
-  if (ctx.state === 'suspended') ctx.resume()
+  if (ctx.state !== 'running') ctx.resume()
   return ctx
+}
+
+/**
+ * O iOS só deixa tocar som depois de o áudio ser "acordado" dentro de um gesto.
+ * No primeiro toque em qualquer sítio da página, cria o contexto e toca um
+ * buffer mudo — a partir daí os sons dos botões saem à primeira.
+ */
+function acordar() {
+  const a = audio()
+  if (!a) return
+  try {
+    const src = a.createBufferSource()
+    src.buffer = a.createBuffer(1, 1, 22050)
+    src.connect(a.destination)
+    src.start(0)
+  } catch { /* */ }
+}
+if (typeof document !== 'undefined') {
+  const umaVez = { once: true, passive: true, capture: true }
+  document.addEventListener('touchend', acordar, umaVez)
+  document.addEventListener('pointerup', acordar, umaVez)
 }
 
 function vibrar(padrao) {
@@ -49,7 +73,6 @@ const ESCALA = [523.25, 587.33, 659.25, 783.99, 880]
 
 /** Um cookie entra. `passo` = que espaço da Box encheu (1…4). */
 export function toqueJuntar(passo = 1) {
-  if (quieto()) return
   vibrar(10)
   const a = audio()
   if (!a) return
@@ -59,7 +82,6 @@ export function toqueJuntar(passo = 1) {
 }
 
 export function toqueTirar() {
-  if (quieto()) return
   vibrar(6)
   const a = audio()
   if (!a) return
@@ -68,7 +90,6 @@ export function toqueTirar() {
 
 /** A Box fechou: arpejo a subir. */
 export function toqueBoxFechada() {
-  if (quieto()) return
   vibrar([12, 40, 22])
   const a = audio()
   if (!a) return
@@ -80,7 +101,6 @@ export function toqueBoxFechada() {
 
 /** Já não há mais daquele: um "hum" baixinho. */
 export function toqueSemStock() {
-  if (quieto()) return
   vibrar([8, 30, 8])
   const a = audio()
   if (!a) return
@@ -90,7 +110,6 @@ export function toqueSemStock() {
 
 /** Avançar um passo no pedido: um tique. */
 export function toquePasso() {
-  if (quieto()) return
   vibrar(5)
   const a = audio()
   if (!a) return
@@ -99,7 +118,6 @@ export function toquePasso() {
 
 /** Pedido feito: um sino em tríade maior, a abrir. */
 export function toquePedidoFeito() {
-  if (quieto()) return
   vibrar([14, 60, 28])
   const a = audio()
   if (!a) return

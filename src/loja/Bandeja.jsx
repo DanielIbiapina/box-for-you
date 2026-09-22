@@ -7,7 +7,7 @@ import { IconeBox, Migalhas } from './ui'
  * fecham-se no contador de Boxes — a sequência é toda CSS, com `key` a
  * reiniciá-la, por isso nada aqui usa temporizadores.
  */
-export function Bandeja({ cardapio, resumo, poupancaBox, fechou, onAbrir }) {
+export function Bandeja({ cardapio, resumo, poupancaBox, fechou, onAbrir, onAbrirCaixa }) {
   const { size, caixas, resto, total, nItens, poupanca } = resumo
   const nCaixas = caixas.length
   const aFechar = Boolean(fechou && resto.length === 0 && nCaixas > 0)
@@ -71,16 +71,17 @@ export function Bandeja({ cardapio, resumo, poupancaBox, fechou, onAbrir }) {
           </div>
 
           {nCaixas > 0 && (
-            <span
+            <button
+              type="button"
               key={nCaixas}
               className="bandeja-caixas"
               data-atraso={aFechar}
-              data-alvo="caixas"
-              aria-label={`${nCaixas} ${nCaixas === 1 ? 'Box' : 'Boxes'}`}
+              onClick={() => onAbrirCaixa(caixas[nCaixas - 1].inicio)}
+              aria-label={`${nCaixas} ${nCaixas === 1 ? 'Box' : 'Boxes'}. Ver e mudar os cookies`}
             >
               <IconeBox size={15} />
               <b className="bfy-num">{nCaixas}</b>
-            </span>
+            </button>
           )}
         </div>
 

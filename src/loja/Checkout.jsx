@@ -34,10 +34,12 @@ const passosPara = (tipo) => [
  * preenchido — o segundo pedido é quase só confirmar.
  */
 export function Checkout({
-  cardapio, resumo, poupancaBox, onFechar,
-  onTirarCaixa, onRepetirCaixa, onPodeRepetirCaixa, onAjustar, onPodeMais, onEnviar,
+  cardapio, resumo, poupancaBox, caixaInicial = null, onFechar,
+  onTirarDaCaixa, onTirarCaixa, onRepetirCaixa, onPodeRepetirCaixa, onAjustar, onPodeMais, onEnviar,
 }) {
   const [inicial] = useState(lerContacto)
+  /** Box aberta para mexer cookie a cookie (pelo índice onde começa na escolha). */
+  const [caixaAberta, setCaixaAberta] = useState(caixaInicial)
   const [form, setForm] = useState(() => ({ ...inicial, data: '', pagamento: '', notas: '' }))
   const [passo, setPasso] = useState('pedido')
   const [dir, setDir] = useState(1)
@@ -237,6 +239,10 @@ export function Checkout({
                         key={l.key}
                         l={l}
                         cardapio={cardapio}
+                        aberta={l.tipo === 'caixa' && caixaAberta === l.inicio}
+                        onAlternar={() => setCaixaAberta((a) => (a === l.inicio ? null : l.inicio))}
+                        onTirarDaCaixa={onTirarDaCaixa}
+                        onEscolherOutro={onFechar}
                         onTirarCaixa={onTirarCaixa}
                         onRepetirCaixa={onRepetirCaixa}
                         podeRepetir={l.tipo === 'caixa' && onPodeRepetirCaixa(l.inicio)}
@@ -460,20 +466,43 @@ function Opcao({ ativo, icone, titulo, nota, onClick, linha }) {
   )
 }
 
-function Linha({ l, cardapio, onTirarCaixa, onRepetirCaixa, podeRepetir, onAjustar, podeMais }) {
+function Linha({
+  l, cardapio, aberta, onAlternar, onTirarDaCaixa, onEscolherOutro,
+  onTirarCaixa, onRepetirCaixa, podeRepetir, onAjustar, podeMais,
+}) {
   if (l.tipo === 'caixa') {
+    const painel = `caixa-${l.inicio}-cookies`
     return (
-      <li className="linha">
-        <span className="linha-box-fotos" aria-hidden="true">
+      <li className="linha linha-caixa" data-aberta={aberta}>
+        <button
+          type="button"
+          className="linha-box-fotos"
+          onClick={onAlternar}
+          aria-expanded={aberta}
+          aria-controls={painel}
+          aria-label={aberta ? 'Fechar os cookies da Box' : 'Ver os cookies da Box'}
+        >
           {l.ids.map((id, i) => {
             const src = findCookie(cardapio, id)?.image
             return src ? <img key={i} src={src} alt="" /> : <span key={i} />
           })}
-        </span>
+        </button>
         <div className="linha-txt">
-          <p className="linha-nome"><IconeBox size={14} /> {l.nome}</p>
+          <div className="linha-topo">
+            <p className="linha-nome"><IconeBox size={14} /> {l.nome}</p>
+            <span className="linha-preco bfy-num">{fmtEuro(l.subtotal)}</span>
+          </div>
           <p className="linha-detalhe">{l.detalhe}</p>
           <div className="linha-acoes">
+            <button
+              type="button"
+              className="linha-acao linha-acao-mudar"
+              onClick={onAlternar}
+              aria-expanded={aberta}
+              aria-controls={painel}
+            >
+              Mudar <span className="linha-seta" aria-hidden="true">▾</span>
+            </button>
             <button type="button" className="linha-acao" onClick={() => onTirarCaixa(l.inicio)}>Tirar</button>
             <button
               type="button"
@@ -481,11 +510,43 @@ function Linha({ l, cardapio, onTirarCaixa, onRepetirCaixa, podeRepetir, onAjust
               disabled={!podeRepetir}
               onClick={() => onRepetirCaixa(l.inicio)}
             >
-              + Outra igual
+              + Repetir
             </button>
           </div>
         </div>
-        <span className="linha-preco bfy-num">{fmtEuro(l.subtotal)}</span>
+
+        {aberta && (
+          <div id={painel} className="caixa-painel">
+            <ul className="caixa-cookies">
+              {l.ids.map((id, i) => {
+                const c = findCookie(cardapio, id)
+                return (
+                  <li key={`${i}-${id}`} className="caixa-cookie">
+                    <span className="caixa-cookie-prato">
+                      {c?.image
+                        ? <img src={c.image} alt="" />
+                        : <span aria-hidden="true">{c?.emoji || '🍪'}</span>}
+                    </span>
+                    <span className="caixa-cookie-nome">{c?.short ?? id}</span>
+                    <button
+                      type="button"
+                      className="caixa-cookie-tirar"
+                      onClick={() => onTirarDaCaixa(l.inicio + i)}
+                      aria-label={`Tirar um ${c?.nome ?? 'cookie'} da Box`}
+                    >×</button>
+                  </li>
+                )
+              })}
+            </ul>
+            <p className="caixa-painel-dica">
+              Tira o que não querias e{' '}
+              <button type="button" className="caixa-painel-link" onClick={onEscolherOutro}>
+                escolhe outro
+              </button>
+              .
+            </p>
+          </div>
+        )}
       </li>
     )
   }
