@@ -915,6 +915,29 @@ button.linha-box-fotos:active { transform: scale(0.94); }
 }
 .bilhete-assina::before { content: '— '; }
 
+.mbway {
+  display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background: var(--color-accent-soft);
+  text-align: center;
+  animation: sobe .45s ease-out .75s both;
+}
+.mbway-rotulo {
+  font-size: var(--text-2xs);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent-dark);
+}
+.mbway-numero {
+  font-weight: 900;
+  font-size: 1.7rem;
+  letter-spacing: 0.04em;
+  color: var(--color-accent-dark);
+}
+.mbway-nota { font-size: var(--text-xs); line-height: 1.4; color: var(--ink-3); }
+
 .talao {
   display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
   padding: 1rem;

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Aviso, Migalhas } from './ui'
 import { fmtEuro, fmtData } from './util'
 import { verPedido } from './api'
+import { MBWAY, MBWAY_COPIA } from './negocio'
 
 /**
  * Um bilhete escrito à mão no fim de cada pedido — a toalhinha quente.
@@ -33,7 +34,7 @@ function entregaTexto(e) {
 }
 
 /** Página do pedido: a festa logo a seguir a pedir, e o acompanhamento via /?p=XXXXXX. */
-export function Pedido({ referencia, telefoneInicial, recemCriado, nome, onNovo }) {
+export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamento, total, onNovo }) {
   const [tel, setTel] = useState(telefoneInicial || '')
   const [dados, setDados] = useState(null)
   const [erro, setErro] = useState('')
@@ -92,6 +93,9 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, onNovo 
   }
 
   const primeiro = (nome || '').trim().split(/\s+/)[0]
+  // O servidor manda a verdade; antes de ele responder, vale o que ficou guardado no pedido.
+  const formaPagamento = dados?.pagamento || pagamento || ''
+  const aPagar = dados?.total ?? total ?? 0
 
   return (
     <div className="sheet-backdrop">
@@ -126,6 +130,8 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, onNovo 
               <p className="bilhete-assina">Crumb Lab</p>
             </figure>
           )}
+
+          {formaPagamento === 'MB WAY' && <Mbway aPagar={aPagar} />}
 
           <div className="talao">
             <p className="talao-rotulo">Código do pedido</p>
@@ -205,6 +211,35 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, onNovo 
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Só para quem escolheu MB WAY: adiantar o pagamento em vez de esperar pelo
+ * pedido de pagamento. Continua a ser opcional — ninguém paga antes de falarmos.
+ */
+function Mbway({ aPagar }) {
+  const [copiado, setCopiado] = useState(false)
+
+  async function copiar() {
+    try {
+      await navigator.clipboard.writeText(MBWAY_COPIA)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 1800)
+    } catch { /* */ }
+  }
+
+  return (
+    <div className="mbway">
+      <p className="mbway-rotulo">Se quiseres adiantar</p>
+      <p className="mbway-numero bfy-num">{MBWAY}</p>
+      <button type="button" className="btn-ghost btn-sm" onClick={copiar}>
+        {copiado ? 'Copiado ✓' : 'Copiar número'}
+      </button>
+      <p className="mbway-nota">
+        MB WAY{aPagar > 0 ? `, ${fmtEuro(aPagar)}` : ''}. Se preferires, enviamos-te o pedido de pagamento.
+      </p>
     </div>
   )
 }

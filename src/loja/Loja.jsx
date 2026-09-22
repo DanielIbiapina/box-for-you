@@ -349,6 +349,8 @@ export function Loja() {
           telefoneInicial={telPedido}
           recemCriado={recemCriado}
           nome={contacto.nome}
+          pagamento={ultimo?.referencia === pedidoRef ? ultimo.pagamento : ''}
+          total={ultimo?.referencia === pedidoRef ? ultimo.total : 0}
           onNovo={fecharPedido}
         />
       )}
