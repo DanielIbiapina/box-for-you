@@ -551,6 +551,17 @@
   transition: transform .3s var(--mola);
 }
 .opcao[aria-pressed='true'] .opcao-icone { transform: scale(1.1) rotate(-6deg); background: var(--color-accent-soft); }
+.opcao-img {
+  width: min(7rem, 100%);
+  aspect-ratio: 1;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 8px rgba(70, 35, 10, 0.18));
+  user-select: none;
+  -webkit-user-drag: none;
+  transition: transform .35s var(--mola);
+}
+@media (hover: hover) { .opcao:hover .opcao-img { transform: rotate(-3deg) scale(1.03); } }
+.opcao[aria-pressed='true'] .opcao-img { transform: scale(1.08) rotate(-5deg); }
 .opcao-txt { display: flex; flex-direction: column; gap: 0.15rem; }
 .opcao-titulo { font-family: var(--font-title); font-weight: 800; font-size: var(--text-lg); color: var(--ink-1); }
 .opcao-nota { font-size: var(--text-xs); line-height: 1.35; color: var(--ink-3); }

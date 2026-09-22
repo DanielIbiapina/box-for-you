@@ -5,8 +5,8 @@ import { gravarContacto, lerContacto } from './storage'
 import { toquePasso } from './sensacao'
 
 const RECEBER = [
-  { id: 'levantar', icone: '🛍️', titulo: 'Levantar', nota: 'Vens tu buscar' },
-  { id: 'entrega', icone: '🛵', titulo: 'Entrega', nota: 'Levamos até ti' },
+  { id: 'levantar', icone: '🛍️', imagem: '/landing-icons/levantar.webp', titulo: 'Levantar', nota: 'Vens tu buscar' },
+  { id: 'entrega', icone: '🛵', imagem: '/landing-icons/entrega.webp', titulo: 'Entrega', nota: 'Levamos até ti' },
 ]
 
 const PAGAMENTOS = [
@@ -67,6 +67,11 @@ export function Checkout({
   }, [passo])
 
   useEffect(() => () => clearTimeout(timer.current), [])
+
+  // As ilustrações de levantar/entrega já vêm a carregar enquanto se revê o pedido.
+  useEffect(() => {
+    for (const op of RECEBER) if (op.imagem) new Image().src = op.imagem
+  }, [])
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onFechar() }
@@ -281,6 +286,7 @@ export function Checkout({
                       key={op.id}
                       ativo={form.tipo === op.id}
                       icone={op.icone}
+                      imagem={op.imagem}
                       titulo={op.titulo}
                       nota={op.nota}
                       onClick={() => escolherTipo(op.id)}
@@ -448,7 +454,7 @@ export function Checkout({
   )
 }
 
-function Opcao({ ativo, icone, titulo, nota, onClick, linha }) {
+function Opcao({ ativo, icone, imagem, titulo, nota, onClick, linha }) {
   return (
     <button
       type="button"
@@ -456,7 +462,9 @@ function Opcao({ ativo, icone, titulo, nota, onClick, linha }) {
       aria-pressed={ativo}
       onClick={onClick}
     >
-      <span className="opcao-icone" aria-hidden="true">{icone}</span>
+      {imagem
+        ? <img className="opcao-img" src={imagem} alt="" draggable="false" />
+        : <span className="opcao-icone" aria-hidden="true">{icone}</span>}
       <span className="opcao-txt">
         <span className="opcao-titulo">{titulo}</span>
         <span className="opcao-nota">{nota}</span>
