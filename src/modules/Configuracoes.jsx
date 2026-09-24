@@ -6,6 +6,71 @@ import { supabase } from '../lib/supabase'
 import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
 import { CardapioAdmin } from '../components/CardapioAdmin'
+import {
+  estadoNotificacao, guardarSom, notificar, pedirNotificacoes, somLigado, tocarSino,
+} from '../lib/avisos'
+
+/** Avisos de pedidos novos da loja: som na app e notificação do sistema. */
+function AvisosCard() {
+  const [permissao, setPermissao] = useState(estadoNotificacao)
+  const [som, setSom] = useState(somLigado)
+
+  async function pedir() {
+    setPermissao(await pedirNotificacoes())
+  }
+
+  function testar() {
+    tocarSino()
+    notificar('Novo pedido da loja', '14,00 € · é assim que vais ser avisada')
+  }
+
+  return (
+    <div className="bfy-card p-6 mb-5 space-y-4">
+      <h2 className="text-base font-bold mb-1 bfy-card-title">Avisos de pedidos</h2>
+      <p className="text-sm ink-3">
+        Quando entra um pedido da loja, a plataforma toca um som e mostra um aviso no ecrã.
+        Com as notificações ligadas, o aviso aparece mesmo com a app noutro separador.
+      </p>
+
+      <label className="flex items-center gap-2.5 text-sm cursor-pointer" style={{ color: 'var(--color-text)' }}>
+        <input
+          type="checkbox"
+          className="w-5 h-5 accent-[var(--color-accent-dark)]"
+          checked={som}
+          onChange={(e) => { setSom(e.target.checked); guardarSom(e.target.checked) }}
+        />
+        Tocar som quando entrar um pedido
+      </label>
+
+      {permissao === 'granted' && (
+        <p className="text-sm font-semibold" style={{ color: 'var(--color-success)' }}>
+          Notificações ligadas neste aparelho.
+        </p>
+      )}
+      {permissao === 'default' && (
+        <button type="button" className="btn-ghost w-full py-2 text-sm" onClick={pedir}>
+          Ligar notificações neste aparelho
+        </button>
+      )}
+      {permissao === 'denied' && (
+        <p className="text-sm ink-3">
+          As notificações estão bloqueadas para este site. Dá permissão nas definições do navegador
+          se as quiseres — o som e o aviso no ecrã continuam a funcionar.
+        </p>
+      )}
+      {permissao === 'sem-suporte' && (
+        <p className="text-sm ink-3">
+          Este navegador não faz notificações do sistema. No iPhone e no iPad, só com o site
+          adicionado ao ecrã principal. O som e o aviso no ecrã funcionam na mesma.
+        </p>
+      )}
+
+      <button type="button" className="btn-ghost w-full py-2 text-sm" onClick={testar}>
+        Testar o aviso
+      </button>
+    </div>
+  )
+}
 
 function Field({ label, children }) {
   return (
@@ -115,6 +180,8 @@ export function Configuracoes() {
           Sair da conta
         </button>
       </div>
+
+      <AvisosCard />
 
       {/* Dados do negócio */}
       <form onSubmit={handleSave} className="bfy-card p-6 mb-5 space-y-4">

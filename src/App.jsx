@@ -9,6 +9,7 @@ import { Vendas } from './modules/Vendas'
 import { Financeiro } from './modules/Financeiro'
 import { Configuracoes } from './modules/Configuracoes'
 import { SyncBar } from './components/SyncBar'
+import { AvisoPedidos } from './components/AvisoPedidos'
 import { Icon } from './components/Icon'
 
 /**
@@ -83,6 +84,8 @@ export default function App({ role = 'owner' }) {
 
   return (
     <div className="flex h-[100dvh] overflow-hidden" style={{ background: 'var(--color-bg)' }}>
+
+      <AvisoPedidos onVer={() => go('vendas')} />
 
       {/* ── Sidebar desktop (≥1024px) — escondida no modo caixa ── */}
       <nav

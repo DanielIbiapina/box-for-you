@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { MAPPERS, configToApp, configToRow } from './mappers'
+import { PEDIDO_NOVO } from '../lib/avisos'
 
 const uid = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID
@@ -114,16 +115,21 @@ export function DataProvider({ children }) {
   // ── realtime (handlers definidos aqui dentro p/ deps estáveis) ───────────────
   useEffect(() => {
     function handleColChange(c, payload) {
+      if (payload.eventType === 'DELETE') {
+        setDb((prev) => ({ ...prev, [c.key]: prev[c.key].filter((x) => x.id !== payload.old?.id) }))
+        return
+      }
+      const obj = MAPPERS[c.table].toApp(payload.new)
       setDb((prev) => {
-        if (payload.eventType === 'DELETE') {
-          return { ...prev, [c.key]: prev[c.key].filter((x) => x.id !== payload.old?.id) }
-        }
-        const obj = MAPPERS[c.table].toApp(payload.new)
         const arr = prev[c.key]
         const i = arr.findIndex((x) => x.id === obj.id)
         const nextArr = i >= 0 ? arr.map((x) => (x.id === obj.id ? obj : x)) : [obj, ...arr]
         return { ...prev, [c.key]: c.sort ? sortDesc(nextArr) : nextArr }
       })
+      // Pedido novo da loja: quem está com a app aberta é avisado (AvisoPedidos.jsx).
+      if (c.table === 'pedidos' && payload.eventType === 'INSERT' && obj.origem === 'loja') {
+        window.dispatchEvent(new CustomEvent(PEDIDO_NOVO, { detail: obj }))
+      }
     }
     function handleEstoqueChange(payload) {
       const row = payload.eventType === 'DELETE' ? payload.old : payload.new
