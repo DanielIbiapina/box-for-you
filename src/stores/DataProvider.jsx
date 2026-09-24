@@ -44,6 +44,29 @@ const CHAVE_ESTOQUE = {
   cookie50: 'estoqueCookies50',
 }
 
+/**
+ * O Supabase devolve no máximo 1000 linhas por pedido — e sem `order` corta
+ * as mais RECENTES, que é exatamente o que interessa. Lemos por páginas, com
+ * ordem estável, até vir tudo. (Foi o que fez as vendas do dia desaparecerem
+ * assim que a tabela passou das mil linhas.)
+ */
+const PAGINA = 1000
+const MAX_PAGINAS = 50
+
+async function lerTudo(tabela, ordens = ['id']) {
+  const linhas = []
+  for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
+    let q = supabase.from(tabela).select('*')
+    for (const coluna of ordens) q = q.order(coluna, { ascending: true })
+    const de = pagina * PAGINA
+    const { data, error } = await q.range(de, de + PAGINA - 1)
+    if (error) return { data: null, error }
+    linhas.push(...(data ?? []))
+    if ((data?.length ?? 0) < PAGINA) break
+  }
+  return { data: linhas, error: null }
+}
+
 const DataContext = createContext(null)
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -71,8 +94,8 @@ export function DataProvider({ children }) {
     setError(null)
     try {
       const [colRes, estRes, cfgRes] = await Promise.all([
-        Promise.all(COLLECTIONS.map((c) => supabase.from(c.table).select('*'))),
-        supabase.from('estoque').select('*'),
+        Promise.all(COLLECTIONS.map((c) => lerTudo(c.table))),
+        lerTudo('estoque', ['tipo', 'cookie_id']),
         supabase.from('configuracao').select('*').eq('id', 'main').maybeSingle(),
       ])
 
