@@ -31,15 +31,30 @@ function ler() {
   }
 }
 
+/**
+ * A verdade da fila está no localStorage, não nesta variável: dois separadores
+ * abertos partilham o mesmo armazenamento. Por isso lê-se e grava-se sempre
+ * dentro de um cadeado (Web Locks), para nenhum separador apagar o trabalho do
+ * outro nem dois aplicarem o mesmo desconto de stock.
+ */
 let fila = ler()
 let aCorrer = false
 let timer = null
 let recusa = () => {}
 const ouvintes = new Set()
 
+const CADEADO = 'bfy-fila'
+const comCadeado = (fn) => (
+  typeof navigator !== 'undefined' && navigator.locks
+    ? navigator.locks.request(CADEADO, fn)
+    : Promise.resolve().then(fn)
+)
+
+const avisar = () => { for (const fn of ouvintes) fn(fila.length) }
+
 function guardar() {
   try { localStorage.setItem(CHAVE, JSON.stringify(fila)) } catch { /* modo privado */ }
-  for (const fn of ouvintes) fn(fila.length)
+  avisar()
 }
 
 /** O DataProvider diz aqui o que fazer quando o servidor recusa um trabalho. */
@@ -102,38 +117,47 @@ function agendar(tentativas) {
   timer = setTimeout(correr, ESPERAS[Math.min(tentativas, ESPERAS.length - 1)])
 }
 
+/**
+ * Esvazia a fila, um trabalho de cada vez. Só um separador corre de cada vez
+ * (cadeado), e parte sempre do que está gravado — por isso quem tiver o
+ * cadeado também trata do que os outros separadores deixaram.
+ */
 async function correr() {
-  if (aCorrer || fila.length === 0) return
+  if (aCorrer) return
   aCorrer = true
   try {
-    while (fila.length > 0) {
-      const t = fila[0]
-      let erro = null
-      try {
-        ({ error: erro } = await executar(t))
-      } catch (e) {
-        erro = e
-      }
-
-      // Já lá estava: o pedido anterior chegou, só não chegou a resposta.
-      const jaGravado = erro && t.tipo === 'insert' && String(erro.code) === '23505'
-
-      if (erro && !jaGravado) {
-        if (temporario(erro)) {
-          t.tentativas = (t.tentativas ?? 0) + 1
-          guardar()
-          agendar(t.tentativas)
-          return
+    await comCadeado(async () => {
+      fila = ler()
+      avisar()
+      while (fila.length > 0) {
+        const t = fila[0]
+        let erro
+        try {
+          ({ error: erro } = await executar(t))
+        } catch (e) {
+          erro = e
         }
-        fila.shift()
-        guardar()
-        recusa(t, erro)
-        continue
-      }
 
-      fila.shift()
-      guardar()
-    }
+        // Já lá estava: o pedido anterior chegou, só não chegou a resposta.
+        const jaGravado = erro && t.tipo === 'insert' && String(erro.code) === '23505'
+
+        if (erro && !jaGravado) {
+          if (temporario(erro)) {
+            t.tentativas = (t.tentativas ?? 0) + 1
+            guardar()
+            agendar(t.tentativas)
+            return
+          }
+          fila = fila.slice(1)
+          guardar()
+          recusa(t, erro)
+          continue
+        }
+
+        fila = fila.slice(1)
+        guardar()
+      }
+    })
   } finally {
     aCorrer = false
   }
@@ -145,9 +169,13 @@ export function juntar(trabalho) {
     recusa(trabalho, { code: 'BFY', message: 'Demasiadas alterações por guardar.' })
     return
   }
-  fila.push({ ...trabalho, ref: uid(), tentativas: 0 })
-  guardar()
-  correr()
+  const t = { ...trabalho, ref: uid(), tentativas: 0 }
+  fila = [...fila, t]
+  avisar()                                    // a contagem no ecrã não espera pelo cadeado
+  comCadeado(() => {
+    fila = [...ler().filter((x) => x.ref !== t.ref), t]
+    guardar()
+  }).then(correr)
 }
 
 /** Tentar já (ao voltar a rede, ao abrir a app, ao voltar ao separador). */
@@ -161,5 +189,11 @@ if (typeof window !== 'undefined') {
   window.addEventListener('focus', tentarAgora)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') tentarAgora()
+  })
+  // Outro separador mexeu na fila: acertar a contagem no ecrã.
+  window.addEventListener('storage', (e) => {
+    if (e.key !== CHAVE) return
+    fila = ler()
+    avisar()
   })
 }
