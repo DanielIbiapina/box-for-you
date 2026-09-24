@@ -7,10 +7,10 @@ import { FeiraHistoricoPanel } from '../components/FeiraHistoricoPanel'
 import { FeiraCardapio } from '../components/FeiraCardapio'
 import { useEventos } from '../stores/useEventos'
 import { useVendas } from '../stores/useVendas'
+import { useData } from '../stores/DataProvider'
 import { listFeirasWithStats, formatEventDateRange } from '../lib/feiraHistory'
 import { menuCookies, MINI_BOX_ID, TASTING_BOX_ID } from '../lib/catalog'
 import { todayKey, filterSalesByDay, computePosMetrics, topFlavorsRanking, isGiveawayKind } from '../lib/salesAnalytics'
-import { isSupabaseConfigured } from '../lib/supabase'
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -169,6 +169,8 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
 
   const { sales, addSale, removeSale } = useVendas()
 
+  const { estoqueAtomico } = useData()
+
   const [view,    setView]    = useState('landing') // 'landing' | 'pos' | 'cardapio'
   const [cart,    setCart]    = useState({})
   const [order,   setOrder]   = useState(null)
@@ -280,8 +282,11 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
   }
 
   function confirmSale() {
-    if (isSupabaseConfigured && !navigator.onLine) {
-      notify('Sem internet — liga-te à rede para guardar na nuvem.')
+    // Sem rede só se o stock for somado no banco (supabase/estoque-atomico.sql);
+    // aí a venda fica na fila e sobe sozinha, sem risco de apagar o trabalho
+    // de outro aparelho. Sem essa função, é mais seguro exigir ligação.
+    if (!estoqueAtomico && !navigator.onLine) {
+      notify('Sem internet — liga-te à rede para registar.')
       return
     }
 

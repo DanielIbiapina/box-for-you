@@ -2,21 +2,24 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback } f
 import { supabase } from '../lib/supabase'
 import { MAPPERS, configToApp, configToRow } from './mappers'
 import { PEDIDO_NOVO } from '../lib/avisos'
+import { aoRecusar, juntar, porGuardar as porGuardarAgora, subscrever, tentarAgora } from './fila'
 
 const uid = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`
 
-// tabela → chave no estado + se ordena por data desc (mais novo primeiro)
+// tabela → chave no estado, se ordena por data desc (mais novo primeiro) e,
+// nas tabelas que crescem sem fim, a coluna de data: essas abrem com o recente
+// e vão buscar o histórico a seguir, em segundo plano.
 const COLLECTIONS = [
   { table: 'receitas',         key: 'receitas',       sort: true },
   { table: 'ingredientes',     key: 'ingredientes',   sort: false },
-  { table: 'movimentacoes',    key: 'movimentacoes',  sort: true },
+  { table: 'movimentacoes',    key: 'movimentacoes',  sort: true,  recente: 'data' },
   { table: 'eventos',          key: 'eventos',        sort: false },
-  { table: 'clientes',         key: 'clientes',       sort: true },
-  { table: 'vendas',           key: 'vendas',         sort: true },
-  { table: 'pedidos',          key: 'pedidos',        sort: true },
+  { table: 'clientes',         key: 'clientes',       sort: true,  recente: 'criado_em' },
+  { table: 'vendas',           key: 'vendas',         sort: true,  recente: 'created_at' },
+  { table: 'pedidos',          key: 'pedidos',        sort: true,  recente: 'criado_em' },
   { table: 'custos_fixos',     key: 'custosFixos',    sort: false },
   { table: 'despesas',         key: 'despesas',       sort: true },
   { table: 'cookies_catalogo', key: 'cookies',        sort: false },
@@ -52,6 +55,8 @@ const CHAVE_ESTOQUE = {
  */
 const PAGINA = 1000
 const MAX_PAGINAS = 50
+/** Quanto chega para abrir a app e trabalhar; o resto vem depois. */
+const ABERTURA = 400
 
 async function lerTudo(tabela, ordens = ['id']) {
   const linhas = []
@@ -65,6 +70,41 @@ async function lerTudo(tabela, ordens = ['id']) {
     if ((data?.length ?? 0) < PAGINA) break
   }
   return { data: linhas, error: null }
+}
+
+/** As linhas mais recentes de uma tabela — o que a app precisa para abrir. */
+async function lerRecentes(tabela, coluna, quantos = ABERTURA) {
+  return supabase.from(tabela).select('*').order(coluna, { ascending: false }).limit(quantos)
+}
+
+/**
+ * O resto do histórico, do ponto onde a abertura parou para trás.
+ * Usa `lte` (e não `lt`) para não saltar linhas com a mesma data; as repetidas
+ * são descartadas na junção, que é por id.
+ */
+async function lerHistorico(tabela, coluna, marca) {
+  const linhas = []
+  let corte = marca
+  for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
+    const { data, error } = await supabase
+      .from(tabela).select('*')
+      .order(coluna, { ascending: false })
+      .lte(coluna, corte)
+      .limit(PAGINA)
+    if (error) return { data: null, error }
+    if (!data?.length) break
+    const fim = data[data.length - 1][coluna]
+    linhas.push(...data)
+    if (data.length < PAGINA || fim === corte) break
+    corte = fim
+  }
+  return { data: linhas, error: null }
+}
+
+const juntarPorId = (atuais, novas) => {
+  const mapa = new Map(atuais.map((x) => [x.id, x]))
+  for (const linha of novas) mapa.set(linha.id, linha)
+  return [...mapa.values()]
 }
 
 const DataContext = createContext(null)
@@ -81,6 +121,10 @@ export function DataProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [initialized, setInitialized] = useState(false)
   const [error, setError] = useState(null)
+  const [porGuardar, setPorGuardar] = useState(porGuardarAgora)
+  const [historicoCompleto, setHistoricoCompleto] = useState(true)
+  /** Só é seguro vender sem rede depois de correr supabase/estoque-atomico.sql. */
+  const [estoqueAtomico, setEstoqueAtomico] = useState(false)
 
   const dbRef = useRef(db)
   useEffect(() => { dbRef.current = db }, [db])
@@ -88,13 +132,41 @@ export function DataProvider({ children }) {
   // tipos: 'cookie' (unidades normais) | 'massa' (gramas) | 'cookie50' (cookies de 50g)
   const stockRef = useRef({ cookie: {}, massa: {}, cookie50: {} })
 
+  /**
+   * O histórico antigo, depois da app já estar a andar. Cada tabela entra
+   * assim que chega, sem travar nada; no fim, `historicoCompleto` diz que os
+   * relatórios já têm tudo.
+   */
+  const carregarHistorico = useCallback(async (abertura) => {
+    setHistoricoCompleto(false)
+    const grandes = COLLECTIONS.filter((c) => c.recente)
+    await Promise.all(grandes.map(async (c) => {
+      const abertas = abertura[c.key] ?? []
+      if (abertas.length < ABERTURA) return          // já veio tudo na abertura
+      const marca = getTime(abertas[abertas.length - 1])   // a mais antiga que já temos
+      if (!marca) return
+      const { data, error } = await lerHistorico(c.table, c.recente, marca)
+      if (error) {
+        console.error('[DataProvider] histórico', c.table, error)
+        return
+      }
+      const linhas = (data ?? []).map((r) => MAPPERS[c.table].toApp(r))
+      setDb((prev) => ({ ...prev, [c.key]: sortDesc(juntarPorId(prev[c.key], linhas)) }))
+    }))
+    setHistoricoCompleto(true)
+  }, [])
+
   // ── carregar tudo ──────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const [colRes, estRes, cfgRes] = await Promise.all([
-        Promise.all(COLLECTIONS.map((c) => lerTudo(c.table))),
+        // Tabelas que crescem sem fim abrem só com o recente (o histórico vem
+        // a seguir, em carregarHistorico); as pequenas vêm inteiras.
+        Promise.all(COLLECTIONS.map((c) => (
+          c.recente ? lerRecentes(c.table, c.recente) : lerTudo(c.table)
+        ))),
         lerTudo('estoque', ['tipo', 'cookie_id']),
         supabase.from('configuracao').select('*').eq('id', 'main').maybeSingle(),
       ])
@@ -125,15 +197,45 @@ export function DataProvider({ children }) {
 
       setDb(next)
       setInitialized(true)
+      carregarHistorico(next)
     } catch (e) {
       console.error('[DataProvider] load', e)
-      setError(e.message ?? 'Erro ao carregar dados')
+      setError('Não foi possível carregar os dados. Verifica a ligação.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [carregarHistorico])
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  // ── fila de gravações ───────────────────────────────────────────────────────
+  useEffect(() => subscrever(setPorGuardar), [])
+
+  // A função de stock existe? Sem ela, vender sem rede podia sobrescrever
+  // o trabalho de outro aparelho — e a Feira volta a exigir ligação.
+  useEffect(() => {
+    let vivo = true
+    const ver = () => {
+      supabase.rpc('estoque_ajustar', { p: [] }).then(({ error }) => {
+        if (!vivo || error?.code === 'PGRST202') return
+        if (!error) setEstoqueAtomico(true)
+      })
+    }
+    ver()
+    window.addEventListener('online', ver)
+    return () => { vivo = false; window.removeEventListener('online', ver) }
+  }, [])
+
+  useEffect(() => {
+    aoRecusar(async (trabalho, erro) => {
+      console.error('[fila] recusado', trabalho, erro)
+      // Recarrega primeiro (o servidor é que manda) e só depois avisa —
+      // ao carregar, a mensagem de erro é limpa.
+      await loadAll()
+      setError('Uma alteração não foi aceite pelo servidor e foi desfeita.')
+    })
+    tentarAgora()
+  }, [loadAll])
 
   // ── realtime (handlers definidos aqui dentro p/ deps estáveis) ───────────────
   useEffect(() => {
@@ -185,24 +287,14 @@ export function DataProvider({ children }) {
   }, [])
 
   // ── helpers de estado (otimista) ────────────────────────────────────────────
-  const upsertLocal = useCallback((key, obj) => {
-    setDb((prev) => {
-      const arr = prev[key]
-      const i = arr.findIndex((x) => x.id === obj.id)
-      const nextArr = i >= 0 ? arr.map((x) => (x.id === obj.id ? obj : x)) : [obj, ...arr]
-      return { ...prev, [key]: nextArr }
-    })
-  }, [])
   const removeLocal = useCallback((key, id) => {
     setDb((prev) => ({ ...prev, [key]: prev[key].filter((x) => x.id !== id) }))
   }, [])
 
-  const fail = useCallback((e, ctx) => {
-    console.error(`[DataProvider] ${ctx}`, e)
-    setError(e?.message ?? `Erro ao guardar (${ctx})`)
-  }, [])
-
-  // ── CRUD genérico (otimista: UI já, persistência em segundo plano) ───────────
+  // ── CRUD genérico ───────────────────────────────────────────────────────────
+  // A UI muda já; a gravação vai para a fila (stores/fila.js), que repete
+  // sozinha enquanto a rede não deixar. Só o que o servidor RECUSA é perdido —
+  // e aí recarregamos, porque quem manda é o servidor.
   const createRow = useCallback((table, appObj) => {
     const key = TABLE_TO_KEY[table]
     const obj = { ...appObj, id: appObj.id ?? uid() }
@@ -210,28 +302,21 @@ export function DataProvider({ children }) {
       const arr = [obj, ...prev[key]]
       return { ...prev, [key]: SORT_TABLES.has(table) ? sortDesc(arr) : arr }
     })
-    supabase.from(table).insert(MAPPERS[table].toRow(obj)).then(({ error: e }) => {
-      if (e) { removeLocal(key, obj.id); fail(e, `insert ${table}`) }
-    })
+    juntar({ tipo: 'insert', tabela: table, linha: MAPPERS[table].toRow(obj) })
     return obj
-  }, [removeLocal, fail])
+  }, [])
 
   const updateRow = useCallback((table, id, patch) => {
     const key = TABLE_TO_KEY[table]
     setDb((prev) => ({ ...prev, [key]: prev[key].map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
-    supabase.from(table).update(MAPPERS[table].toRow(patch)).eq('id', id).then(({ error: e }) => {
-      if (e) fail(e, `update ${table}`)
-    })
-  }, [fail])
+    juntar({ tipo: 'update', tabela: table, id, patch: MAPPERS[table].toRow(patch) })
+  }, [])
 
   const removeRow = useCallback((table, id) => {
     const key = TABLE_TO_KEY[table]
-    const prevObj = dbRef.current[key].find((x) => x.id === id)
     removeLocal(key, id)
-    supabase.from(table).delete().eq('id', id).then(({ error: e }) => {
-      if (e) { if (prevObj) upsertLocal(key, prevObj); fail(e, `delete ${table}`) }
-    })
-  }, [removeLocal, upsertLocal, fail])
+    juntar({ tipo: 'delete', tabela: table, id })
+  }, [removeLocal])
 
   // ── estoque (cookie / massa / cookie50) ──────────────────────────────────────
   // stockRef é a fonte síncrona: mantém a matemática correta quando várias
@@ -242,63 +327,69 @@ export function DataProvider({ children }) {
     const map = { ...stockRef.current[t], [cookieId]: q }
     stockRef.current = { ...stockRef.current, [t]: map }
     setDb((prev) => ({ ...prev, [CHAVE_ESTOQUE[t]]: map }))
-    supabase.from('estoque').upsert({ tipo: t, cookie_id: cookieId, qty: q }, { onConflict: 'tipo,cookie_id' }).then(({ error: e }) => {
-      if (e) fail(e, 'upsert estoque')
+    juntar({
+      tipo: 'upsert', tabela: 'estoque', conflito: 'tipo,cookie_id',
+      linhas: [{ tipo: t, cookie_id: cookieId, qty: q }],
     })
-  }, [fail])
+  }, [])
+
+  /**
+   * Somas e subtrações vão como DELTA ("tira 1"), nunca como total.
+   * É isso que deixa duas pessoas mexer no stock ao mesmo tempo — ou uma
+   * sincronizar mais tarde — sem apagar o trabalho da outra.
+   */
+  const aplicarDeltas = useCallback((t, deltas) => {
+    const map = { ...stockRef.current[t] }
+    for (const [cookieId, delta] of Object.entries(deltas)) {
+      map[cookieId] = Math.max(0, (map[cookieId] ?? 0) + delta)
+    }
+    stockRef.current = { ...stockRef.current, [t]: map }
+    setDb((prev) => ({ ...prev, [CHAVE_ESTOQUE[t]]: map }))
+    juntar({
+      tipo: 'ajuste',
+      movimentos: Object.entries(deltas)
+        .filter(([, delta]) => delta !== 0)
+        .map(([cookie_id, delta]) => ({ tipo: t, cookie_id, delta })),
+    })
+  }, [])
 
   const adjustEstoque = useCallback((tipo, cookieId, delta) => {
     const t = CHAVE_ESTOQUE[tipo] ? tipo : 'cookie'
-    const cur = stockRef.current[t][cookieId] ?? 0
-    setEstoque(t, cookieId, cur + delta)
-  }, [setEstoque])
+    aplicarDeltas(t, { [cookieId]: delta })
+  }, [aplicarDeltas])
 
   /** Baixa várias unidades de uma vez. `tipo` escolhe o balde de estoque. */
   const deductCookies = useCallback((items, tipo = 'cookie') => {
     if (!items?.length) return
     const t = CHAVE_ESTOQUE[tipo] ? tipo : 'cookie'
-    const map = { ...stockRef.current[t] }
-    for (const { cookieId, qty } of items) map[cookieId] = Math.max(0, (map[cookieId] ?? 0) - qty)
-    stockRef.current = { ...stockRef.current, [t]: map }
-    setDb((prev) => ({ ...prev, [CHAVE_ESTOQUE[t]]: map }))
-    const ids = [...new Set(items.map((i) => i.cookieId))]
-    const rows = ids.map((cookie_id) => ({ tipo: t, cookie_id, qty: map[cookie_id] }))
-    supabase.from('estoque').upsert(rows, { onConflict: 'tipo,cookie_id' }).then(({ error: e }) => {
-      if (e) fail(e, 'deduct estoque')
-    })
-  }, [fail])
+    const deltas = {}
+    for (const { cookieId, qty } of items) deltas[cookieId] = (deltas[cookieId] ?? 0) - qty
+    aplicarDeltas(t, deltas)
+  }, [aplicarDeltas])
 
   // ── config + caixas ──────────────────────────────────────────────────────────
   const updateConfig = useCallback((patch) => {
     setDb((prev) => ({ ...prev, config: { ...prev.config, ...patch } }))
-    supabase.from('configuracao').update(configToRow(patch)).eq('id', 'main').then(({ error: e }) => {
-      if (e) fail(e, 'update config')
-    })
-  }, [fail])
+    juntar({ tipo: 'update', tabela: 'configuracao', id: 'main', patch: configToRow(patch) })
+  }, [])
 
   const setBoxConfig = useCallback((valueOrFn) => {
     const next = typeof valueOrFn === 'function' ? valueOrFn(dbRef.current.boxConfig) : valueOrFn
     setDb((prev) => ({ ...prev, boxConfig: next }))
-    supabase.from('configuracao').update({ box_config: next }).eq('id', 'main').then(({ error: e }) => {
-      if (e) fail(e, 'update box_config')
-    })
-  }, [fail])
+    juntar({ tipo: 'update', tabela: 'configuracao', id: 'main', patch: { box_config: next } })
+  }, [])
 
   const setMiniBoxConfig = useCallback((valueOrFn) => {
     const next = typeof valueOrFn === 'function' ? valueOrFn(dbRef.current.miniBoxConfig) : valueOrFn
     setDb((prev) => ({ ...prev, miniBoxConfig: next }))
-    supabase.from('configuracao').update({ mini_box_config: next }).eq('id', 'main').then(({ error: e }) => {
-      if (e) fail(e, 'update mini_box_config')
-    })
-  }, [fail])
+    juntar({ tipo: 'update', tabela: 'configuracao', id: 'main', patch: { mini_box_config: next } })
+  }, [])
 
   const setTastingBoxConfig = useCallback((valueOrFn) => {
     const next = typeof valueOrFn === 'function' ? valueOrFn(dbRef.current.tastingBoxConfig) : valueOrFn
     setDb((prev) => ({ ...prev, tastingBoxConfig: next }))
-    supabase.from('configuracao').update({ tasting_box_config: next }).eq('id', 'main').then(({ error: e }) => {
-      if (e) fail(e, 'update tasting_box_config')
-    })
-  }, [fail])
+    juntar({ tipo: 'update', tabela: 'configuracao', id: 'main', patch: { tasting_box_config: next } })
+  }, [])
 
   if (!initialized) {
     return (
@@ -326,6 +417,9 @@ export function DataProvider({ children }) {
     ...db,
     loading,
     error,
+    porGuardar,
+    historicoCompleto,
+    estoqueAtomico,
     clearError: () => setError(null),
     refetch: loadAll,
     createRow, updateRow, removeRow,

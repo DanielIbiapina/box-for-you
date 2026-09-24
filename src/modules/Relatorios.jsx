@@ -3,6 +3,7 @@ import { useEventos } from '../stores/useEventos'
 import { usePedidosVendas } from '../stores/usePedidosVendas'
 import { useClientes } from '../stores/useClientes'
 import { useVendas } from '../stores/useVendas'
+import { useData } from '../stores/DataProvider'
 import { Icon } from '../components/Icon'
 import { BarChart } from '../components/BarChart'
 import { Modal } from '../components/Modal'
@@ -139,6 +140,7 @@ export function Relatorios() {
   const { clientes } = useClientes()
   const { sales: salesPos } = useVendas()
   const { cookies: cookiesAtivos } = useCookies()
+  const { historicoCompleto } = useData()
   const catalog = useMemo(() => withLegacyCookies(cookiesAtivos), [cookiesAtivos])
 
   const now = new Date()
@@ -319,7 +321,9 @@ export function Relatorios() {
             Relatórios & Métricas
           </h1>
           <p className="text-sm mt-1 ink-3">
-            Feiras, vendas diretas e ranking de sabores
+            {historicoCompleto
+              ? 'Feiras, vendas diretas e ranking de sabores'
+              : 'A carregar o histórico completo — os números ainda podem subir…'}
           </p>
         </div>
         <button className="btn-ghost text-xs px-4 py-2" onClick={exportarResumo}>
