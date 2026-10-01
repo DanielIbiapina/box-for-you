@@ -1,4 +1,5 @@
 import { useData } from './DataProvider'
+import { todayKey } from '../lib/salesAnalytics'
 
 export const STATUS_EVENTO = [
   { id: 'planejada', label: 'Planejada' },
@@ -14,7 +15,7 @@ export function useEventos() {
   }
 
   function proximaFeira() {
-    const now = new Date().toISOString().slice(0, 10)
+    const now = todayKey()
     return eventos
       .filter((e) => e.status !== 'concluida' && e.data >= now)
       .sort((a, b) => (a.data < b.data ? -1 : 1))[0] ?? null

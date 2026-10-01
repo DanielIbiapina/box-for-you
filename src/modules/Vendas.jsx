@@ -6,6 +6,8 @@ import { usePedidosVendas, STATUS_PEDIDO } from '../stores/usePedidosVendas'
 import { Modal } from '../components/Modal'
 import { Icon } from '../components/Icon'
 import { SearchInput } from '../components/SearchInput'
+import { todayKey } from '../lib/salesAnalytics'
+import { mesDoPedido } from '../lib/contas'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -94,6 +96,19 @@ function deductPedidoStock(linhas, box, deductSale) {
   if (items.length) deductSale(items)
 }
 
+/** Cookies que um pedido tira do stock: { cookieId: qty } (avulsos + BOX). */
+function stockDoPedido(linhas, box) {
+  const m = {}
+  for (const l of linhas ?? []) {
+    if (l.customLabel || String(l.cookieId).startsWith('custom-')) continue
+    m[l.cookieId] = (m[l.cookieId] ?? 0) + (Number(l.qty) || 0)
+  }
+  for (const [cookieId, qty] of Object.entries(box?.counts ?? {})) {
+    if (qty > 0) m[cookieId] = (m[cookieId] ?? 0) + qty
+  }
+  return m
+}
+
 function restorePedidoStock(linhas, box, adjustCookies) {
   for (const l of linhas ?? []) {
     if (l.customLabel || String(l.cookieId).startsWith('custom-')) continue
@@ -176,6 +191,10 @@ export function Vendas() {
   const [pedidoCustom, setPedidoCustom] = useState([])
   const [pedidoBox,    setPedidoBox]    = useState(null)
   const [customDraft,  setCustomDraft]  = useState({ label: '', price: '', qty: '1', addToMenu: false })
+  // Preços com que o pedido foi feito. Ao editar (até só para mudar o status),
+  // um pedido antigo mantém os SEUS preços — antes era recalculado com os de
+  // hoje e o total mudava sozinho se o preço tivesse subido.
+  const [precosPedido, setPrecosPedido] = useState({ linhas: {}, box: null })
 
   // ── Busca ──
   const [searchCliente, setSearchCliente] = useState('')
@@ -199,9 +218,8 @@ export function Vendas() {
     : []
 
   const pedidosMes = useMemo(() => {
-    const now  = new Date()
-    const key  = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    return pedidos.filter((p) => p.criadoEm.startsWith(key))
+    const key = todayKey().slice(0, 7)
+    return pedidos.filter((p) => mesDoPedido(p) === key)
   }, [pedidos])
 
   const totalMes    = pedidosMes.filter((p) => p.status !== 'cancelado').reduce((s, p) => s + p.totalEur, 0)
@@ -210,16 +228,20 @@ export function Vendas() {
   const boxFilled = pedidoBox ? boxTotalCount(pedidoBox.boxCounts) : 0
   const boxReady  = pedidoBox && boxFilled === boxConfig.size
 
-  const pedidoCartTotal = useMemo(() => {
-    const cartSum = Object.entries(pedidoCart).reduce((sum, [id, qty]) => {
-      const c = cookies.find((x) => x.id === id)
-      return sum + (c ? c.price * qty : 0)
-    }, 0)
+  /** Preço unitário de um sabor neste pedido: o original, se já lá estava. */
+  function precoLinha(cookieId) {
+    if (precosPedido.linhas[cookieId] != null) return precosPedido.linhas[cookieId]
+    return cookies.find((x) => x.id === cookieId)?.price ?? 0
+  }
+  const precoBox = precosPedido.box ?? boxConfig.price
+
+  const pedidoCartTotal = (() => {
+    const cartSum = Object.entries(pedidoCart).reduce((sum, [id, qty]) => sum + precoLinha(id) * qty, 0)
     const customSum = pedidoCustom.reduce((sum, l) => sum + l.preco * l.qty, 0)
     const filled = pedidoBox ? boxTotalCount(pedidoBox.boxCounts) : 0
     const ready  = pedidoBox && filled === boxConfig.size
-    return cartSum + customSum + (ready ? boxConfig.price : 0)
-  }, [pedidoCart, pedidoCustom, pedidoBox, cookies, boxConfig])
+    return cartSum + customSum + (ready ? precoBox : 0)
+  })()
 
   // ── Handlers clientes ─────────────────────────────────────────────────────
 
@@ -256,7 +278,8 @@ export function Vendas() {
   // ── Handlers pedidos ──────────────────────────────────────────────────────
 
   function openNewPedido(clienteId = '') {
-    setPedidoForm({ ...EMPTY_PEDIDO, clienteId, dataPedido: new Date().toISOString().slice(0, 10) })
+    setPedidoForm({ ...EMPTY_PEDIDO, clienteId, dataPedido: todayKey() })
+    setPrecosPedido({ linhas: {}, box: null })
     setPedidoCart({})
     setPedidoCustom([])
     setCustomDraft({ label: '', price: '', qty: '1', addToMenu: false })
@@ -270,13 +293,14 @@ export function Vendas() {
       status: p.status,
       formaPagamento: p.formaPagamento,
       notas: p.notas,
-      dataPedido: p.dataPedido?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+      dataPedido: p.dataPedido?.slice(0, 10) ?? todayKey(),
       desconto: p.desconto ?? 0,
       referencia: p.referencia ?? '',
       entrega: p.entrega ?? null,
     })
     const cart = {}
     const custom = []
+    const precos = {}
     for (const l of p.linhas ?? []) {
       if (l.customLabel) {
         custom.push({
@@ -286,9 +310,12 @@ export function Vendas() {
           preco: l.preco ?? 0,
         })
       } else {
-        cart[l.cookieId] = l.qty
+        // somar (não substituir) se o mesmo sabor vier em duas linhas
+        cart[l.cookieId] = (cart[l.cookieId] ?? 0) + (Number(l.qty) || 0)
+        if (l.preco != null && precos[l.cookieId] == null) precos[l.cookieId] = Number(l.preco)
       }
     }
+    setPrecosPedido({ linhas: precos, box: p.box?.priceEur != null ? Number(p.box.priceEur) : null })
     setPedidoCart(cart)
     setPedidoCustom(custom)
     setCustomDraft({ label: '', price: '', qty: '1', addToMenu: false })
@@ -327,10 +354,9 @@ export function Vendas() {
   }
 
   function buildLinhas() {
-    const catalog = Object.entries(pedidoCart).map(([cookieId, qty]) => {
-      const c = cookies.find((x) => x.id === cookieId)
-      return { cookieId, qty, preco: c?.price ?? 0 }
-    })
+    const catalog = Object.entries(pedidoCart).map(([cookieId, qty]) => ({
+      cookieId, qty, preco: precoLinha(cookieId),
+    }))
     const custom = pedidoCustom.map((l) => ({
       cookieId: l.id,
       qty: l.qty,
@@ -379,7 +405,7 @@ export function Vendas() {
     if (!linhas.length && !ready) return
 
     const boxData = ready
-      ? { counts: { ...pedidoBox.boxCounts }, priceEur: boxConfig.price }
+      ? { counts: { ...pedidoBox.boxCounts }, priceEur: precoBox }
       : null
 
     const desconto = pedidoForm.desconto ?? 0
@@ -389,7 +415,7 @@ export function Vendas() {
       box: boxData,
       totalEur: Math.max(0, pedidoCartTotal - desconto),
       desconto,
-      dataPedido: pedidoForm.dataPedido || new Date().toISOString().slice(0, 10),
+      dataPedido: pedidoForm.dataPedido || todayKey(),
       formaPagamento: pedidoForm.formaPagamento,
       status: pedidoForm.status,
       notas: pedidoForm.notas,
@@ -404,13 +430,16 @@ export function Vendas() {
       const old = pedidos.find((p) => p.id === modalPedido)
       updatePedido(modalPedido, dados)
 
-      const wasActive  = old?.status !== 'cancelado'
-      const isNowActive = dados.status !== 'cancelado'
-
-      if (wasActive && !isNowActive) {
-        restorePedidoStock(old.linhas, old.box, adjustCookies)
-      } else if (!wasActive && isNowActive) {
-        deductPedidoStock(linhas, boxData, deductSale)
+      // O stock acerta-se pela DIFERENÇA entre o pedido antes e depois: cobre
+      // cancelar (devolve tudo), reativar (tira tudo) e mudar quantidades num
+      // pedido ativo — antes este último caso não mexia no stock.
+      if (old) {
+        const antes  = old.status !== 'cancelado' ? stockDoPedido(old.linhas, old.box) : {}
+        const depois = dados.status !== 'cancelado' ? stockDoPedido(linhas, boxData) : {}
+        for (const cookieId of new Set([...Object.keys(antes), ...Object.keys(depois)])) {
+          const devolver = (antes[cookieId] ?? 0) - (depois[cookieId] ?? 0)
+          if (devolver !== 0) adjustCookies(cookieId, devolver)
+        }
       }
     }
     setModalPedido(null)
@@ -589,6 +618,7 @@ export function Vendas() {
             cartAdjust={cartAdjust}
             pedidoBox={pedidoBox}
             boxConfig={boxConfig}
+            precoBox={precoBox}
             boxFilled={boxFilled}
             boxReady={boxReady}
             startBox={startBox}
@@ -869,6 +899,7 @@ export function Vendas() {
           cartAdjust={cartAdjust}
           pedidoBox={pedidoBox}
           boxConfig={boxConfig}
+          precoBox={precoBox}
           boxFilled={boxFilled}
           boxReady={boxReady}
           startBox={startBox}
@@ -1020,7 +1051,7 @@ function ClienteModal({ title, form, setForm, onClose, onSave, canDelete, onDele
 
 function PedidoModal({
   title, form, setForm, cart, cartAdjust,
-  pedidoBox, boxConfig, boxFilled, boxReady,
+  pedidoBox, boxConfig, precoBox, boxFilled, boxReady,
   startBox, cancelBox, boxAdjust,
   total, cookies, stockCookies, clientes, onClose, onSave,
   customLinhas, customDraft, setCustomDraft, onAddCustom, onRemoveCustom,
@@ -1082,7 +1113,7 @@ function PedidoModal({
               </div>
             </div>
             <span className="text-sm font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
-              {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(boxConfig.price)}
+              {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(precoBox)}
             </span>
           </button>
         ) : (
@@ -1097,7 +1128,7 @@ function PedidoModal({
                   BOX {boxConfig.size} cookies ({boxFilled}/{boxConfig.size})
                 </div>
                 <div className="ink-3" style={{ fontSize: 'var(--text-xs)' }}>
-                  {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(boxConfig.price)} · mix de sabores
+                  {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(precoBox)} · mix de sabores
                 </div>
               </div>
               <button

@@ -94,6 +94,17 @@ export const MAPPERS = {
     { id: 'id', nome: 'nome', short: 'short', emoji: 'emoji', price: 'price', image: 'image', ativoNoCardapio: 'ativo_no_cardapio' },
     ['price'],
   ),
+  caixas: makeMapper(
+    {
+      id: 'id', dia: 'dia', eventId: 'evento_id',
+      abertoEm: 'aberto_em', abertoPor: 'aberto_por',
+      fundoInicial: 'fundo_inicial', contagemInicial: 'contagem_inicial',
+      fechadoEm: 'fechado_em', fechadoPor: 'fechado_por',
+      dinheiroContado: 'dinheiro_contado', contagemFinal: 'contagem_final',
+      notas: 'notas',
+    },
+    ['fundoInicial', 'dinheiroContado'],
+  ),
 }
 
 // ── Config (singleton) ──────────────────────────────────────────────────────

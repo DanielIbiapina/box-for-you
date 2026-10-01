@@ -9,6 +9,7 @@ import { useFinanceiro } from '../stores/useFinanceiro'
 import { useCookies } from '../stores/useCookies'
 import { BarChart } from '../components/BarChart'
 import { Icon } from '../components/Icon'
+import { contasDoMes } from '../lib/contas'
 
 function monthKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
@@ -17,12 +18,6 @@ function monthKey(date) {
 const fmtEur = (v) =>
   new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(v ?? 0)
 
-/** Mês a que uma venda do POS pertence */
-const mesVenda = (s) => (s.createdAt ?? '').slice(0, 7)
-/** Mês a que um pedido pertence (data escolhida ou, em falta, a de criação) */
-const mesPedido = (p) => (p.dataPedido ?? p.criadoEm ?? '').slice(0, 7)
-/** Mês a que uma despesa pertence */
-const mesDespesa = (d) => d.mesRef || (d.data ?? '').slice(0, 7)
 
 /** Dia civil local (YYYY-MM-DD) — evita o desalinhamento de fuso do toISOString */
 function diaLocal(d = new Date()) {
@@ -57,30 +52,12 @@ export function Home({ onNavigate }) {
   const hojeKey = diaLocal(now)
   const thisMonth = monthKey(now)
 
-  // ── Números do mês (feiras + encomendas − saídas) ─────────────────────────
-  const receitaFeiras = useMemo(
-    () => sales
-      .filter((s) => mesVenda(s) === thisMonth && (s.totalEur ?? 0) > 0)
-      .reduce((sum, s) => sum + (s.totalEur ?? 0), 0),
-    [sales, thisMonth],
+  // ── Números do mês — as mesmas contas de Entradas e Saídas (lib/contas.js) ──
+  const contas = useMemo(
+    () => contasDoMes({ sales, pedidos, despesas }, thisMonth),
+    [sales, pedidos, despesas, thisMonth],
   )
-
-  const receitaPedidos = useMemo(
-    () => pedidos
-      .filter((p) => mesPedido(p) === thisMonth && p.status !== 'cancelado')
-      .reduce((sum, p) => sum + (p.totalEur ?? 0), 0),
-    [pedidos, thisMonth],
-  )
-
-  const saidasMes = useMemo(
-    () => despesas
-      .filter((d) => mesDespesa(d) === thisMonth)
-      .reduce((sum, d) => sum + (d.valorEur ?? 0), 0),
-    [despesas, thisMonth],
-  )
-
-  const receitaTotal = receitaFeiras + receitaPedidos
-  const lucro = receitaTotal - saidasMes
+  const lucro = contas.balanco
   const metaLucro = config.metaLucroMensal ?? 0
   const progressoMeta = metaLucro > 0 ? Math.max(0, Math.min(100, (lucro / metaLucro) * 100)) : null
 
@@ -168,13 +145,7 @@ export function Home({ onNavigate }) {
     () => Array.from({ length: 6 }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
       const key = monthKey(d)
-      const feirasMes = sales
-        .filter((s) => mesVenda(s) === key && (s.totalEur ?? 0) > 0)
-        .reduce((sum, s) => sum + (s.totalEur ?? 0), 0)
-      const encomendasMes = pedidos
-        .filter((p) => mesPedido(p) === key && p.status !== 'cancelado')
-        .reduce((sum, p) => sum + (p.totalEur ?? 0), 0)
-      return { label: d.toLocaleString('pt-BR', { month: 'short' }), value: feirasMes + encomendasMes }
+      return { label: d.toLocaleString('pt-BR', { month: 'short' }), value: contasDoMes({ sales, pedidos }, key).bruto }
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [sales, pedidos, thisMonth],
@@ -183,8 +154,19 @@ export function Home({ onNavigate }) {
   const dateStr = now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
 
   const kpis = [
-    { label: 'Entrou este mês',  value: fmtEur(receitaTotal), sub: `${fmtEur(receitaFeiras)} feiras · ${fmtEur(receitaPedidos)} encomendas` },
-    { label: 'Saiu este mês',    value: fmtEur(saidasMes),    sub: saidasMes === 0 ? 'nenhuma saída registada' : 'ingredientes, taxas e custos fixos' },
+    {
+      label: 'Entrou este mês',
+      value: fmtEur(contas.entradas),
+      sub: `${fmtEur(contas.totalPos)} feiras · ${fmtEur(contas.totalDiretas)} encomendas`
+        + (contas.taxaMultibanco > 0 ? ` · −${fmtEur(contas.taxaMultibanco)} taxa MB` : ''),
+    },
+    {
+      label: 'Saiu este mês',
+      value: fmtEur(contas.totalSaidas),
+      sub: contas.totalPorPagar > 0
+        ? `+ ${fmtEur(contas.totalPorPagar)} por pagar`
+        : contas.totalSaidas === 0 ? 'nenhuma saída registada' : 'ingredientes, taxas e custos fixos',
+    },
     { label: 'Resultado',        value: fmtEur(lucro),        sub: 'entradas menos saídas', destaque: true, negativo: lucro < 0 },
     { label: 'Receitas',         value: receitas.length,      sub: receitas.length === 0 ? 'nenhuma ainda' : 'no livro de receitas' },
   ]

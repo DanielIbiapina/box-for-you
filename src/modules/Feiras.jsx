@@ -8,6 +8,8 @@ import { FeiraCardapio } from '../components/FeiraCardapio'
 import { useEventos } from '../stores/useEventos'
 import { useVendas } from '../stores/useVendas'
 import { useData } from '../stores/DataProvider'
+import { useCaixa, resumoCaixa, fmtHora, fmtDia } from '../stores/useCaixa'
+import { AbrirCaixa, FecharCaixa, CaixaDetalhe } from '../components/CaixaFeira'
 import { listFeirasWithStats, formatEventDateRange } from '../lib/feiraHistory'
 import { menuCookies, MINI_BOX_ID, TASTING_BOX_ID } from '../lib/catalog'
 import { todayKey, filterSalesByDay, computePosMetrics, topFlavorsRanking, isGiveawayKind } from '../lib/salesAnalytics'
@@ -170,6 +172,14 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
   const { sales, addSale, removeSale } = useVendas()
 
   const { estoqueAtomico } = useData()
+
+  const {
+    caixas, caixasDisponivel, caixaAberto, sugestaoAbertura,
+    abrir: abrirCaixa, fechar: fecharCaixa, reabrir: reabrirCaixa, remover: removerCaixa,
+  } = useCaixa()
+  const [caixaModal, setCaixaModal] = useState(null) // null | 'abrir' | 'fechar' | { detalhe: id }
+  const [todosCaixas, setTodosCaixas] = useState(false)
+  const caixaEmDetalhe = caixaModal?.detalhe ? caixas.find((x) => x.id === caixaModal.detalhe) ?? null : null
 
   const [view,    setView]    = useState('landing') // 'landing' | 'pos' | 'cardapio'
   const [cart,    setCart]    = useState({})
@@ -351,14 +361,18 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
       }
     }
 
-    // Alocar desconto inteiro na primeira venda paga
-    if (disc > 0 && newSales.length > 0) {
-      const applied = Math.min(disc, newSales[0].totalEur)
-      newSales[0] = {
-        ...newSales[0],
-        desconto: applied,
-        totalEur: Math.max(0, newSales[0].totalEur - applied),
+    // Desconto: tira-se da primeira venda e, se não chegar, da seguinte
+    // (avulsos + BOX). Antes ficava só na primeira e o resto perdia-se — o
+    // registado ficava acima do que o cliente pagou e o caixa não batia.
+    let porDescontar = disc
+    for (let i = 0; i < newSales.length && porDescontar > 0; i++) {
+      const aplicado = Math.min(porDescontar, newSales[i].totalEur)
+      newSales[i] = {
+        ...newSales[i],
+        desconto: aplicado,
+        totalEur: Math.round((newSales[i].totalEur - aplicado) * 100) / 100,
       }
+      porDescontar = Math.round((porDescontar - aplicado) * 100) / 100
     }
 
     newSales.forEach((s) => addSale(s))
@@ -508,9 +522,12 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
             ))}
           </div>
 
-          {/* Ação principal */}
+          {/* Ação principal: abrir o caixa (troco + contagem) ou continuar a vender */}
           <button
-            onClick={() => setView('pos')}
+            onClick={() => {
+              if (caixaAberto || !caixasDisponivel) setView('pos')
+              else setCaixaModal('abrir')
+            }}
             className="w-full rounded-2xl p-6 flex items-center gap-4 text-left transition-transform active:scale-[0.99]"
             style={{ background: 'var(--color-primary)' }}
           >
@@ -522,14 +539,59 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
             </span>
             <span className="min-w-0 flex-1">
               <span className="bfy-title block" style={{ fontSize: 'var(--text-xl)', color: 'var(--ink-on-dark)' }}>
-                Abrir caixa
+                {caixaAberto ? 'Continuar a vender' : 'Abrir caixa'}
               </span>
               <span className="block mt-0.5" style={{ fontSize: 'var(--text-sm)', color: 'var(--ink-on-dark-2)' }}>
-                Registar as vendas de hoje
+                {caixaAberto
+                  ? `Caixa aberto às ${fmtHora(caixaAberto.abertoEm)}`
+                  : caixasDisponivel ? 'Troco, contagem e vendas de hoje' : 'Registar as vendas de hoje'}
               </span>
             </span>
             <span style={{ color: 'var(--ink-on-dark-3)' }}><Icon name="avancar" size={20} /></span>
           </button>
+
+          {!caixasDisponivel && !perfilFeira && (
+            <p className="bfy-hint" style={{ marginTop: '-0.5rem' }}>
+              Para abrir e fechar o caixa com troco e contagem, corre <code>supabase/caixa.sql</code> no Supabase.
+            </p>
+          )}
+
+          {/* Caixa aberto: quanto deve haver na caixa agora, e fechar */}
+          {caixaAberto && (() => {
+            const r = resumoCaixa(caixaAberto, sales)
+            const deOutroDia = caixaAberto.dia !== dayKey
+            return (
+              <div className="bfy-card p-4 space-y-3">
+                {deOutroDia && (
+                  <p className="flex items-center gap-1.5 font-semibold" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-danger)' }}>
+                    <Icon name="alerta" size={15} /> Este caixa ficou aberto desde {fmtDia(caixaAberto.dia)} — fecha-o e abre o de hoje.
+                  </p>
+                )}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  {[
+                    { label: 'Troco', value: fmtEuro(caixaAberto.fundoInicial ?? 0) },
+                    { label: 'Em dinheiro', value: fmtEuro(r.dinheiro) },
+                    { label: 'Deve haver', value: fmtEuro(r.esperado), destaque: true },
+                  ].map(({ label, value, destaque }) => (
+                    <div key={label}>
+                      <p className="bfy-num font-black" style={{ fontSize: 'var(--text-md)', color: destaque ? 'var(--color-accent-dark)' : 'var(--ink-1)' }}>
+                        {value}
+                      </p>
+                      <p className="ink-3" style={{ fontSize: 'var(--text-2xs)' }}>{label}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" className="btn-ghost btn-sm flex-1" onClick={() => setCaixaModal({ detalhe: caixaAberto.id })}>
+                    Ver contagem
+                  </button>
+                  <button type="button" className="btn-accent btn-sm flex-1" onClick={() => setCaixaModal('fechar')}>
+                    <Icon name="check" size={14} /> Fechar caixa
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Cardápio */}
           <div className="bfy-card p-4">
@@ -566,6 +628,57 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
               <span className="bfy-chip">Tasting Box {menuItems.length} × 50g · {fmtEuro(tastingBoxConfig.price)}</span>
             </div>
           </div>
+
+          {/* Caixas fechados */}
+          {(() => {
+            const fechados = caixas.filter((c) => c.fechadoEm)
+            if (!fechados.length) return null
+            const visiveis = todosCaixas ? fechados : fechados.slice(0, 5)
+            return (
+              <div className="bfy-card p-4 space-y-3">
+                <h2 className="bfy-eyebrow">Caixas anteriores</h2>
+                <div className="space-y-2">
+                  {visiveis.map((c) => {
+                    const r = resumoCaixa(c, sales)
+                    const ev = eventos.find((e) => e.id === c.eventId)
+                    const certo = r.diferenca != null && Math.abs(r.diferenca) < 0.005
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setCaixaModal({ detalhe: c.id })}
+                        className="bfy-sunk w-full flex items-center gap-3 px-3 py-3 text-left"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold truncate ink-1" style={{ fontSize: 'var(--text-md)' }}>
+                            {fmtDia(c.dia)}{ev ? ` · ${ev.nome}` : ''}
+                          </p>
+                          <p className="ink-3 mt-0.5" style={{ fontSize: 'var(--text-xs)' }}>
+                            {fmtHora(c.abertoEm)} – {fmtHora(c.fechadoEm)} · contado {fmtEuro(c.dinheiroContado ?? 0)}
+                          </p>
+                        </div>
+                        <span
+                          className="bfy-num font-bold shrink-0"
+                          style={{
+                            fontSize: 'var(--text-sm)',
+                            color: certo ? 'var(--color-success)' : (r.diferenca ?? 0) > 0 ? 'var(--color-accent-dark)' : 'var(--color-danger)',
+                          }}
+                        >
+                          {certo ? 'certo' : `${r.diferenca > 0 ? '+' : '−'}${fmtEuro(Math.abs(r.diferenca ?? 0))}`}
+                        </span>
+                        <span className="ink-4"><Icon name="avancar" size={16} /></span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {fechados.length > 5 && (
+                  <button type="button" className="btn-ghost btn-sm btn-block" onClick={() => setTodosCaixas((v) => !v)}>
+                    {todosCaixas ? 'Mostrar menos' : `Ver todos (${fechados.length})`}
+                  </button>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Histórico */}
           <div className="bfy-card p-4 space-y-3">
@@ -615,6 +728,54 @@ export function Feiras({ onPosModeChange, perfilFeira = false }) {
           <Modal title={historicoEvent.nome} onClose={() => setHistoricoEvent(null)} size="lg">
             <FeiraHistoricoPanel evento={historicoEvent} sales={sales} catalog={cookies} />
           </Modal>
+        )}
+
+        {caixaModal === 'abrir' && (
+          <AbrirCaixa
+            sugestao={sugestaoAbertura}
+            feiraNome={feiraDeHoje?.nome}
+            onClose={() => setCaixaModal(null)}
+            onSemCaixa={() => { setCaixaModal(null); setView('pos') }}
+            onAbrir={(dados) => {
+              abrirCaixa({ ...dados, eventId: feiraDeHoje?.id })
+              setCaixaModal(null)
+              setView('pos')
+              notify('Caixa aberto')
+            }}
+          />
+        )}
+
+        {caixaModal === 'fechar' && caixaAberto && (
+          <FecharCaixa
+            caixa={caixaAberto}
+            sales={sales}
+            onClose={() => setCaixaModal(null)}
+            onFechar={(dados) => {
+              fecharCaixa(caixaAberto.id, dados)
+              setCaixaModal(null)
+              notify('Caixa fechado')
+            }}
+          />
+        )}
+
+        {caixaEmDetalhe && (
+          <CaixaDetalhe
+            caixa={caixaEmDetalhe}
+            sales={sales}
+            eventoNome={eventos.find((e) => e.id === caixaEmDetalhe.eventId)?.nome}
+            podeGerir={!perfilFeira}
+            onClose={() => setCaixaModal(null)}
+            onReabrir={() => {
+              if (caixaAberto) { notify('Já há um caixa aberto — fecha-o primeiro.'); return }
+              reabrirCaixa(caixaEmDetalhe.id)
+              setCaixaModal(null)
+            }}
+            onApagar={() => {
+              if (!confirm('Apagar este caixa? As vendas não são apagadas.')) return
+              removerCaixa(caixaEmDetalhe.id)
+              setCaixaModal(null)
+            }}
+          />
         )}
       </div>
     )

@@ -3,6 +3,7 @@ import { useConfiguracoes } from '../stores/useConfiguracoes'
 import { useEventos, STATUS_EVENTO } from '../stores/useEventos'
 import { useFinanceiro } from '../stores/useFinanceiro'
 import { supabase } from '../lib/supabase'
+import { todayKey } from '../lib/salesAnalytics'
 import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
 import { CardapioAdmin } from '../components/CardapioAdmin'
@@ -92,6 +93,14 @@ export function Configuracoes() {
   const [pagamento, setPagamento] = useState('')
   const [eventoModal, setEventoModal] = useState(null)
   const [eventoForm, setEventoForm] = useState(EMPTY_EVENTO)
+  const [todasAnteriores, setTodasAnteriores] = useState(false)
+
+  // Por data: as próximas da mais perto para a mais longe; as anteriores da
+  // mais recente para trás (e só as últimas, até pedir mais).
+  const hoje = todayKey()
+  const proximas = eventos.filter((ev) => (ev.data ?? '') >= hoje)
+  const anteriores = eventos.filter((ev) => (ev.data ?? '') < hoje).reverse()
+  const anterioresVisiveis = todasAnteriores ? anteriores : anteriores.slice(0, 8)
 
   function handleSave(e) {
     e.preventDefault()
@@ -320,8 +329,14 @@ export function Configuracoes() {
             </p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {eventos.map((ev) => {
+          <div className="space-y-4">
+            {[
+              { titulo: 'Próximas', lista: proximas },
+              { titulo: 'Anteriores', lista: anterioresVisiveis, resto: anteriores.length - anterioresVisiveis.length },
+            ].filter((g) => g.lista.length > 0).map((g) => (
+            <div key={g.titulo} className="space-y-2">
+            <p className="bfy-eyebrow">{g.titulo}</p>
+            {g.lista.map((ev) => {
               const statusObj = STATUS_EVENTO.find((s) => s.id === ev.status)
               return (
                 <div
@@ -374,6 +389,13 @@ export function Configuracoes() {
                 </div>
               )
             })}
+            {g.resto > 0 && (
+              <button type="button" className="btn-ghost btn-sm btn-block" onClick={() => setTodasAnteriores(true)}>
+                Ver mais {g.resto} anteriores
+              </button>
+            )}
+            </div>
+            ))}
           </div>
         )}
       </div>

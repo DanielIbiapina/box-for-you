@@ -17,7 +17,9 @@ import {
   mergeCookieCounts,
   rankFromCounts,
   computePosMetrics,
+  saleDayKey,
 } from '../lib/salesAnalytics'
+import { mesDaVenda, mesDoPedido } from '../lib/contas'
 import { summarizeEvent, formatEventDateRange, orphanFairDayEvents } from '../lib/feiraHistory'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -169,10 +171,10 @@ export function Relatorios() {
   const chartData = useMemo(() => {
     return meses.slice().reverse().map((m) => {
       const posVal = salesPos
-        .filter((s) => (s.createdAt ?? '').startsWith(m.key) && (s.totalEur ?? 0) > 0)
+        .filter((s) => mesDaVenda(s) === m.key && (s.totalEur ?? 0) > 0)
         .reduce((sum, s) => sum + (s.totalEur ?? 0), 0)
       const diretaVal = pedidosVendas
-        .filter((p) => p.criadoEm.startsWith(m.key) && p.status !== 'cancelado')
+        .filter((p) => mesDoPedido(p) === m.key && p.status !== 'cancelado')
         .reduce((sum, p) => sum + p.totalEur, 0)
       return { label: m.short, value: posVal + diretaVal }
     })
@@ -180,22 +182,22 @@ export function Relatorios() {
 
   const statsMes = useMemo(() => {
     const posVendas = salesPos.filter(
-      (s) => (s.createdAt ?? '').startsWith(mesSelecionado) && (s.totalEur ?? 0) > 0,
+      (s) => mesDaVenda(s) === mesSelecionado && (s.totalEur ?? 0) > 0,
     )
     const posReceita = posVendas.reduce((sum, s) => sum + (s.totalEur ?? 0), 0)
     const demos = salesPos.filter(
-      (s) => (s.createdAt ?? '').startsWith(mesSelecionado) && s.kind === 'demo',
+      (s) => mesDaVenda(s) === mesSelecionado && s.kind === 'demo',
     ).length
     const fidelidade = salesPos.filter(
-      (s) => (s.createdAt ?? '').startsWith(mesSelecionado) && s.kind === 'fidelidade',
+      (s) => mesDaVenda(s) === mesSelecionado && s.kind === 'fidelidade',
     ).length
     const diretasMes = pedidosVendas.filter(
-      (p) => p.criadoEm.startsWith(mesSelecionado) && p.status !== 'cancelado',
+      (p) => mesDoPedido(p) === mesSelecionado && p.status !== 'cancelado',
     )
     const diretaReceita = diretasMes.reduce((sum, p) => sum + p.totalEur, 0)
     const cookiesVendidos = Object.values(
       aggregateCookieCounts(
-        salesPos.filter((s) => (s.createdAt ?? '').startsWith(mesSelecionado)),
+        salesPos.filter((s) => mesDaVenda(s) === mesSelecionado),
         catalog,
       ),
     ).reduce((a, b) => a + b, 0)
@@ -214,7 +216,7 @@ export function Relatorios() {
   const pagamentosMes = useMemo(
     () =>
       computePosMetrics(
-        salesPos.filter((s) => (s.createdAt ?? '').startsWith(mesSelecionado)),
+        salesPos.filter((s) => mesDaVenda(s) === mesSelecionado),
         catalog,
       ).byPayment,
     [salesPos, mesSelecionado, catalog],
@@ -223,13 +225,13 @@ export function Relatorios() {
   const rankingSabores = useMemo(() => {
     const feira = incluirFeira
       ? aggregateCookieCounts(
-          salesPos.filter((s) => (s.createdAt ?? '').startsWith(mesSelecionado)),
+          salesPos.filter((s) => mesDaVenda(s) === mesSelecionado),
           catalog,
         )
       : {}
     const pedidos = incluirPedidos
       ? aggregatePedidoCookieCounts(
-          pedidosVendas.filter((p) => (p.criadoEm ?? '').startsWith(mesSelecionado)),
+          pedidosVendas.filter((p) => mesDoPedido(p) === mesSelecionado),
         )
       : {}
     return rankFromCounts(mergeCookieCounts(feira, pedidos), catalog, 15)
@@ -245,12 +247,12 @@ export function Relatorios() {
 
   const insights = useMemo(() => {
     const posMes = salesPos.filter(
-      (s) => (s.createdAt ?? '').startsWith(mesSelecionado) && (s.totalEur ?? 0) > 0,
+      (s) => mesDaVenda(s) === mesSelecionado && (s.totalEur ?? 0) > 0,
     )
     const byDay = {}
     const byPay = {}
     for (const s of posMes) {
-      const day = (s.createdAt ?? '').slice(0, 10)
+      const day = saleDayKey(s)
       byDay[day] = (byDay[day] ?? 0) + (s.totalEur ?? 0)
       const p = s.paymentId ?? 'outro'
       byPay[p] = (byPay[p] ?? 0) + 1
@@ -262,12 +264,12 @@ export function Relatorios() {
   }, [salesPos, mesSelecionado, rankingSabores])
 
   const diretasDoMes = useMemo(
-    () => pedidosVendas.filter((p) => p.criadoEm.startsWith(mesSelecionado) && p.status !== 'cancelado'),
+    () => pedidosVendas.filter((p) => mesDoPedido(p) === mesSelecionado && p.status !== 'cancelado'),
     [pedidosVendas, mesSelecionado],
   )
 
   const posMes = useMemo(
-    () => salesPos.filter((s) => (s.createdAt ?? '').startsWith(mesSelecionado) && (s.totalEur ?? 0) > 0),
+    () => salesPos.filter((s) => mesDaVenda(s) === mesSelecionado && (s.totalEur ?? 0) > 0),
     [salesPos, mesSelecionado],
   )
 

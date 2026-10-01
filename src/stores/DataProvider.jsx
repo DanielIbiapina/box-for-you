@@ -9,30 +9,40 @@ const uid = () =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`
 
-// tabela → chave no estado, se ordena por data desc (mais novo primeiro) e,
-// nas tabelas que crescem sem fim, a coluna de data: essas abrem com o recente
-// e vão buscar o histórico a seguir, em segundo plano.
+const porNome = (a, b) => String(a.nome ?? '').localeCompare(String(b.nome ?? ''), 'pt', { sensitivity: 'base' })
+const porData = (a, b) => String(a.data ?? '').localeCompare(String(b.data ?? ''))
+
+// tabela → chave no estado e a ordem em que a lista vive na app:
+// `sort` = por data, mais novo primeiro; `ordem` = um critério próprio (nome,
+// data da feira). O banco é lido por id (para paginar sem saltar linhas), e o
+// id é aleatório — sem isto as listas apareciam baralhadas.
+// `recente`: tabelas que crescem sem fim abrem com o recente e vão buscar o
+// histórico a seguir, em segundo plano.
 const COLLECTIONS = [
   { table: 'receitas',         key: 'receitas',       sort: true },
-  { table: 'ingredientes',     key: 'ingredientes',   sort: false },
+  { table: 'ingredientes',     key: 'ingredientes',   ordem: porNome },
   { table: 'movimentacoes',    key: 'movimentacoes',  sort: true,  recente: 'data' },
-  { table: 'eventos',          key: 'eventos',        sort: false },
+  { table: 'eventos',          key: 'eventos',        ordem: porData },
   { table: 'clientes',         key: 'clientes',       sort: true,  recente: 'criado_em' },
   { table: 'vendas',           key: 'vendas',         sort: true,  recente: 'created_at' },
   { table: 'pedidos',          key: 'pedidos',        sort: true,  recente: 'criado_em' },
-  { table: 'custos_fixos',     key: 'custosFixos',    sort: false },
+  { table: 'custos_fixos',     key: 'custosFixos',    ordem: porNome },
   { table: 'despesas',         key: 'despesas',       sort: true },
-  { table: 'cookies_catalogo', key: 'cookies',        sort: false },
+  { table: 'cookies_catalogo', key: 'cookies',        ordem: porNome },
+  // Opcional: enquanto supabase/caixa.sql não for corrido, a tabela não existe
+  // e a app abre na mesma — só sem abrir/fechar caixa.
+  { table: 'caixas',           key: 'caixas',         sort: true,  opcional: true },
 ]
 const TABLE_TO_KEY = Object.fromEntries(COLLECTIONS.map((c) => [c.table, c.key]))
-const SORT_TABLES = new Set(COLLECTIONS.filter((c) => c.sort).map((c) => c.table))
+const POR_TABELA = Object.fromEntries(COLLECTIONS.map((c) => [c.table, c]))
 
-const getTime = (o) => o.createdAt || o.criadoEm || o.criadaEm || o.data || ''
+const getTime = (o) => o.createdAt || o.criadoEm || o.criadaEm || o.abertoEm || o.data || ''
 const sortDesc = (arr) => [...arr].sort((a, b) => String(getTime(b)).localeCompare(String(getTime(a))))
+const ordenar = (c, arr) => (c.sort ? sortDesc(arr) : c.ordem ? [...arr].sort(c.ordem) : arr)
 
 const EMPTY_DB = {
   receitas: [], ingredientes: [], movimentacoes: [], eventos: [], clientes: [],
-  vendas: [], pedidos: [], custosFixos: [], despesas: [], cookies: [],
+  vendas: [], pedidos: [], custosFixos: [], despesas: [], cookies: [], caixas: [],
   estoqueCookies: {}, estoqueMassa: {}, estoqueCookies50: {},
   config: configToApp(null),
   boxConfig: { size: 4, price: 12 },
@@ -125,6 +135,8 @@ export function DataProvider({ children }) {
   const [historicoCompleto, setHistoricoCompleto] = useState(true)
   /** Só é seguro vender sem rede depois de correr supabase/estoque-atomico.sql. */
   const [estoqueAtomico, setEstoqueAtomico] = useState(false)
+  /** Tabelas opcionais que ainda não existem no banco (falta correr o SQL). */
+  const [emFalta, setEmFalta] = useState([])
 
   const dbRef = useRef(db)
   useEffect(() => { dbRef.current = db }, [db])
@@ -172,10 +184,16 @@ export function DataProvider({ children }) {
       ])
 
       const next = { ...EMPTY_DB }
+      const faltam = []
       COLLECTIONS.forEach((c, i) => {
+        if (colRes[i].error && c.opcional) {
+          console.warn('[DataProvider] tabela opcional indisponível', c.table, colRes[i].error)
+          faltam.push(c.table)
+          return
+        }
         if (colRes[i].error) throw colRes[i].error
         const rows = (colRes[i].data ?? []).map((r) => MAPPERS[c.table].toApp(r))
-        next[c.key] = c.sort ? sortDesc(rows) : rows
+        next[c.key] = ordenar(c, rows)
       })
 
       if (estRes.error) throw estRes.error
@@ -196,6 +214,7 @@ export function DataProvider({ children }) {
       next.tastingBoxConfig = cfgRes.data?.tasting_box_config ?? { price: 16 }
 
       setDb(next)
+      setEmFalta(faltam)
       setInitialized(true)
       carregarHistorico(next)
     } catch (e) {
@@ -249,7 +268,7 @@ export function DataProvider({ children }) {
         const arr = prev[c.key]
         const i = arr.findIndex((x) => x.id === obj.id)
         const nextArr = i >= 0 ? arr.map((x) => (x.id === obj.id ? obj : x)) : [obj, ...arr]
-        return { ...prev, [c.key]: c.sort ? sortDesc(nextArr) : nextArr }
+        return { ...prev, [c.key]: ordenar(c, nextArr) }
       })
       // Pedido novo da loja: quem está com a app aberta é avisado (AvisoPedidos.jsx).
       if (c.table === 'pedidos' && payload.eventType === 'INSERT' && obj.origem === 'loja') {
@@ -277,13 +296,24 @@ export function DataProvider({ children }) {
     }
 
     let ch = supabase.channel('bfy-db')
-    for (const c of COLLECTIONS) {
+    for (const c of COLLECTIONS.filter((x) => !x.opcional)) {
       ch = ch.on('postgres_changes', { event: '*', schema: 'public', table: c.table }, (p) => handleColChange(c, p))
     }
     ch = ch.on('postgres_changes', { event: '*', schema: 'public', table: 'estoque' }, handleEstoqueChange)
     ch = ch.on('postgres_changes', { event: '*', schema: 'public', table: 'configuracao' }, handleConfigChange)
     ch.subscribe()
-    return () => { supabase.removeChannel(ch) }
+
+    // As opcionais num canal à parte: se a tabela ainda não existir, só este
+    // falha — o realtime das vendas e do stock continua a funcionar.
+    const opcionais = COLLECTIONS.filter((x) => x.opcional).map((c) =>
+      supabase.channel(`bfy-${c.table}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: c.table }, (p) => handleColChange(c, p))
+        .subscribe(),
+    )
+    return () => {
+      supabase.removeChannel(ch)
+      opcionais.forEach((x) => supabase.removeChannel(x))
+    }
   }, [])
 
   // ── helpers de estado (otimista) ────────────────────────────────────────────
@@ -299,8 +329,9 @@ export function DataProvider({ children }) {
     const key = TABLE_TO_KEY[table]
     const obj = { ...appObj, id: appObj.id ?? uid() }
     setDb((prev) => {
-      const arr = [obj, ...prev[key]]
-      return { ...prev, [key]: SORT_TABLES.has(table) ? sortDesc(arr) : arr }
+      // sem repetir a linha se o id já existir (ex.: ids fixos das inscrições)
+      const arr = [obj, ...prev[key].filter((x) => x.id !== obj.id)]
+      return { ...prev, [key]: ordenar(POR_TABELA[table], arr) }
     })
     juntar({ tipo: 'insert', tabela: table, linha: MAPPERS[table].toRow(obj) })
     return obj
@@ -308,7 +339,12 @@ export function DataProvider({ children }) {
 
   const updateRow = useCallback((table, id, patch) => {
     const key = TABLE_TO_KEY[table]
-    setDb((prev) => ({ ...prev, [key]: prev[key].map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
+    const c = POR_TABELA[table]
+    setDb((prev) => {
+      const arr = prev[key].map((x) => (x.id === id ? { ...x, ...patch } : x))
+      // listas com ordem própria (nome, data da feira) voltam a ordenar-se
+      return { ...prev, [key]: c?.ordem ? ordenar(c, arr) : arr }
+    })
     juntar({ tipo: 'update', tabela: table, id, patch: MAPPERS[table].toRow(patch) })
   }, [])
 
@@ -420,6 +456,7 @@ export function DataProvider({ children }) {
     porGuardar,
     historicoCompleto,
     estoqueAtomico,
+    caixasDisponivel: !emFalta.includes('caixas'),
     clearError: () => setError(null),
     refetch: loadAll,
     createRow, updateRow, removeRow,

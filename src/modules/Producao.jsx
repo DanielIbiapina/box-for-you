@@ -1,9 +1,20 @@
 import { useState, useMemo } from 'react'
 import { useReceitas } from '../stores/useReceitas'
-import { useEstoque } from '../stores/useEstoque'
+import { useEstoque, converterQtd } from '../stores/useEstoque'
 import { Modal } from '../components/Modal'
 import { Icon } from '../components/Icon'
 import { expandirIngredientes, agruparIngredientes, tipoComponente } from '../lib/receitaExpand'
+
+/**
+ * Quantidade na unidade em que o ingrediente está no stock. A receita pode
+ * pedir 200 g de um ingrediente guardado em kg: sem converter, a baixa tirava
+ * 200 kg (e o "suficiente" comparava gramas com quilos).
+ */
+function naUnidadeDoStock(qtd, unidade, ingEstoque) {
+  if (!ingEstoque) return qtd
+  const alvo = ingEstoque.unidade || unidade
+  return converterQtd(qtd, unidade || alvo, alvo)
+}
 
 export function Producao() {
   const { receitas } = useReceitas()
@@ -48,13 +59,16 @@ export function Producao() {
       const ingEstoque = ing.ingredienteId
         ? ingredientes.find((i) => i.id === ing.ingredienteId)
         : null
+      const quantidadeStock = naUnidadeDoStock(ing.quantidade, ing.unidade, ingEstoque)
       return {
         nome: ing._daBase ? `${ing.nome || ingEstoque?.nome || '?'} (${ing._daBase})` : ing.nome || ingEstoque?.nome || '?',
         ingredienteId: ing.ingredienteId || null,
         quantidade: ing.quantidade,
         unidade: ing.unidade,
+        quantidadeStock,
+        unidadeEstoque: ingEstoque?.unidade || ing.unidade,
         estoqueAtual: ingEstoque?.estoqueAtual ?? null,
-        suficiente: ingEstoque ? ingEstoque.estoqueAtual >= ing.quantidade : null,
+        suficiente: ingEstoque ? ingEstoque.estoqueAtual >= quantidadeStock : null,
       }
     })
   }, [receita, quantidade, ingredientes, receitas])
@@ -77,16 +91,19 @@ export function Producao() {
             nome,
             unidade: ing.unidade,
             total: 0,
+            totalStock: 0,
+            unidadeEstoque: ingEstoque?.unidade || ing.unidade,
             ingredienteId: ing.ingredienteId || null,
             estoqueAtual: ingEstoque?.estoqueAtual ?? null,
           }
         }
         mapa[key].total += ing.quantidade
+        mapa[key].totalStock += naUnidadeDoStock(ing.quantidade, ing.unidade, ingEstoque)
       }
     }
     return Object.values(mapa).map((item) => ({
       ...item,
-      suficiente: item.estoqueAtual !== null ? item.estoqueAtual >= item.total : null,
+      suficiente: item.estoqueAtual !== null ? item.estoqueAtual >= item.totalStock : null,
     }))
   }, [planejamento, receitas, ingredientes])
 
@@ -99,7 +116,7 @@ export function Producao() {
   function handleConfirmarProducao() {
     const itens = ingredientesNecessarios
       .filter((i) => i.ingredienteId)
-      .map((i) => ({ ingredienteId: i.ingredienteId, quantidade: i.quantidade }))
+      .map((i) => ({ ingredienteId: i.ingredienteId, quantidade: i.quantidadeStock }))
     baixarEstoqueProducao(itens, `Produção: ${receita?.nome} (${quantidade} ${prodUnidade})`)
     setConfirmado(true)
     setShowConfirmModal(false)
@@ -108,7 +125,7 @@ export function Producao() {
   function handleConfirmarFeira() {
     const itens = listaUnificada
       .filter((i) => i.ingredienteId)
-      .map((i) => ({ ingredienteId: i.ingredienteId, quantidade: i.total }))
+      .map((i) => ({ ingredienteId: i.ingredienteId, quantidade: i.totalStock }))
     baixarEstoqueProducao(itens, 'Produção: Planejamento de Feira')
     setFeiraConfirmada(true)
     setShowConfirmFeira(false)
@@ -259,7 +276,7 @@ export function Producao() {
                     </p>
                     {item.estoqueAtual !== null && (
                       <p className="text-xs mt-0.5" style={{ color: 'var(--ink-3)' }}>
-                        Estoque: {item.estoqueAtual.toFixed(1)} {item.unidade}
+                        Estoque: {item.estoqueAtual.toFixed(1)} {item.unidadeEstoque}
                       </p>
                     )}
                   </div>
@@ -558,7 +575,7 @@ export function Producao() {
                         <p className="font-semibold text-sm" style={{ color: 'var(--color-text)' }}>{item.nome}</p>
                         {item.estoqueAtual !== null && (
                           <p className="text-xs" style={{ color: 'var(--ink-3)' }}>
-                            Estoque: {item.estoqueAtual.toFixed(1)} {item.unidade}
+                            Estoque: {item.estoqueAtual.toFixed(1)} {item.unidadeEstoque}
                           </p>
                         )}
                       </div>

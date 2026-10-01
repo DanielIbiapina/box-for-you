@@ -1,4 +1,27 @@
 import { useData } from './DataProvider'
+import { todayKey } from '../lib/salesAnalytics'
+
+/**
+ * A saída da inscrição de uma feira tem um id fixo, tirado do id da feira:
+ * se dois aparelhos (ou duas tentativas) a criarem, é a mesma linha — o banco
+ * recusa a repetida e a fila trata isso como "já gravado". Nunca duplica.
+ */
+export const idInscricao = (eventId) => `inscricao-${eventId}`
+
+export function linhaInscricao(evento) {
+  const data = evento.data || todayKey()
+  return {
+    data,
+    categoria: 'inscricao',
+    valorEur: Number(evento.taxaInscricao) || 0,
+    descricao: `Inscrição — ${evento.nome || 'Feira'}`,
+    pago: true,
+    origem: 'inscricao-evento',
+    eventId: evento.id,
+    custoFixoId: null,
+    mesRef: data.slice(0, 7),
+  }
+}
 
 /**
  * despesa: {
@@ -14,7 +37,7 @@ export function useFinanceiro() {
 
   function adicionarDespesa(dados) {
     return createRow('despesas', {
-      data: dados.data ?? new Date().toISOString().slice(0, 10),
+      data: dados.data ?? todayKey(),
       categoria: dados.categoria ?? 'outro',
       valorEur: Number(dados.valorEur) || 0,
       descricao: (dados.descricao ?? '').trim(),
@@ -50,17 +73,11 @@ export function useFinanceiro() {
       if (existing) removeRow('despesas', existing.id)
       return
     }
-    const data = evento.data || new Date().toISOString().slice(0, 10)
-    const descricao = `Inscrição — ${evento.nome || 'Feira'}`
+    const { valorEur, data, descricao, categoria, pago, mesRef } = linhaInscricao(evento)
     if (existing) {
-      updateRow('despesas', existing.id, {
-        valorEur: taxa, data, descricao, categoria: 'inscricao', pago: true, mesRef: data.slice(0, 7),
-      })
+      updateRow('despesas', existing.id, { valorEur, data, descricao, categoria, pago, mesRef })
     } else {
-      createRow('despesas', {
-        data, categoria: 'inscricao', valorEur: taxa, descricao, pago: true,
-        origem: 'inscricao-evento', eventId: evento.id, custoFixoId: null, mesRef: data.slice(0, 7),
-      })
+      createRow('despesas', { id: idInscricao(evento.id), ...linhaInscricao(evento) })
     }
   }
 

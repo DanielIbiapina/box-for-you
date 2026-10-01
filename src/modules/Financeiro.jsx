@@ -11,9 +11,14 @@ import {
   CATEGORIAS_TAXAS,
   labelCategoria,
 } from '../lib/financeiroCategorias'
-import { describePosSale } from '../lib/salesAnalytics'
+import { describePosSale, todayKey } from '../lib/salesAnalytics'
 import { withLegacyCookies } from '../lib/catalog'
 import { useCookies } from '../stores/useCookies'
+import { contasDoMes, mesDaDespesa } from '../lib/contas'
+import { SearchInput } from '../components/SearchInput'
+
+/** Para pesquisar sem ligar a maiúsculas nem acentos ("cafe" encontra "Café"). */
+const semAcentos = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 const fmtEuro = (v) =>
   new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(v ?? 0)
@@ -47,7 +52,7 @@ function labelMes(mesRef) {
 }
 
 const EMPTY_FORM = {
-  data: new Date().toISOString().slice(0, 10),
+  data: todayKey(),
   categoria: 'materia-prima',
   valorEur: '',
   descricao: '',
@@ -80,67 +85,64 @@ export function Financeiro() {
   const catalog = useMemo(() => withLegacyCookies(cookiesAtivos), [cookiesAtivos])
   const { sales: posSales } = useVendas()
 
+  // As contas do mês vêm de lib/contas.js — as mesmas regras do Início e dos Relatórios.
+  const contas = useMemo(
+    () => contasDoMes({ sales: posSales, pedidos, despesas }, mesRef),
+    [posSales, pedidos, despesas, mesRef],
+  )
+  const {
+    pos: entradasPos, diretas: entradasDiretas, saidas: saidasPagas,
+    totalPos, totalDiretas, taxaMultibanco,
+    entradas: totalEntradas, totalSaidas, balanco,
+  } = contas
+
+  /** Todas as saídas do mês, pagas e por pagar (a lista mostra as duas). */
   const despesasMes = useMemo(
-    () =>
-      despesas.filter((d) => {
-        const key = d.mesRef || (d.data ?? '').slice(0, 7)
-        return key === mesRef
-      }),
+    () => despesas.filter((d) => mesDaDespesa(d) === mesRef),
     [despesas, mesRef],
   )
 
-  const saidasPagas = useMemo(
-    () => despesasMes.filter((d) => d.pago !== false),
-    [despesasMes],
-  )
+  // ── Filtros da lista de saídas ──────────────────────────────────────────────
+  const [busca, setBusca] = useState('')
+  const [filtroCat, setFiltroCat] = useState('todas') // 'todas' | id da categoria | 'por-pagar'
+  const [todosMeses, setTodosMeses] = useState(false)
 
-  const totalSaidas = useMemo(
-    () => saidasPagas.reduce((s, d) => s + (Number(d.valorEur) || 0), 0),
-    [saidasPagas],
-  )
+  const baseSaidas = todosMeses ? despesas : despesasMes
+  const categoriasPresentes = useMemo(() => {
+    const ids = [...new Set(baseSaidas.map((d) => d.categoria || 'outro'))]
+    return ids
+      .map((id) => ({ id, label: labelCategoria(id) }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'pt'))
+  }, [baseSaidas])
+  const haPorPagar = baseSaidas.some((d) => d.pago === false)
 
-  const entradasPos = useMemo(
-    () =>
-      posSales.filter(
-        (s) => (s.createdAt ?? '').startsWith(mesRef) && (s.totalEur ?? 0) > 0,
-      ),
-    [posSales, mesRef],
-  )
+  const saidasFiltradas = useMemo(() => {
+    const q = semAcentos(busca.trim())
+    return baseSaidas
+      .filter((d) => {
+        if (filtroCat === 'por-pagar') { if (d.pago !== false) return false }
+        else if (filtroCat !== 'todas' && (d.categoria || 'outro') !== filtroCat) return false
+        if (!q) return true
+        return semAcentos(d.descricao).includes(q) || semAcentos(labelCategoria(d.categoria)).includes(q)
+      })
+      .sort((a, b) => (b.data || '').localeCompare(a.data || ''))
+  }, [baseSaidas, filtroCat, busca])
+  const totalFiltradoPago = saidasFiltradas
+    .filter((d) => d.pago !== false)
+    .reduce((s, d) => s + (Number(d.valorEur) || 0), 0)
+  const totalFiltradoPorPagar = saidasFiltradas
+    .filter((d) => d.pago === false)
+    .reduce((s, d) => s + (Number(d.valorEur) || 0), 0)
+  const filtrando = busca.trim() !== '' || filtroCat !== 'todas' || todosMeses
 
-  const entradasDiretas = useMemo(
-    () =>
-      pedidos.filter((p) => {
-        if (p.status === 'cancelado') return false
-        const day = (p.dataPedido || p.criadoEm || '').slice(0, 10)
-        return day.startsWith(mesRef) && (p.totalEur ?? 0) > 0
-      }),
-    [pedidos, mesRef],
-  )
-
-  const totalPos = useMemo(
-    () => entradasPos.reduce((s, x) => s + (x.totalEur ?? 0), 0),
-    [entradasPos],
-  )
-  const totalDiretas = useMemo(
-    () => entradasDiretas.reduce((s, x) => s + (x.totalEur ?? 0), 0),
-    [entradasDiretas],
-  )
-
-  // Multibanco cobra ~1,5% de taxa — a entrada líquida (o que cai mesmo na conta) é menor que o valor da venda.
-  const totalMultibancoBruto = useMemo(() => {
-    const pos = entradasPos
-      .filter((s) => s.paymentId === 'multibanco')
-      .reduce((s, x) => s + (x.totalEur ?? 0), 0)
-    const diretas = entradasDiretas
-      .filter((p) => p.formaPagamento === 'Multibanco')
-      .reduce((s, x) => s + (x.totalEur ?? 0), 0)
-    return pos + diretas
-  }, [entradasPos, entradasDiretas])
-  const taxaMultibanco = Math.round(totalMultibancoBruto * 0.015 * 100) / 100
-
-  const totalEntradasBruto = totalPos + totalDiretas
-  const totalEntradas = totalEntradasBruto - taxaMultibanco
-  const balanco = totalEntradas - totalSaidas
+  /** A despesa aberta no formulário é a inscrição automática de uma feira? */
+  const despesaEmEdicao = typeof formModal === 'string' && formModal !== 'new'
+    ? despesas.find((d) => d.id === formModal) ?? null
+    : null
+  const inscricaoDaFeira = despesaEmEdicao?.origem === 'inscricao-evento'
+    ? eventos.find((ev) => ev.id === despesaEmEdicao.eventId) ?? null
+    : null
+  const ehInscricaoAuto = despesaEmEdicao?.origem === 'inscricao-evento'
 
   const porCategoria = useMemo(() => {
     const map = {}
@@ -154,7 +156,7 @@ export function Financeiro() {
   }, [saidasPagas])
 
   function openNew() {
-    const today = new Date().toISOString().slice(0, 10)
+    const today = todayKey()
     setForm({
       ...EMPTY_FORM,
       data: today.startsWith(mesRef) ? today : `${mesRef}-01`,
@@ -326,14 +328,63 @@ export function Financeiro() {
 
       {tab === 'saidas' && (
         <div className="space-y-2">
-          {despesasMes.length === 0 ? (
+          {/* Filtros: texto (ex.: "lidl", "café"), categoria e período */}
+          <div className="space-y-2.5 pb-1">
+            <SearchInput
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Pesquisar (ex.: Lidl, café, River Market)"
+            />
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: 'todas', label: 'Todas' },
+                ...categoriasPresentes,
+                ...(haPorPagar ? [{ id: 'por-pagar', label: 'Por pagar' }] : []),
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`bfy-chip ${filtroCat === c.id ? 'bfy-chip-accent' : ''}`}
+                  aria-pressed={filtroCat === c.id}
+                  onClick={() => setFiltroCat(c.id)}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-xs ink-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4"
+                checked={todosMeses}
+                onChange={(e) => setTodosMeses(e.target.checked)}
+              />
+              Procurar em todos os meses
+            </label>
+            {filtrando && (
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="ink-3">
+                  {saidasFiltradas.length} saída{saidasFiltradas.length !== 1 ? 's' : ''}
+                  {todosMeses ? ' (todos os meses)' : ''}
+                </span>
+                <span className="font-black tabular-nums" style={{ color: '#c44' }}>
+                  −{fmtEuro(totalFiltradoPago)}
+                  {totalFiltradoPorPagar > 0 && (
+                    <span className="font-semibold ink-3"> · {fmtEuro(totalFiltradoPorPagar)} por pagar</span>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {saidasFiltradas.length === 0 ? (
             <p className="text-sm text-center py-8 ink-3">
-              Nenhuma saída neste mês. Usa “Nova saída” para registar.
+              {filtrando
+                ? 'Nenhuma saída com estes filtros.'
+                : 'Nenhuma saída neste mês. Usa “Nova saída” para registar.'}
             </p>
           ) : (
-            despesasMes
-              .slice()
-              .sort((a, b) => (b.data || '').localeCompare(a.data || ''))
+            saidasFiltradas
               .map((d) => (
                 <button
                   key={d.id}
@@ -520,12 +571,21 @@ export function Financeiro() {
           size="sm"
         >
           <form onSubmit={saveDespesa} className="space-y-3">
+            {ehInscricaoAuto && (
+              <p className="bfy-sunk p-3 text-xs ink-2">
+                Esta é a inscrição da feira
+                {inscricaoDaFeira ? <> <strong>{inscricaoDaFeira.nome}</strong> de {fmtDay(inscricaoDaFeira.data)}</> : ''}.
+                {' '}O valor e a data vêm da feira: para os mudar (ou pôr a inscrição a zero),
+                edita a feira em <strong>Definições → Eventos & Feiras</strong>.
+              </p>
+            )}
             <label className="block">
               <span className="bfy-label">Data *</span>
               <input
                 className="bfy-input"
                 type="date"
                 required
+                disabled={ehInscricaoAuto}
                 value={form.data}
                 onChange={(e) => setForm((f) => ({ ...f, data: e.target.value }))}
               />
@@ -534,6 +594,7 @@ export function Financeiro() {
               <span className="bfy-label">Categoria *</span>
               <select
                 className="bfy-input"
+                disabled={ehInscricaoAuto}
                 value={form.categoria}
                 onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value }))}
               >
@@ -550,6 +611,7 @@ export function Financeiro() {
                 min="0.01"
                 step="0.01"
                 required
+                disabled={ehInscricaoAuto}
                 value={form.valorEur}
                 onChange={(e) => setForm((f) => ({ ...f, valorEur: e.target.value }))}
               />
@@ -567,12 +629,13 @@ export function Financeiro() {
               <span className="bfy-label">Evento / feira (opcional)</span>
               <select
                 className="bfy-input"
+                disabled={ehInscricaoAuto}
                 value={form.eventId}
                 onChange={(e) => setForm((f) => ({ ...f, eventId: e.target.value }))}
               >
                 <option value="">— Nenhum —</option>
                 {eventos.map((ev) => (
-                  <option key={ev.id} value={ev.id}>{ev.nome}</option>
+                  <option key={ev.id} value={ev.id}>{ev.nome} · {fmtDay(ev.data)}</option>
                 ))}
               </select>
             </label>
@@ -586,7 +649,7 @@ export function Financeiro() {
               Já foi pago
             </label>
             <div className="flex gap-2 pt-2">
-              {formModal !== 'new' && (
+              {formModal !== 'new' && !ehInscricaoAuto && (
                 <button
                   type="button"
                   className="btn-ghost flex-1"

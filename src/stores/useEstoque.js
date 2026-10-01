@@ -68,6 +68,10 @@ export function useEstoque() {
     const timestamp = new Date().toISOString()
     const validos = itens.filter((item) => item.ingredienteId)
     if (validos.length === 0) return
+    // Somar por ingrediente ANTES de gravar: a mesma manteiga pode vir da massa
+    // e da cobertura. Gravado item a item, o segundo partia do stock antigo e
+    // apagava a primeira baixa.
+    const totais = {}
     for (const item of validos) {
       createRow('movimentacoes', {
         ingredienteId: item.ingredienteId,
@@ -76,12 +80,14 @@ export function useEstoque() {
         motivo,
         data: timestamp,
       })
-      const ing = ingredientes.find((i) => i.id === item.ingredienteId)
-      if (ing) {
-        updateRow('ingredientes', ing.id, {
-          estoqueAtual: Math.max(0, parseFloat(((ing.estoqueAtual ?? 0) - item.quantidade).toFixed(4))),
-        })
-      }
+      totais[item.ingredienteId] = (totais[item.ingredienteId] ?? 0) + (Number(item.quantidade) || 0)
+    }
+    for (const [id, total] of Object.entries(totais)) {
+      const ing = ingredientes.find((i) => i.id === id)
+      if (!ing) continue
+      updateRow('ingredientes', id, {
+        estoqueAtual: Math.max(0, parseFloat(((ing.estoqueAtual ?? 0) - total).toFixed(4))),
+      })
     }
   }
 
