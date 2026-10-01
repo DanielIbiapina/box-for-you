@@ -206,6 +206,7 @@ export function Loja() {
       entrega: {
         tipo: form.tipo,
         data: form.data,
+        local: form.tipo === 'levantar' ? form.local || undefined : undefined,
         morada: form.morada,
         localidade: form.localidade,
         cp: form.cp,
@@ -227,7 +228,8 @@ export function Loja() {
       setRecemCriado(true)
       irParaPedido(resposta.referencia)
       setPedidoRef(resposta.referencia)
-    } else if (resposta?.esgotado) {
+    } else if (resposta?.esgotado || resposta?.campo === 'local' || resposta?.campo === 'entrega') {
+      // stock ou locais de levantamento mudaram desde que a página abriu
       carregar()
     }
     return resposta

@@ -7,30 +7,19 @@ import { todayKey } from '../lib/salesAnalytics'
 import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
 import { CardapioAdmin } from '../components/CardapioAdmin'
-import {
-  estadoNotificacao, guardarSom, notificar, pedirNotificacoes, somLigado, tocarSino,
-} from '../lib/avisos'
+import { LocaisLevantamento } from '../components/LocaisLevantamento'
+import { NotificacoesAparelho } from '../components/NotificacoesAparelho'
+import { guardarSom, somLigado, tocarSino } from '../lib/avisos'
 
-/** Avisos de pedidos novos da loja: som na app e notificação do sistema. */
+/** Avisos de pedidos novos da loja: som na app e notificações no aparelho. */
 function AvisosCard() {
-  const [permissao, setPermissao] = useState(estadoNotificacao)
   const [som, setSom] = useState(somLigado)
-
-  async function pedir() {
-    setPermissao(await pedirNotificacoes())
-  }
-
-  function testar() {
-    tocarSino()
-    notificar('Novo pedido da loja', '14,00 € · é assim que vais ser avisada')
-  }
 
   return (
     <div className="bfy-card p-6 mb-5 space-y-4">
       <h2 className="text-base font-bold mb-1 bfy-card-title">Avisos de pedidos</h2>
       <p className="text-sm ink-3">
-        Quando entra um pedido da loja, a plataforma toca um som e mostra um aviso no ecrã.
-        Com as notificações ligadas, o aviso aparece mesmo com a app noutro separador.
+        Com a plataforma aberta, cada pedido novo da loja toca um som e mostra um aviso no ecrã.
       </p>
 
       <label className="flex items-center gap-2.5 text-sm cursor-pointer" style={{ color: 'var(--color-text)' }}>
@@ -43,32 +32,11 @@ function AvisosCard() {
         Tocar som quando entrar um pedido
       </label>
 
-      {permissao === 'granted' && (
-        <p className="text-sm font-semibold" style={{ color: 'var(--color-success)' }}>
-          Notificações ligadas neste aparelho.
-        </p>
-      )}
-      {permissao === 'default' && (
-        <button type="button" className="btn-ghost w-full py-2 text-sm" onClick={pedir}>
-          Ligar notificações neste aparelho
-        </button>
-      )}
-      {permissao === 'denied' && (
-        <p className="text-sm ink-3">
-          As notificações estão bloqueadas para este site. Dá permissão nas definições do navegador
-          se as quiseres — o som e o aviso no ecrã continuam a funcionar.
-        </p>
-      )}
-      {permissao === 'sem-suporte' && (
-        <p className="text-sm ink-3">
-          Este navegador não faz notificações do sistema. No iPhone e no iPad, só com o site
-          adicionado ao ecrã principal. O som e o aviso no ecrã funcionam na mesma.
-        </p>
-      )}
-
-      <button type="button" className="btn-ghost w-full py-2 text-sm" onClick={testar}>
-        Testar o aviso
+      <button type="button" className="btn-ghost w-full py-2 text-sm" onClick={tocarSino}>
+        Testar o som
       </button>
+
+      <NotificacoesAparelho />
     </div>
   )
 }
@@ -104,7 +72,12 @@ export function Configuracoes() {
 
   function handleSave(e) {
     e.preventDefault()
-    update(form)
+    // Os locais de levantamento gravam-se sozinhos (cartão próprio); a cópia
+    // deles neste formulário é de quando a página abriu e não pode voltar.
+    const dados = { ...form }
+    delete dados.locaisLevantamento
+    delete dados.locaisDisponivel
+    update(dados)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -297,6 +270,8 @@ export function Configuracoes() {
           {saved ? 'Guardado' : 'Salvar configurações'}
         </button>
       </form>
+
+      <LocaisLevantamento />
 
       {/* Cardápio global */}
       <div className="bfy-card p-6 mb-5">

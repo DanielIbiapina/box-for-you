@@ -28,7 +28,7 @@ function bilheteDe(ref) {
 function entregaTexto(e) {
   if (!e?.tipo) return ''
   const dia = e.data ? fmtData(e.data) : ''
-  if (e.tipo === 'levantar') return ['Levantamento', dia].filter(Boolean).join(' · ')
+  if (e.tipo === 'levantar') return ['Levantamento', e.local?.nome, dia, e.local?.morada].filter(Boolean).join(' · ')
   const morada = [e.morada, e.localidade, e.cp].filter(Boolean).join(', ')
   return ['Entrega', dia, morada].filter(Boolean).join(' · ')
 }

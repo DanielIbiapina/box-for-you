@@ -124,7 +124,7 @@ function CookieCard({ cookie, qty, livre, onJuntar, onTirar }) {
           type="button"
           className="cookie-menos"
           onClick={() => onTirar(cookie.id)}
-          aria-label={`Tirar um ${cookie.nome}`}
+          aria-label={`Remover um ${cookie.nome}`}
         >−</button>
       )}
     </div>
@@ -160,7 +160,7 @@ function Especial({ id, titulo, texto, preco, fotos, mosaico, qty, livre, esgota
           type="button"
           className="cookie-menos especial-menos"
           onClick={() => onTirar(id)}
-          aria-label={`Tirar uma ${titulo}`}
+          aria-label={`Remover uma ${titulo}`}
         >−</button>
       )}
     </div>

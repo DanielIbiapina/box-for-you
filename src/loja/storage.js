@@ -77,10 +77,11 @@ export function lerContacto() {
     morada: String(data.morada ?? ''),
     localidade: String(data.localidade ?? ''),
     cp: String(data.cp ?? ''),
+    local: String(data.local ?? ''),
   }
 }
 
-export function gravarContacto({ nome, telefone, tipo, morada, localidade, cp }) {
+export function gravarContacto({ nome, telefone, tipo, morada, localidade, cp, local }) {
   gravar(CONTACTO_KEY, {
     nome: nome ?? '',
     telefone: telefone ?? '',
@@ -88,6 +89,7 @@ export function gravarContacto({ nome, telefone, tipo, morada, localidade, cp })
     morada: morada ?? '',
     localidade: localidade ?? '',
     cp: cp ?? '',
+    local: local ?? '',
   })
 }
 

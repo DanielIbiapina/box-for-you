@@ -117,6 +117,10 @@ export function configToApp(row) {
     formasPagamento: row?.formas_pagamento ?? [],
     instrucoesLevantamento: row?.loja_instrucoes_levantamento ?? '',
     instrucoesEntrega: row?.loja_instrucoes_entrega ?? '',
+    // [{ id, nome, morada, notas, ativo }] — ver supabase/loja.sql
+    locaisLevantamento: Array.isArray(row?.loja_locais_levantamento) ? row.loja_locais_levantamento : [],
+    // a coluna só existe depois de correr o loja.sql atualizado
+    locaisDisponivel: !row || 'loja_locais_levantamento' in row,
   }
 }
 export function configToRow(patch) {
@@ -128,5 +132,6 @@ export function configToRow(patch) {
   if (patch.formasPagamento !== undefined) r.formas_pagamento = patch.formasPagamento
   if (patch.instrucoesLevantamento !== undefined) r.loja_instrucoes_levantamento = patch.instrucoesLevantamento
   if (patch.instrucoesEntrega !== undefined) r.loja_instrucoes_entrega = patch.instrucoesEntrega
+  if (patch.locaisLevantamento !== undefined) r.loja_locais_levantamento = patch.locaisLevantamento
   return r
 }

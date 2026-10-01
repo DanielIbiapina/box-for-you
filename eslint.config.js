@@ -18,4 +18,7 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  // Funções da Vercel e o service worker correm fora da página
+  { files: ['api/**/*.js'], languageOptions: { globals: globals.node } },
+  { files: ['public/sw.js'], languageOptions: { globals: globals.serviceworker } },
 ])

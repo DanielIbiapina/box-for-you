@@ -1,5 +1,5 @@
 -- ============================================================================
--- Box for You — Loja pública (crumblab.pt/)
+-- Box for You — Loja pública (crumblabcookies.com/)
 -- Rode este script inteiro no Supabase → SQL Editor. Idempotente.
 --
 -- Princípio: o visitante NUNCA fala com as tabelas. O RLS continua a permitir
@@ -29,6 +29,13 @@ create unique index if not exists idx_pedidos_referencia
 -- Textos que a dona edita em Definições e a loja mostra no checkout.
 alter table configuracao add column if not exists loja_instrucoes_levantamento text not null default '';
 alter table configuracao add column if not exists loja_instrucoes_entrega text not null default '';
+
+-- Locais onde se pode levantar (casa, River Market, outro mercado…), que a
+-- dona liga e desliga em Definições conforme onde vai estar.
+-- [ { "id": "...", "nome": "River Market", "morada": "...", "notas": "...", "ativo": true } ]
+-- Lista vazia = ainda não configurado: o levantamento funciona como antes
+-- ("combinamos o sítio"). Com locais mas todos desligados, não há levantamento.
+alter table configuracao add column if not exists loja_locais_levantamento jsonb not null default '[]'::jsonb;
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- 0) Telemóvel normalizado
@@ -88,6 +95,7 @@ declare
   v_n_ativos int;
   v_min50    numeric;
   v_mini     numeric;
+  v_locais   jsonb;
 begin
   select * into v_cfg from configuracao where id = 'main';
 
@@ -119,7 +127,18 @@ begin
   select coalesce(qty, 0) into v_mini
   from estoque where tipo = 'cookie' and cookie_id = 'mini-box';
 
+  -- Só os locais ligados chegam à loja; a morada e as notas vão para o cliente.
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', l->>'id', 'nome', l->>'nome',
+           'morada', coalesce(l->>'morada', ''), 'notas', coalesce(l->>'notas', '')
+         )), '[]'::jsonb)
+    into v_locais
+  from jsonb_array_elements(coalesce(v_cfg.loja_locais_levantamento, '[]'::jsonb)) l
+  where coalesce((l->>'ativo')::boolean, false) and coalesce(btrim(l->>'nome'), '') <> '';
+
   return jsonb_build_object(
+    'temLocais', jsonb_array_length(coalesce(v_cfg.loja_locais_levantamento, '[]'::jsonb)) > 0,
+    'locais', v_locais,
     'negocio', jsonb_build_object(
       'nome',  coalesce(v_cfg.nome_negocio, 'Box for You'),
       'moeda', coalesce(v_cfg.moeda, '€'),
@@ -155,6 +174,7 @@ end $$;
 --   "caixas":    [ { "nutella": 2, "pistache": 2 } ],
 --   "pagamento": "MB WAY | Dinheiro",
 --   "entrega":   { "tipo": "levantar"|"entrega", "data": "YYYY-MM-DD",
+--                  "local": "<id do local de levantamento>",
 --                  "morada": "...", "localidade": "...", "cp": "..." },
 --   "notas":     "..."
 -- }
@@ -187,6 +207,8 @@ declare
   v_localidade text;
   v_cp         text;
   v_entrega    jsonb;
+  v_locais     jsonb;
+  v_local      jsonb;
 
   v_itens  jsonb := coalesce(p->'itens',  '[]'::jsonb);
   v_caixas jsonb := coalesce(p->'caixas', '[]'::jsonb);
@@ -261,15 +283,42 @@ begin
     end if;
   end if;
 
+  select * into v_cfg from configuracao where id = 'main';
+
+  -- Levantar num dos locais que a dona tem LIGADOS (se ela configurou locais).
+  v_locais := coalesce(v_cfg.loja_locais_levantamento, '[]'::jsonb);
+  if v_tipo = 'levantar' and jsonb_array_length(v_locais) > 0 then
+    if not exists (
+      select 1 from jsonb_array_elements(v_locais) l
+       where coalesce((l->>'ativo')::boolean, false)
+    ) then
+      return jsonb_build_object('ok', false, 'campo', 'entrega',
+        'motivo', 'De momento não temos levantamento. Escolhe a entrega.');
+    end if;
+    select l into v_local
+      from jsonb_array_elements(v_locais) l
+     where l->>'id' = btrim(coalesce(v_ent->>'local', ''))
+       and coalesce((l->>'ativo')::boolean, false)
+     limit 1;
+    if v_local is null then
+      return jsonb_build_object('ok', false, 'campo', 'local',
+        'motivo', 'Esse local de levantamento já não está disponível. Escolhe outro.');
+    end if;
+  end if;
+
   v_entrega := jsonb_strip_nulls(jsonb_build_object(
     'tipo', v_tipo,
     'data', v_data,
+    'local', case when v_local is not null then jsonb_strip_nulls(jsonb_build_object(
+               'id', v_local->>'id',
+               'nome', left(v_local->>'nome', 80),
+               'morada', nullif(left(coalesce(v_local->>'morada', ''), 160), '')
+             )) end,
     'morada',     case when v_tipo = 'entrega' then left(v_morada, 160) end,
     'localidade', case when v_tipo = 'entrega' then left(v_localidade, 80) end,
     'cp',         case when v_tipo = 'entrega' then nullif(left(v_cp, 12), '') end
   ));
 
-  select * into v_cfg from configuracao where id = 'main';
   v_box_size   := coalesce((v_cfg.box_config->>'size')::int, 4);
   v_box_price  := coalesce((v_cfg.box_config->>'price')::numeric, 12);
   v_mini_price := coalesce((v_cfg.mini_box_config->>'price')::numeric, 7);

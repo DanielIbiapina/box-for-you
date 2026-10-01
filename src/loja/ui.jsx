@@ -9,7 +9,7 @@ export function Stepper({ qty, onMenos, onMais, podeMais, label }) {
         className="btn-step"
         onClick={onMenos}
         disabled={qty <= 0}
-        aria-label={`Tirar um ${label}`}
+        aria-label={`Remover um ${label}`}
       >−</button>
       <span className="stepper-count" aria-live="polite">{qty}</span>
       <button

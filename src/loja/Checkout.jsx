@@ -16,16 +16,27 @@ const PAGAMENTOS = [
 
 /** Para onde levar a pessoa quando o servidor recusa um campo. */
 const PASSO_DO_CAMPO = {
-  entrega: 'receber', data: 'quando', morada: 'morada', localidade: 'morada',
+  entrega: 'receber', local: 'local', data: 'quando', morada: 'morada', localidade: 'morada',
   nome: 'contacto', telefone: 'contacto', pagamento: 'pagar',
 }
 
 const FALLBACK_LEVANTAR = 'Combinamos o sítio e a hora contigo por mensagem.'
 const FALLBACK_ENTREGA = 'Entregamos na morada que indicares. Combinamos o horário contigo.'
 
-const passosPara = (tipo) => [
-  'pedido', 'receber', 'quando', ...(tipo === 'entrega' ? ['morada'] : []), 'contacto', 'pagar', 'confirmar',
+/** Com mais de um local de levantamento ligado, há um passo para escolher. */
+const passosPara = (tipo, escolheLocal = false) => [
+  'pedido', 'receber',
+  ...(tipo === 'levantar' && escolheLocal ? ['local'] : []),
+  'quando', ...(tipo === 'entrega' ? ['morada'] : []), 'contacto', 'pagar', 'confirmar',
 ]
+
+/**
+ * Locais de levantamento ligados pela dona (Definições → Locais de levantamento).
+ * null = loja sem locais configurados (combina-se o sítio por mensagem);
+ * []   = há locais mas todos desligados (hoje só há entrega).
+ */
+const locaisDe = (cardapio) => (cardapio?.temLocais ? (cardapio.locais ?? []) : null)
+const descLocal = (l) => [l.nome, l.morada, l.notas].filter(Boolean).join(' · ')
 
 /**
  * Um passo por ecrã, uma decisão por passo. As escolhas de um toque avançam
@@ -40,7 +51,17 @@ export function Checkout({
   const [inicial] = useState(lerContacto)
   /** Box aberta para mexer cookie a cookie (pelo índice onde começa na escolha). */
   const [caixaAberta, setCaixaAberta] = useState(caixaInicial)
-  const [form, setForm] = useState(() => ({ ...inicial, data: '', pagamento: '', notas: '' }))
+  const [form, setForm] = useState(() => {
+    // O que ficou do último pedido só vale se o local ainda estiver ligado.
+    const ls = locaisDe(cardapio)
+    const semLev = Array.isArray(ls) && ls.length === 0
+    return {
+      ...inicial,
+      tipo: inicial.tipo === 'levantar' && semLev ? '' : inicial.tipo,
+      local: ls?.some((l) => l.id === inicial.local) ? inicial.local : '',
+      data: '', pagamento: '', notas: '',
+    }
+  })
   const [passo, setPasso] = useState('pedido')
   const [dir, setDir] = useState(1)
   const [erro, setErro] = useState('')
@@ -53,13 +74,21 @@ export function Checkout({
   const corpo = useRef(null)
   const timer = useRef(null)
 
-  const passos = passosPara(form.tipo)
+  const locais = locaisDe(cardapio)
+  const semLevantamento = Array.isArray(locais) && locais.length === 0
+  const escolheLocal = Array.isArray(locais) && locais.length > 1
+  const localEscolhido = Array.isArray(locais)
+    ? locais.find((l) => l.id === form.local) ?? (locais.length === 1 ? locais[0] : null)
+    : null
+  const opcoesReceber = semLevantamento ? RECEBER.filter((op) => op.id !== 'levantar') : RECEBER
+
+  const passos = passosPara(form.tipo, escolheLocal)
   const idx = Math.max(0, passos.indexOf(passo))
-  const { nome, telefone, tipo, morada, localidade, cp } = form
+  const { nome, telefone, tipo, morada, localidade, cp, local } = form
 
   useEffect(() => {
-    gravarContacto({ nome, telefone, tipo, morada, localidade, cp })
-  }, [nome, telefone, tipo, morada, localidade, cp])
+    gravarContacto({ nome, telefone, tipo, morada, localidade, cp, local })
+  }, [nome, telefone, tipo, morada, localidade, cp, local])
 
   useEffect(() => {
     titulo.current?.focus({ preventScroll: true })
@@ -80,12 +109,14 @@ export function Checkout({
   }, [onFechar])
 
   const set = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }))
-  const txtLevantar = cardapio?.negocio?.instrucoesLevantamento || FALLBACK_LEVANTAR
+  const txtLevantar = localEscolhido
+    ? descLocal(localEscolhido)
+    : cardapio?.negocio?.instrucoesLevantamento || FALLBACK_LEVANTAR
   const txtEntrega = cardapio?.negocio?.instrucoesEntrega || FALLBACK_ENTREGA
 
   function irPara(alvo, { tipoAgora = form.tipo, som = true } = {}) {
     clearTimeout(timer.current)
-    const lista = passosPara(tipoAgora)
+    const lista = passosPara(tipoAgora, escolheLocal)
     setDir(lista.indexOf(alvo) >= idx ? 1 : -1)
     setPasso(alvo)
     setErro('')
@@ -120,6 +151,12 @@ export function Checkout({
     const p = semPedido()
     if (p) return ['pedido', p]
     if (!form.tipo) return ['receber', 'Diz-nos se preferes levantar ou receber em casa.']
+    if (form.tipo === 'levantar' && semLevantamento) {
+      return ['receber', 'De momento não temos levantamento. Escolhe a entrega.']
+    }
+    if (form.tipo === 'levantar' && Array.isArray(locais) && !localEscolhido) {
+      return [escolheLocal ? 'local' : 'receber', 'Escolhe onde vens buscar.']
+    }
     if (!form.data || form.data < hoje) return ['quando', 'Escolhe o dia em que queres os cookies.']
     if (form.tipo === 'entrega' && semMorada()) return ['morada', semMorada()]
     if (semContacto()) return ['contacto', semContacto()]
@@ -131,7 +168,12 @@ export function Checkout({
   function escolherTipo(t) {
     toquePasso()
     setForm((f) => ({ ...f, tipo: t }))
-    depois('quando', t)
+    depois(t === 'levantar' && escolheLocal ? 'local' : 'quando', t)
+  }
+  function escolherLocal(id) {
+    toquePasso()
+    setForm((f) => ({ ...f, local: id }))
+    depois('quando')
   }
   function escolherDia(iso) {
     toquePasso()
@@ -150,7 +192,13 @@ export function Checkout({
       const p = semPedido()
       return p ? setErro(p) : irPara('receber')
     }
-    if (passo === 'receber') return irPara('quando')
+    if (passo === 'receber') {
+      if (form.tipo === 'levantar' && semLevantamento) return setErro('De momento não temos levantamento. Escolhe a entrega.')
+      return irPara(form.tipo === 'levantar' && escolheLocal ? 'local' : 'quando')
+    }
+    if (passo === 'local') {
+      return localEscolhido ? irPara('quando') : setErro('Escolhe onde vens buscar.')
+    }
     if (passo === 'quando') {
       if (!form.data || form.data < hoje) return setErro('Escolhe o dia em que queres os cookies.')
       return irPara(form.tipo === 'entrega' ? 'morada' : 'contacto')
@@ -178,9 +226,11 @@ export function Checkout({
     setErro('')
     setEnviando(true)
     try {
-      const resposta = await onEnviar(form)
+      // com um só local ligado, ele é o escolhido mesmo sem toque
+      const resposta = await onEnviar({ ...form, local: localEscolhido?.id ?? '' })
       if (!resposta?.ok) {
-        const alvo = resposta?.esgotado ? 'pedido' : PASSO_DO_CAMPO[resposta?.campo]
+        let alvo = resposta?.esgotado ? 'pedido' : PASSO_DO_CAMPO[resposta?.campo]
+        if (alvo === 'local' && !escolheLocal) alvo = 'receber'
         if (alvo && alvo !== passo) irPara(alvo, { som: false })
         setErro(resposta?.motivo ?? 'Não conseguimos registar o pedido.')
       }
@@ -196,6 +246,7 @@ export function Checkout({
   let cta = null
   if (passo === 'pedido') cta = { rotulo: `Continuar · ${fmtEuro(resumo.total)}`, off: resumo.linhas.length === 0 }
   else if (passo === 'receber' && form.tipo) cta = { rotulo: 'Continuar' }
+  else if (passo === 'local' && localEscolhido) cta = { rotulo: 'Continuar' }
   else if (passo === 'quando' && form.data) cta = { rotulo: 'Continuar' }
   else if (passo === 'morada' || passo === 'contacto') cta = { rotulo: 'Continuar' }
   else if (passo === 'pagar' && form.pagamento) cta = { rotulo: 'Continuar' }
@@ -280,8 +331,11 @@ export function Checkout({
             {passo === 'receber' && (
               <>
                 <h2 ref={titulo} tabIndex={-1} className="passo-titulo">Como queres receber?</h2>
-                <div className="opcoes opcoes-2">
-                  {RECEBER.map((op) => (
+                {semLevantamento && (
+                  <p className="passo-sub">De momento só fazemos entregas.</p>
+                )}
+                <div className={opcoesReceber.length > 1 ? 'opcoes opcoes-2' : 'opcoes'}>
+                  {opcoesReceber.map((op) => (
                     <Opcao
                       key={op.id}
                       ativo={form.tipo === op.id}
@@ -293,9 +347,28 @@ export function Checkout({
                     />
                   ))}
                 </div>
-                {form.tipo && (
+                {form.tipo && !(form.tipo === 'levantar' && (escolheLocal || semLevantamento)) && (
                   <p className="passo-info">{form.tipo === 'levantar' ? txtLevantar : txtEntrega}</p>
                 )}
+              </>
+            )}
+
+            {passo === 'local' && (
+              <>
+                <h2 ref={titulo} tabIndex={-1} className="passo-titulo">Onde vens buscar?</h2>
+                <div className="opcoes">
+                  {(locais ?? []).map((l) => (
+                    <Opcao
+                      key={l.id}
+                      linha
+                      ativo={localEscolhido?.id === l.id}
+                      icone="📍"
+                      titulo={l.nome}
+                      nota={[l.morada, l.notas].filter(Boolean).join(' · ')}
+                      onClick={() => escolherLocal(l.id)}
+                    />
+                  ))}
+                </div>
               </>
             )}
 
@@ -303,7 +376,9 @@ export function Checkout({
               <>
                 <h2 ref={titulo} tabIndex={-1} className="passo-titulo">Para quando?</h2>
                 <p className="passo-sub">
-                  {form.tipo === 'entrega' ? 'O dia em que te levamos os cookies.' : 'O dia em que vens buscar.'}
+                  {form.tipo === 'entrega'
+                    ? 'O dia em que te levamos os cookies.'
+                    : `O dia em que vens buscar${localEscolhido ? ` · ${localEscolhido.nome}` : ''}.`}
                 </p>
                 <div className="dias">
                   {dias.map((d) => (
@@ -511,7 +586,7 @@ function Linha({
             >
               Mudar <span className="linha-seta" aria-hidden="true">▾</span>
             </button>
-            <button type="button" className="linha-acao" onClick={() => onTirarCaixa(l.inicio)}>Tirar</button>
+            <button type="button" className="linha-acao" onClick={() => onTirarCaixa(l.inicio)}>Remover</button>
             <button
               type="button"
               className="linha-acao"
@@ -540,14 +615,14 @@ function Linha({
                       type="button"
                       className="caixa-cookie-tirar"
                       onClick={() => onTirarDaCaixa(l.inicio + i)}
-                      aria-label={`Tirar um ${c?.nome ?? 'cookie'} da Box`}
+                      aria-label={`Remover um ${c?.nome ?? 'cookie'} da Box`}
                     >×</button>
                   </li>
                 )
               })}
             </ul>
             <p className="caixa-painel-dica">
-              Tira o que não querias e{' '}
+              Remove o que não querias e{' '}
               <button type="button" className="caixa-painel-link" onClick={onEscolherOutro}>
                 escolhe outro
               </button>

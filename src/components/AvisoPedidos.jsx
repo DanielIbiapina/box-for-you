@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useData } from '../stores/DataProvider'
 import { Icon } from './Icon'
 import { PEDIDO_NOVO, notificar, tocarSino } from '../lib/avisos'
+import { pushAtivoAqui } from '../lib/push'
 
 const fmtEuro = (v) =>
   new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(v ?? 0)
@@ -28,7 +29,8 @@ export function AvisoPedidos({ onVer }) {
           : [{ id: p.id, clienteId: p.clienteId, total: p.totalEur ?? 0 }, ...atuais].slice(0, 4)
       ))
       tocarSino()
-      notificar('Novo pedido da loja', `${fmtEuro(p.totalEur ?? 0)} · ver na plataforma`)
+      // com as notificações push ligadas neste aparelho, essas já avisam — não duplicar
+      if (!pushAtivoAqui()) notificar('Novo pedido da loja', `${fmtEuro(p.totalEur ?? 0)} · ver na plataforma`)
       setTimeout(() => setAvisos((atuais) => atuais.filter((a) => a.id !== p.id)), SUMICO_MS)
     }
     window.addEventListener(PEDIDO_NOVO, aoChegar)

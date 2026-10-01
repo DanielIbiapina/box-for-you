@@ -79,7 +79,7 @@ function entregaLabel(e) {
   const data = e.data
     ? parseDate(e.data).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' })
     : ''
-  if (e.tipo === 'levantar') return ['Levantar', data].filter(Boolean).join(' · ')
+  if (e.tipo === 'levantar') return ['Levantar', e.local?.nome, data].filter(Boolean).join(' · ')
   const morada = [e.morada, e.localidade, e.cp].filter(Boolean).join(', ')
   return ['Entrega', data, morada].filter(Boolean).join(' · ')
 }

@@ -34,3 +34,7 @@ fotos-originais/
 
 # Cópias de segurança manuais (npm run backup) — dados de clientes, só neste PC
 backups/
+
+# Segredos das notificações push (gerados localmente)
+*.local.txt
+*.local.sql
