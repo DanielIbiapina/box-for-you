@@ -8,6 +8,7 @@ import { Icon } from '../components/Icon'
 import { SearchInput } from '../components/SearchInput'
 import { todayKey } from '../lib/salesAnalytics'
 import { mesDoPedido } from '../lib/contas'
+import { EtapaPedido } from '../components/EtapaPedido'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -216,6 +217,18 @@ export function Vendas() {
   const pedidosDoCliente = clienteDetalhe
     ? pedidos.filter((p) => p.clienteId === clienteDetalhe)
     : []
+
+  // A coluna `etapa` só existe depois de correr o supabase/loja.sql atualizado:
+  // até lá as linhas vêm sem ela (undefined) e o andamento fica escondido.
+  const etapasDisponivel = pedidos.some((p) => p.etapa !== undefined)
+
+  /** Muda a etapa que o cliente vê. "Entregue" fecha também o pedido. */
+  function mudarEtapa(p, etapa) {
+    const patch = { etapa, etapaEm: new Date().toISOString() }
+    if (etapa === 'entregue' && p.status !== 'entregue') patch.status = 'entregue'
+    if (etapa !== 'entregue' && p.status === 'entregue') patch.status = 'pendente'
+    updatePedido(p.id, patch)
+  }
 
   const pedidosMes = useMemo(() => {
     const key = todayKey().slice(0, 7)
@@ -428,7 +441,15 @@ export function Vendas() {
       }
     } else {
       const old = pedidos.find((p) => p.id === modalPedido)
-      updatePedido(modalPedido, dados)
+      // Estado e andamento andam juntos no fim: marcar "Entregue" no estado põe
+      // o andamento em entregue; tirar o "Entregue" volta a deixá-lo em aberto.
+      const etapaJunta = !etapasDisponivel || !old ? {}
+        : dados.status === 'entregue' && old.etapa !== 'entregue'
+          ? { etapa: 'entregue', etapaEm: new Date().toISOString() }
+          : old.status === 'entregue' && dados.status !== 'entregue' && old.etapa === 'entregue'
+            ? { etapa: null, etapaEm: new Date().toISOString() }
+            : {}
+      updatePedido(modalPedido, { ...dados, ...etapaJunta })
 
       // O stock acerta-se pela DIFERENÇA entre o pedido antes e depois: cobre
       // cancelar (devolve tudo), reativar (tira tudo) e mudar quantidades num
@@ -585,6 +606,9 @@ export function Vendas() {
                   st={st}
                   onEdit={() => openEditPedido(p)}
                   onDelete={() => handleDeletePedido(p)}
+                  etapa={etapasDisponivel && (
+                    <EtapaPedido pedido={p} cliente={clienteDetalheObj} onMudar={(e) => mudarEtapa(p, e)} />
+                  )}
                 />
               )
             })}
@@ -706,6 +730,12 @@ export function Vendas() {
       {/* ── Tab: Pedidos ── */}
       {tab === 'pedidos' && (
         <>
+          {!etapasDisponivel && pedidos.length > 0 && (
+            <p className="bfy-sunk p-3 text-xs ink-2">
+              Para atualizar o andamento dos pedidos (pronto, a caminho…) e o cliente o ver,
+              corre o <code>supabase/loja.sql</code> atualizado no Supabase.
+            </p>
+          )}
           {pedidos.length === 0 ? (
             <div className="bfy-card p-12 text-center space-y-3">
               <p className="text-lg font-semibold ink-3">
@@ -723,8 +753,9 @@ export function Vendas() {
                 return (
                   <div
                     key={p.id}
-                    className="bfy-card p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+                    className="bfy-card p-4 space-y-3"
                   >
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                     <div className="flex-1 min-w-0 space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
@@ -790,6 +821,10 @@ export function Vendas() {
                         <Icon name="lixo" size={15} />
                       </button>
                     </div>
+                    </div>
+                    {etapasDisponivel && (
+                      <EtapaPedido pedido={p} cliente={cliente} onMudar={(e) => mudarEtapa(p, e)} />
+                    )}
                   </div>
                 )
               })}
@@ -924,10 +959,11 @@ export function Vendas() {
 
 // ─── Subcomponentes ───────────────────────────────────────────────────────────
 
-function PedidoCard({ pedido, cookies, st, onEdit, onDelete }) {
+function PedidoCard({ pedido, cookies, st, onEdit, onDelete, etapa }) {
   return (
+    <div className="bfy-card p-4 space-y-3">
     <div
-      className="bfy-card p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+      className="flex flex-col sm:flex-row sm:items-center gap-3"
     >
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="flex items-center gap-2 flex-wrap">
@@ -970,6 +1006,8 @@ function PedidoCard({ pedido, cookies, st, onEdit, onDelete }) {
           aria-label="Excluir pedido"
         ><Icon name="lixo" size={15} /></button>
       </div>
+    </div>
+    {etapa}
     </div>
   )
 }

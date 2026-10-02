@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Aviso, Migalhas } from './ui'
+import { Aviso, IconeWhatsApp, Migalhas } from './ui'
 import { fmtEuro, fmtData } from './util'
 import { verPedido } from './api'
-import { MBWAY, MBWAY_COPIA } from './negocio'
+import { MBWAY, MBWAY_COPIA, linkWhatsApp } from './negocio'
+import { etapaAtual, etapasDo, rotuloEtapa, textoParaCliente } from '../lib/etapas'
+
+/** De quanto em quanto tempo a página do pedido volta a perguntar como está. */
+const ATUALIZAR_MS = 30000
 
 /**
  * Um bilhete escrito à mão no fim de cada pedido — a toalhinha quente.
@@ -40,6 +44,8 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
   const [erro, setErro] = useState('')
   const [aCarregar, setACarregar] = useState(Boolean(telefoneInicial))
   const [copiado, setCopiado] = useState(false)
+  /** O telemóvel com que o pedido foi encontrado — para voltar a perguntar sozinho. */
+  const [telAtivo, setTelAtivo] = useState('')
 
   useEffect(() => {
     if (!telefoneInicial) return undefined
@@ -49,6 +55,7 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
         if (!vivo) return
         if (r?.ok) {
           setDados(r)
+          setTelAtivo(telefoneInicial)
           setErro('')
         } else {
           setDados(null)
@@ -70,8 +77,10 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
     setACarregar(true)
     try {
       const r = await verPedido(referencia, telefone)
-      if (r?.ok) setDados(r)
-      else {
+      if (r?.ok) {
+        setDados(r)
+        setTelAtivo(telefone)
+      } else {
         setDados(null)
         setErro(r?.motivo ?? 'Não encontrámos este pedido.')
       }
@@ -91,6 +100,34 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
       setTimeout(() => setCopiado(false), 1800)
     } catch { /* */ }
   }
+
+  // O andamento muda do lado de lá (a dona marca "pronto", "a caminho"…):
+  // enquanto a página estiver à vista, pergunta de novo de 30 em 30 segundos
+  // e logo que se volta a ela. Pára quando o pedido acaba.
+  const etapa = dados ? etapaAtual(dados) : null
+  const terminou = etapa === 'entregue' || etapa === 'cancelado'
+  useEffect(() => {
+    if (!telAtivo || terminou) return undefined
+    let vivo = true
+    const atualizar = () => {
+      if (document.visibilityState !== 'visible') return
+      verPedido(referencia, telAtivo)
+        .then((r) => { if (vivo && r?.ok) setDados(r) })
+        .catch(() => { /* tenta outra vez na próxima volta */ })
+    }
+    const timer = setInterval(atualizar, ATUALIZAR_MS)
+    document.addEventListener('visibilitychange', atualizar)
+    return () => {
+      vivo = false
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', atualizar)
+    }
+  }, [referencia, telAtivo, terminou])
+
+  const tipo = dados?.entrega?.tipo
+  const texto = etapa
+    ? textoParaCliente(etapa, { tipo, pagamento: dados?.pagamento, local: dados?.entrega?.local?.nome })
+    : null
 
   const primeiro = (nome || '').trim().split(/\s+/)[0]
   // O servidor manda a verdade; antes de ele responder, vale o que ficou guardado no pedido.
@@ -119,7 +156,7 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
           ) : (
             <div className="text-center space-y-3">
               <img className="loja-mascote" src="/mascote-cramb.png" alt="" />
-              <h2 className="loja-section-title">{dados ? dados.estado : 'O teu pedido'}</h2>
+              <h2 className="loja-section-title">{texto ? texto.titulo : 'O teu pedido'}</h2>
             </div>
           )}
 
@@ -131,7 +168,10 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
             </figure>
           )}
 
-          {formaPagamento === 'MB WAY' && <Mbway aPagar={aPagar} />}
+          {/* adiantar o MB WAY só faz sentido enquanto não está pago */}
+          {formaPagamento === 'MB WAY' && !['pago', 'entregue', 'cancelado'].includes(dados?.status) && (
+            <Mbway aPagar={aPagar} />
+          )}
 
           <div className="talao">
             <p className="talao-rotulo">Código do pedido</p>
@@ -173,7 +213,17 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
 
           {dados && (
             <div className="space-y-4 pedido-detalhes">
-              {recemCriado && <p className="pedido-estado">{dados.estado}</p>}
+              {etapa === 'cancelado' ? (
+                <p className="pedido-estado pedido-estado-cancelado">{texto.titulo}</p>
+              ) : (
+                <LinhaDoTempo
+                  etapas={etapasDo(dados)}
+                  atual={etapa}
+                  tipo={tipo}
+                  quando={dados.etapaEm}
+                  detalhe={texto?.detalhe}
+                />
+              )}
               <div className="bfy-card p-4 text-left space-y-2.5">
                 {(dados.linhas ?? []).map((l, i) => (
                   <div key={i} className="flex items-start justify-between gap-3">
@@ -201,10 +251,21 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
                   <Linha rotulo="Receber" valor={entregaTexto(dados.entrega)} />
                 )}
               </div>
-
-              <p className="text-sm ink-2 text-center">{dados.seguinte}</p>
             </div>
           )}
+
+          <a
+            className="zap-cartao"
+            href={linkWhatsApp(`Olá! É sobre o meu pedido #${referencia}.`)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <IconeWhatsApp size={22} />
+            <span>
+              <span className="zap-cartao-titulo">Dúvidas? Fala connosco</span>
+              <span className="zap-cartao-nota">Respondemos no WhatsApp</span>
+            </span>
+          </a>
 
           <button type="button" className="btn-primary btn-block py-3" onClick={onNovo}>
             {recemCriado ? 'Voltar aos cookies' : 'Fazer outro pedido'}
@@ -240,6 +301,36 @@ function Mbway({ aPagar }) {
       <p className="mbway-nota">
         MB WAY{aPagar > 0 ? `, ${fmtEuro(aPagar)}` : ''}. Se preferires, enviamos-te o pedido de pagamento.
       </p>
+    </div>
+  )
+}
+
+function fmtQuando(iso) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const hora = d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' })
+  const hoje = new Date().toDateString() === d.toDateString()
+  return hoje ? `hoje às ${hora}` : `${d.getDate()}/${d.getMonth() + 1} às ${hora}`
+}
+
+/** O caminho do pedido: o que já aconteceu, onde está agora e o que falta. */
+function LinhaDoTempo({ etapas, atual, tipo, quando, detalhe }) {
+  const idx = etapas.indexOf(atual)
+  return (
+    <div className="etapas-caixa">
+      <ol className="etapas">
+        {etapas.map((e, i) => {
+          const estado = i < idx ? 'feita' : i === idx ? 'agora' : 'depois'
+          return (
+            <li key={e} className="etapa" data-estado={estado} aria-current={estado === 'agora' ? 'step' : undefined}>
+              <span className="etapa-ponto" aria-hidden="true">{estado === 'feita' ? '✓' : ''}</span>
+              <span className="etapa-nome">{rotuloEtapa(e, tipo)}</span>
+            </li>
+          )
+        })}
+      </ol>
+      {detalhe && <p className="etapas-detalhe">{detalhe}</p>}
+      {quando && <p className="etapas-quando">Atualizado {fmtQuando(quando)}</p>}
     </div>
   )
 }

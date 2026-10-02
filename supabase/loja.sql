@@ -26,6 +26,12 @@ alter table pedidos add column if not exists entrega jsonb;
 create unique index if not exists idx_pedidos_referencia
   on pedidos (referencia) where referencia is not null;
 
+-- Andamento do pedido que o cliente vê ao acompanhar (a dona avança em Vendas):
+-- recebido → confirmado → preparando → pronto → a_caminho (entrega) → entregue.
+-- Nulo = ainda não mexido (tira-se do status). Ver src/lib/etapas.js.
+alter table pedidos add column if not exists etapa text;
+alter table pedidos add column if not exists etapa_em timestamptz;
+
 -- Textos que a dona edita em Definições e a loja mostra no checkout.
 alter table configuracao add column if not exists loja_instrucoes_levantamento text not null default '';
 alter table configuracao add column if not exists loja_instrucoes_entrega text not null default '';
@@ -538,6 +544,7 @@ declare
   v_seguinte text;
   v_tipo text;
   v_box_size int;
+  v_etapa text;
 begin
   if length(v_ref) < 4 or length(regexp_replace(coalesce(p_tel, ''), '\D', '', 'g')) < 6 then
     return jsonb_build_object('ok', false, 'motivo',
@@ -599,6 +606,30 @@ begin
 
   v_tipo := coalesce(v_p.entrega->>'tipo', '');
 
+  -- A etapa que o cliente vê (mesma regra de src/lib/etapas.js → etapaAtual).
+  v_etapa := case
+    when v_p.status = 'cancelado' then 'cancelado'
+    when v_p.etapa in ('recebido', 'confirmado', 'preparando', 'pronto', 'a_caminho', 'entregue') then v_p.etapa
+    when v_p.status = 'entregue' then 'entregue'
+    when v_p.status = 'pago' then 'confirmado'
+    else 'recebido'
+  end;
+
+  case v_etapa
+    when 'preparando' then
+      v_estado := 'Estamos a preparar os teus cookies';
+      v_seguinte := 'Saem do forno em breve.';
+    when 'pronto' then
+      v_estado := case when v_tipo = 'levantar' then 'Está pronto! Podes vir buscar' else 'Está pronto' end;
+      v_seguinte := case when v_tipo = 'levantar' then 'Combinamos contigo o sítio e a hora.' else 'Sai em breve para entrega.' end;
+    when 'a_caminho' then
+      v_estado := 'O teu pedido está a caminho';
+      v_seguinte := 'Prepara o leite.';
+    else
+      v_estado := null;
+  end case;
+
+  if v_estado is null then
   case v_p.status
     when 'pendente' then
       v_estado := 'Recebemos. Vamos confirmar contigo.';
@@ -630,11 +661,14 @@ begin
       v_estado := 'Pedido registado';
       v_seguinte := 'Falamos contigo em breve.';
   end case;
+  end if;
 
   return jsonb_build_object(
     'ok', true,
     'referencia', v_p.referencia,
     'status', v_p.status,
+    'etapa', v_etapa,
+    'etapaEm', v_p.etapa_em,
     'estado', v_estado,
     'seguinte', v_seguinte,
     'total', v_p.total_eur,

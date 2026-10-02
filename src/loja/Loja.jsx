@@ -3,7 +3,8 @@ import { Menu } from './Menu'
 import { Bandeja } from './Bandeja'
 import { Checkout } from './Checkout'
 import { Pedido } from './Sucesso'
-import { Aviso } from './ui'
+import { Aviso, IconeWhatsApp } from './ui'
+import { linkWhatsApp } from './negocio'
 import { criarPedido, fetchCardapio, isSupabaseConfigured } from './api'
 import {
   findCookie, livreSabor, livreExtra, contar, agrupar,
@@ -326,6 +327,20 @@ export function Loja() {
           onAbrir={() => abrirPedido()}
           onAbrirCaixa={abrirPedido}
         />
+      )}
+
+      {/* WhatsApp sempre à mão; com uma folha aberta, ela tem o seu próprio atalho */}
+      {!folhaAberta && (
+        <a
+          className="zap-flutuante"
+          data-com-bandeja={comBandeja ? 'true' : 'false'}
+          href={linkWhatsApp('Olá! Tenho uma pergunta sobre os cookies.')}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Falar connosco no WhatsApp"
+        >
+          <IconeWhatsApp size={28} />
+        </a>
       )}
 
       {aberto && !pedidoRef && (

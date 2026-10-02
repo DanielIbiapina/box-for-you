@@ -75,6 +75,7 @@ export const MAPPERS = {
           totalEur: 'total_eur', desconto: 'desconto', dataPedido: 'data_pedido',
           formaPagamento: 'forma_pagamento', status: 'status', notas: 'notas', criadoEm: 'criado_em',
           origem: 'origem', referencia: 'referencia', entrega: 'entrega',
+          etapa: 'etapa', etapaEm: 'etapa_em',
         },
         ['totalEur', 'desconto'],
       ),
