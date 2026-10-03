@@ -287,20 +287,33 @@ export function Loja() {
       <header className="loja-top">
         <div className="loja-wrap-largo py-2.5 flex items-center justify-between gap-4">
           <img className="loja-logo" src="/hero-crumb.png" alt="Crumb Lab" />
-          {(ultimo || pedidoRef) && (
-            <button
-              type="button"
-              className="btn-ghost btn-sm"
-              onClick={() => {
-                const ref = pedidoRef || ultimo.referencia
-                if (!ref) return
-                if (ref !== pedidoRef) irParaPedido(ref)
-                setPedidoRef(ref)
-              }}
+          <div className="flex items-center gap-2">
+            {/* WhatsApp no topo: sempre à mão (o topo fica fixo) e sem tapar os cookies */}
+            <a
+              className="zap-topo"
+              href={linkWhatsApp('Olá! Tenho uma pergunta sobre os cookies.')}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Falar connosco no WhatsApp"
             >
-              O meu pedido
-            </button>
-          )}
+              <IconeWhatsApp size={16} />
+              <span>WhatsApp</span>
+            </a>
+            {(ultimo || pedidoRef) && (
+              <button
+                type="button"
+                className="btn-ghost btn-sm"
+                onClick={() => {
+                  const ref = pedidoRef || ultimo.referencia
+                  if (!ref) return
+                  if (ref !== pedidoRef) irParaPedido(ref)
+                  setPedidoRef(ref)
+                }}
+              >
+                O meu pedido
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -331,20 +344,6 @@ export function Loja() {
           onAbrir={() => abrirPedido()}
           onAbrirCaixa={abrirPedido}
         />
-      )}
-
-      {/* WhatsApp sempre à mão; com uma folha aberta, ela tem o seu próprio atalho */}
-      {!folhaAberta && (
-        <a
-          className="zap-flutuante"
-          data-com-bandeja={comBandeja ? 'true' : 'false'}
-          href={linkWhatsApp('Olá! Tenho uma pergunta sobre os cookies.')}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Falar connosco no WhatsApp"
-        >
-          <IconeWhatsApp size={28} />
-        </a>
       )}
 
       {aberto && !pedidoRef && (

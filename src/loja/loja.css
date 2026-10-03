@@ -1056,20 +1056,28 @@ button.linha-box-fotos:active { transform: scale(0.94); }
 .zap-cartao-titulo { font-weight: 800; color: var(--ink-1); font-size: var(--text-sm); }
 .zap-cartao-nota { font-size: var(--text-xs); color: var(--ink-3); }
 
-.zap-flutuante {
-  position: fixed; right: 1rem; z-index: 45;
-  bottom: calc(1rem + env(safe-area-inset-bottom));
-  width: 3.5rem; height: 3.5rem; border-radius: 999px;
-  display: grid; place-items: center;
-  background: #25D366; color: #fff;
-  box-shadow: 0 10px 24px rgba(18, 140, 75, 0.35);
-  transition: transform .15s var(--mola), bottom .25s ease;
-  animation: zap-entra .4s ease-out .6s both;
+/* WhatsApp no topo (cabeçalho escuro, fixo) */
+.zap-topo {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.38rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(37, 211, 102, 0.14);
+  border: 1px solid rgba(37, 211, 102, 0.4);
+  color: var(--ink-on-dark);
+  font-size: var(--text-xs); font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .15s, transform .1s;
 }
-/* acima da barra do pedido, quando ela aparece */
-.zap-flutuante[data-com-bandeja='true'] { bottom: calc(7.6rem + env(safe-area-inset-bottom)); }
-.zap-flutuante:active { transform: scale(0.92); }
-@keyframes zap-entra { from { opacity: 0; } to { opacity: 1; } }
+.zap-topo svg { color: #25D366; flex-shrink: 0; }
+.zap-topo:hover { background: rgba(37, 211, 102, 0.24); }
+.zap-topo:active { transform: scale(0.96); }
+.loja-top .btn-ghost { white-space: nowrap; }
+/* telemóveis muito estreitos: só o ícone, para caber ao lado de "O meu pedido" */
+@media (max-width: 359px) {
+  .zap-topo { padding: 0.45rem; }
+  .zap-topo span { display: none; }
+}
 
 .loja-mascote {
   width: 5.5rem; height: auto; margin-inline: auto;
