@@ -3,6 +3,8 @@ import { Aviso, IconeBox, Stepper } from './ui'
 import { fmtEuro, fmtData, proximosDias, hojeIso, findCookie } from './util'
 import { gravarContacto, lerContacto } from './storage'
 import { toquePasso } from './sensacao'
+import { localizar, distanciaKm, taxaPara } from './geo'
+import { validarCupom } from './api'
 
 const RECEBER = [
   { id: 'levantar', icone: '🛍️', imagem: '/landing-icons/levantar.webp', titulo: 'Levantar', nota: 'Vens tu buscar' },
@@ -17,8 +19,10 @@ const PAGAMENTOS = [
 /** Para onde levar a pessoa quando o servidor recusa um campo. */
 const PASSO_DO_CAMPO = {
   entrega: 'receber', local: 'local', data: 'quando', morada: 'morada', localidade: 'morada',
-  nome: 'contacto', telefone: 'contacto', pagamento: 'pagar',
+  nome: 'contacto', telefone: 'contacto', pagamento: 'pagar', cupom: 'confirmar',
 }
+
+const fmtKm = (km) => `${km.toFixed(1).replace('.', ',')} km`
 
 const FALLBACK_LEVANTAR = 'Combinamos o sítio e a hora contigo por mensagem.'
 const FALLBACK_ENTREGA = 'Entregamos na morada que indicares. Combinamos o horário contigo.'
@@ -70,6 +74,10 @@ export function Checkout({
   const [comNota, setComNota] = useState(false)
   const [dias] = useState(() => proximosDias(8))
   const [hoje] = useState(hojeIso)
+  /** Distância/taxa da morada de entrega: { chave, estado: 'a-ver'|'ok'|'sem-mapa', km, taxa, lat, lng } */
+  const [geo, setGeo] = useState(null)
+  /** Cupão aplicado: { codigo, percent } */
+  const [cupom, setCupom] = useState(null)
   const titulo = useRef(null)
   const corpo = useRef(null)
   const timer = useRef(null)
@@ -81,6 +89,32 @@ export function Checkout({
     ? locais.find((l) => l.id === form.local) ?? (locais.length === 1 ? locais[0] : null)
     : null
   const opcoesReceber = semLevantamento ? RECEBER.filter((op) => op.id !== 'levantar') : RECEBER
+
+  // ── taxa de entrega e cupão ─────────────────────────────────────────────
+  const regrasEntrega = cardapio?.entrega?.ativo ? cardapio.entrega : null
+  const chaveMorada = `${form.morada.trim()}|${form.localidade.trim()}|${form.cp.trim()}`.toLowerCase()
+  // A distância só vale para a morada com que foi calculada.
+  const geoAtual = geo && geo.chave === chaveMorada ? geo : null
+  const taxaEntrega = form.tipo === 'entrega' && regrasEntrega && geoAtual?.estado === 'ok' ? geoAtual.taxa : 0
+  const desconto = cupom ? Math.round(resumo.total * cupom.percent) / 100 : 0
+  const totalFinal = Math.max(0, resumo.total - desconto + taxaEntrega)
+
+  /** Calcula distância e taxa da morada. Devolve o resultado (ou null sem regras de entrega). */
+  async function calcularEntrega() {
+    if (!regrasEntrega) return null
+    if (geoAtual && geoAtual.estado !== 'a-ver') return geoAtual
+    setGeo({ chave: chaveMorada, estado: 'a-ver' })
+    const pos = await localizar({ morada: form.morada, localidade: form.localidade, cp: form.cp })
+    let r
+    if (!pos) r = { chave: chaveMorada, estado: 'sem-mapa' }
+    else {
+      const km = distanciaKm(regrasEntrega.origem, pos)
+      const taxa = taxaPara(km, regrasEntrega.faixas)
+      r = { chave: chaveMorada, estado: taxa === null ? 'fora' : 'ok', km, taxa, lat: pos.lat, lng: pos.lng }
+    }
+    setGeo(r)
+    return r
+  }
 
   const passos = passosPara(form.tipo, escolheLocal)
   const idx = Math.max(0, passos.indexOf(passo))
@@ -205,7 +239,16 @@ export function Checkout({
     }
     if (passo === 'morada') {
       const p = semMorada()
-      return p ? setErro(p) : irPara('contacto')
+      if (p) return setErro(p)
+      // com taxa por distância, só avança depois de saber quanto custa (ou que não chegamos lá)
+      calcularEntrega().then((r) => {
+        if (r?.estado === 'fora') {
+          setErro(`Ainda não entregamos tão longe (cerca de ${fmtKm(r.km)}). Podes voltar e escolher levantar.`)
+        } else {
+          irPara('contacto')
+        }
+      })
+      return undefined
     }
     if (passo === 'contacto') {
       const p = semContacto()
@@ -227,10 +270,18 @@ export function Checkout({
     setEnviando(true)
     try {
       // com um só local ligado, ele é o escolhido mesmo sem toque
-      const resposta = await onEnviar({ ...form, local: localEscolhido?.id ?? '' })
+      const g = form.tipo === 'entrega' ? await calcularEntrega() : null
+      const resposta = await onEnviar({
+        ...form,
+        local: localEscolhido?.id ?? '',
+        lat: g?.estado === 'ok' ? g.lat : undefined,
+        lng: g?.estado === 'ok' ? g.lng : undefined,
+        cupom: cupom?.codigo ?? '',
+      })
       if (!resposta?.ok) {
         let alvo = resposta?.esgotado ? 'pedido' : PASSO_DO_CAMPO[resposta?.campo]
         if (alvo === 'local' && !escolheLocal) alvo = 'receber'
+        if (resposta?.campo === 'cupom') setCupom(null)
         if (alvo && alvo !== passo) irPara(alvo, { som: false })
         setErro(resposta?.motivo ?? 'Não conseguimos registar o pedido.')
       }
@@ -248,10 +299,11 @@ export function Checkout({
   else if (passo === 'receber' && form.tipo) cta = { rotulo: 'Continuar' }
   else if (passo === 'local' && localEscolhido) cta = { rotulo: 'Continuar' }
   else if (passo === 'quando' && form.data) cta = { rotulo: 'Continuar' }
+  else if (passo === 'morada' && geoAtual?.estado === 'a-ver') cta = { rotulo: 'A calcular a distância…', off: true }
   else if (passo === 'morada' || passo === 'contacto') cta = { rotulo: 'Continuar' }
   else if (passo === 'pagar' && form.pagamento) cta = { rotulo: 'Continuar' }
   else if (passo === 'confirmar') {
-    cta = { rotulo: enviando ? 'A enviar…' : `Fazer pedido · ${fmtEuro(resumo.total)}`, off: enviando, final: true }
+    cta = { rotulo: enviando ? 'A enviar…' : `Fazer pedido · ${fmtEuro(totalFinal)}`, off: enviando, final: true }
   }
 
   const primeiroNome = inicial.nome.trim().split(/\s+/)[0]
@@ -414,6 +466,16 @@ export function Checkout({
               <>
                 <h2 ref={titulo} tabIndex={-1} className="passo-titulo">Onde entregamos?</h2>
                 <p className="passo-sub">{txtEntrega}</p>
+                {regrasEntrega && (
+                  <ul className="faixas-entrega" aria-label="Taxa de entrega">
+                    {regrasEntrega.faixas.map((f, i) => (
+                      <li key={i}>
+                        Até {f.ateKm.toString().replace('.', ',')} km ·{' '}
+                        <b>{f.preco > 0 ? fmtEuro(f.preco) : 'grátis'}</b>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <div className="campos">
                   <label className="block">
                     <span className="bfy-label">Morada</span>
@@ -439,6 +501,18 @@ export function Checkout({
                     </label>
                   </div>
                 </div>
+                {regrasEntrega && geoAtual?.estado === 'ok' && (
+                  <p className="passo-info">
+                    Fica a cerca de {fmtKm(geoAtual.km)} · entrega{' '}
+                    <b>{geoAtual.taxa > 0 ? fmtEuro(geoAtual.taxa) : 'grátis'}</b>
+                  </p>
+                )}
+                {regrasEntrega && geoAtual?.estado === 'sem-mapa' && (
+                  <p className="passo-info">Não encontrámos esta morada no mapa — confirmamos a taxa de entrega contigo.</p>
+                )}
+                {regrasEntrega && (
+                  <p className="mapa-credito">Distância em linha reta · mapa © OpenStreetMap</p>
+                )}
               </>
             )}
 
@@ -501,6 +575,12 @@ export function Checkout({
                 onComNota={() => setComNota(true)}
                 onNotas={set('notas')}
                 irPara={irPara}
+                entrega={form.tipo === 'entrega' && regrasEntrega ? geoAtual : null}
+                taxaEntrega={taxaEntrega}
+                cupom={cupom}
+                desconto={desconto}
+                totalFinal={totalFinal}
+                onCupom={setCupom}
               />
             )}
           </div>
@@ -655,7 +735,10 @@ function Linha({
   )
 }
 
-function Confirmar({ titulo, cardapio, resumo, form, txtLevantar, comNota, onComNota, onNotas, irPara }) {
+function Confirmar({
+  titulo, cardapio, resumo, form, txtLevantar, comNota, onComNota, onNotas, irPara,
+  entrega, taxaEntrega, cupom, desconto, totalFinal, onCupom,
+}) {
   const pag = PAGAMENTOS.find((p) => p.id === form.pagamento)
   const nCaixas = resumo.caixas.length
   const nSoltos = resumo.linhas.filter((l) => l.tipo === 'avulso').reduce((s, l) => s + l.qty, 0)
@@ -708,11 +791,100 @@ function Confirmar({ titulo, cardapio, resumo, form, txtLevantar, comNota, onCom
         </button>
       )}
 
+      <Cupao cupom={cupom} desconto={desconto} onCupom={onCupom} />
+
+      <div className="checkout-contas">
+        {(desconto > 0 || entrega) && (
+          <div className="checkout-conta">
+            <span>Cookies</span>
+            <span className="bfy-num">{fmtEuro(resumo.total)}</span>
+          </div>
+        )}
+        {desconto > 0 && (
+          <div className="checkout-conta checkout-conta-desconto">
+            <span>Cupão {cupom.codigo} (−{cupom.percent}%)</span>
+            <span className="bfy-num">−{fmtEuro(desconto)}</span>
+          </div>
+        )}
+        {entrega && (
+          <div className="checkout-conta">
+            <span>Entrega{entrega.estado === 'ok' ? ` (${fmtKm(entrega.km)})` : ''}</span>
+            <span className="bfy-num">
+              {entrega.estado === 'ok' ? (taxaEntrega > 0 ? fmtEuro(taxaEntrega) : 'grátis') : 'a confirmar'}
+            </span>
+          </div>
+        )}
+      </div>
+
       <div className="checkout-total">
         <span>Total</span>
-        <span className="bfy-num">{fmtEuro(resumo.total)}</span>
+        <span className="bfy-num">{fmtEuro(totalFinal)}</span>
       </div>
     </>
+  )
+}
+
+/** "Tenho um cupão": confirma o código no servidor e mostra o desconto. */
+function Cupao({ cupom, desconto, onCupom }) {
+  const [aberto, setAberto] = useState(false)
+  const [codigo, setCodigo] = useState('')
+  const [erro, setErro] = useState('')
+  const [aVer, setAVer] = useState(false)
+
+  async function aplicar(e) {
+    e.preventDefault()
+    if (!codigo.trim()) return
+    setAVer(true)
+    setErro('')
+    try {
+      const r = await validarCupom(codigo.trim())
+      if (r?.ok) {
+        onCupom({ codigo: r.codigo, percent: Number(r.percent) || 0 })
+        setAberto(false)
+        setCodigo('')
+      } else {
+        setErro(r?.motivo ?? 'Este cupão não é válido.')
+      }
+    } catch {
+      setErro('Não conseguimos confirmar o cupão. Tenta outra vez.')
+    } finally {
+      setAVer(false)
+    }
+  }
+
+  if (cupom) {
+    return (
+      <p className="cupao-aplicado">
+        <span>🎟️ <b>{cupom.codigo}</b> · −{cupom.percent}% ({fmtEuro(desconto)})</span>
+        <button type="button" className="passo-link" onClick={() => onCupom(null)}>Remover</button>
+      </p>
+    )
+  }
+  if (!aberto) {
+    return (
+      <button type="button" className="passo-link" onClick={() => setAberto(true)}>
+        + Tenho um cupão
+      </button>
+    )
+  }
+  return (
+    <form className="cupao-form" onSubmit={aplicar}>
+      <input
+        className="bfy-input"
+        value={codigo}
+        onChange={(e) => setCodigo(e.target.value.toUpperCase())}
+        placeholder="Código do cupão"
+        autoCapitalize="characters"
+        autoComplete="off"
+        autoFocus
+        maxLength={30}
+        aria-label="Código do cupão"
+      />
+      <button type="submit" className="btn-ghost" disabled={aVer || !codigo.trim()}>
+        {aVer ? '…' : 'Aplicar'}
+      </button>
+      {erro && <p className="cupao-erro" role="alert">{erro}</p>}
+    </form>
   )
 }
 

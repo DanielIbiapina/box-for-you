@@ -75,7 +75,7 @@ export const MAPPERS = {
           totalEur: 'total_eur', desconto: 'desconto', dataPedido: 'data_pedido',
           formaPagamento: 'forma_pagamento', status: 'status', notas: 'notas', criadoEm: 'criado_em',
           origem: 'origem', referencia: 'referencia', entrega: 'entrega',
-          etapa: 'etapa', etapaEm: 'etapa_em',
+          etapa: 'etapa', etapaEm: 'etapa_em', cupom: 'cupom',
         },
         ['totalEur', 'desconto'],
       ),
@@ -122,8 +122,21 @@ export function configToApp(row) {
     locaisLevantamento: Array.isArray(row?.loja_locais_levantamento) ? row.loja_locais_levantamento : [],
     // a coluna só existe depois de correr o loja.sql atualizado
     locaisDisponivel: !row || 'loja_locais_levantamento' in row,
+    // { ativo, origem: { morada, lat, lng }, faixas: [{ ateKm, preco }] } — taxa de entrega por distância
+    entregaConfig: row?.loja_entrega_config && typeof row.loja_entrega_config === 'object' ? row.loja_entrega_config : {},
+    entregaDisponivel: !row || 'loja_entrega_config' in row,
+    // [{ codigo, percent, validoAte, ativo }]
+    cupons: Array.isArray(row?.loja_cupons) ? row.loja_cupons : [],
+    cuponsDisponivel: !row || 'loja_cupons' in row,
   }
 }
+
+/** Campos da configuração que têm cartão próprio em Definições e gravam sozinhos. */
+export const CONFIG_PROPRIOS = [
+  'locaisLevantamento', 'locaisDisponivel',
+  'entregaConfig', 'entregaDisponivel',
+  'cupons', 'cuponsDisponivel',
+]
 export function configToRow(patch) {
   const r = {}
   if (patch.nomeNegocio !== undefined) r.nome_negocio = patch.nomeNegocio
@@ -134,5 +147,7 @@ export function configToRow(patch) {
   if (patch.instrucoesLevantamento !== undefined) r.loja_instrucoes_levantamento = patch.instrucoesLevantamento
   if (patch.instrucoesEntrega !== undefined) r.loja_instrucoes_entrega = patch.instrucoesEntrega
   if (patch.locaisLevantamento !== undefined) r.loja_locais_levantamento = patch.locaisLevantamento
+  if (patch.entregaConfig !== undefined) r.loja_entrega_config = patch.entregaConfig
+  if (patch.cupons !== undefined) r.loja_cupons = patch.cupons
   return r
 }

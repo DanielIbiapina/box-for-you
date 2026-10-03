@@ -34,6 +34,9 @@ export const fetchCardapio = () => rpc('loja_cardapio')
  */
 export const criarPedido = (pedido) => rpc('loja_criar_pedido', { p: pedido })
 
+/** Confirma um cupão sem expor a lista: { ok, codigo, percent } ou { ok:false, motivo }. */
+export const validarCupom = (codigo) => rpc('loja_validar_cupom', { p_codigo: codigo })
+
 /** Consulta pública: referência + telemóvel. Sem os dois, o servidor recusa. */
 export const verPedido = (referencia, telefone) =>
   rpc('loja_ver_pedido', { p_ref: referencia, p_tel: telefone })

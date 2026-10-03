@@ -38,3 +38,6 @@ backups/
 # Segredos das notificações push (gerados localmente)
 *.local.txt
 *.local.sql
+
+# QR code do site (gerado localmente para imprimir)
+qr-code/

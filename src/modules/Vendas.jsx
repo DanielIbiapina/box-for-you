@@ -36,6 +36,14 @@ function ChipLoja() {
   )
 }
 
+function ChipCupao({ codigo, desconto }) {
+  return (
+    <span className="bfy-chip" title="Cupão de desconto usado na loja" style={{ color: 'var(--color-success)' }}>
+      🎟️ {codigo}{(desconto ?? 0) > 0 ? ` −${desconto.toFixed(2).replace('.', ',')} €` : ''}
+    </span>
+  )
+}
+
 function statusInfo(id) {
   return STATUS_PEDIDO.find((s) => s.id === id) ?? STATUS_PEDIDO[0]
 }
@@ -777,6 +785,7 @@ export function Vendas() {
                           </span>
                         )}
                         {p.origem === 'loja' && <ChipLoja />}
+                        {p.cupom && <ChipCupao codigo={p.cupom} desconto={p.desconto} />}
                         {p.referencia && (
                           <span className="bfy-num text-[11px] font-black" style={{ color: 'var(--color-accent-dark)' }}>
                             #{p.referencia}
@@ -978,6 +987,7 @@ function PedidoCard({ pedido, cookies, st, onEdit, onDelete, etapa }) {
             · {pedido.formaPagamento}
           </span>
           {pedido.origem === 'loja' && <ChipLoja />}
+          {pedido.cupom && <ChipCupao codigo={pedido.cupom} desconto={pedido.desconto} />}
           {pedido.referencia && (
             <span className="bfy-num text-[11px] font-black" style={{ color: 'var(--color-accent-dark)' }}>
               #{pedido.referencia}

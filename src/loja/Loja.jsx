@@ -211,7 +211,11 @@ export function Loja() {
         morada: form.morada,
         localidade: form.localidade,
         cp: form.cp,
+        // para o servidor calcular a taxa de entrega por distância
+        lat: form.tipo === 'entrega' ? form.lat : undefined,
+        lng: form.tipo === 'entrega' ? form.lng : undefined,
       },
+      cupom: form.cupom || undefined,
       notas: form.notas,
     })
 
@@ -229,7 +233,7 @@ export function Loja() {
       setRecemCriado(true)
       irParaPedido(resposta.referencia)
       setPedidoRef(resposta.referencia)
-    } else if (resposta?.esgotado || resposta?.campo === 'local' || resposta?.campo === 'entrega') {
+    } else if (resposta?.esgotado || ['local', 'entrega', 'morada'].includes(resposta?.campo)) {
       // stock ou locais de levantamento mudaram desde que a página abriu
       carregar()
     }

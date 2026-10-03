@@ -43,6 +43,25 @@ alter table configuracao add column if not exists loja_instrucoes_entrega text n
 -- ("combinamos o sítio"). Com locais mas todos desligados, não há levantamento.
 alter table configuracao add column if not exists loja_locais_levantamento jsonb not null default '[]'::jsonb;
 
+-- Taxa de entrega por distância (em linha reta, a partir da morada de partida):
+-- { "ativo": true, "origem": { "morada": "...", "lat": 38.7, "lng": -9.1 },
+--   "faixas": [ { "ateKm": 3, "preco": 0 }, { "ateKm": 7, "preco": 3 } ] }
+-- Mais longe que a última faixa: não se entrega. Inativo = como antes (sem taxa).
+alter table configuracao add column if not exists loja_entrega_config jsonb not null default '{}'::jsonb;
+
+-- Cupões de desconto: [ { "codigo": "WHATELSE15", "percent": 15, "validoAte": "2026-10-31", "ativo": true } ]
+-- O desconto aplica-se aos cookies (não à taxa de entrega) e é calculado no servidor.
+alter table configuracao add column if not exists loja_cupons jsonb not null default '[]'::jsonb;
+alter table pedidos add column if not exists cupom text;
+
+-- Cupões de outubro/2026 — só entram se ainda não houver nenhum cupão.
+update configuracao
+   set loja_cupons = '[
+     {"codigo": "WHATELSE15", "percent": 15, "validoAte": "2026-10-31", "ativo": true},
+     {"codigo": "MEDICINA15", "percent": 15, "validoAte": "2026-10-31", "ativo": true}
+   ]'::jsonb
+ where id = 'main' and loja_cupons = '[]'::jsonb;
+
 -- ────────────────────────────────────────────────────────────────────────────
 -- 0) Telemóvel normalizado
 -- ────────────────────────────────────────────────────────────────────────────
@@ -145,6 +164,27 @@ begin
   return jsonb_build_object(
     'temLocais', jsonb_array_length(coalesce(v_cfg.loja_locais_levantamento, '[]'::jsonb)) > 0,
     'locais', v_locais,
+    -- Para a loja mostrar a taxa logo que o cliente escreve a morada (o
+    -- servidor volta a calcular ao criar o pedido). A morada de partida não sai.
+    'entrega', case
+      when coalesce(v_cfg.loja_entrega_config->>'ativo', '') = 'true'
+       and (v_cfg.loja_entrega_config #>> '{origem,lat}') ~ '^-?\d+(\.\d+)?$'
+       and (v_cfg.loja_entrega_config #>> '{origem,lng}') ~ '^-?\d+(\.\d+)?$'
+       and jsonb_typeof(v_cfg.loja_entrega_config->'faixas') = 'array'
+       and jsonb_array_length(v_cfg.loja_entrega_config->'faixas') > 0
+      then jsonb_build_object(
+        'ativo', true,
+        'origem', jsonb_build_object(
+          'lat', (v_cfg.loja_entrega_config #>> '{origem,lat}')::numeric,
+          'lng', (v_cfg.loja_entrega_config #>> '{origem,lng}')::numeric),
+        'faixas', (select coalesce(jsonb_agg(jsonb_build_object(
+                     'ateKm', (f->>'ateKm')::numeric,
+                     'preco', case when (f->>'preco') ~ '^\d+(\.\d+)?$' then (f->>'preco')::numeric else 0 end)
+                     order by (f->>'ateKm')::numeric), '[]'::jsonb)
+                   from jsonb_array_elements(v_cfg.loja_entrega_config->'faixas') f
+                   where (f->>'ateKm') ~ '^\d+(\.\d+)?$'))
+      else jsonb_build_object('ativo', false)
+    end,
     'negocio', jsonb_build_object(
       'nome',  coalesce(v_cfg.nome_negocio, 'Box for You'),
       'moeda', coalesce(v_cfg.moeda, '€'),
@@ -215,6 +255,19 @@ declare
   v_entrega    jsonb;
   v_locais     jsonb;
   v_local      jsonb;
+
+  v_ent_cfg    jsonb;
+  v_km         numeric;
+  v_taxa       numeric := 0;
+  v_faixa      jsonb;
+  v_o_lat      numeric;
+  v_o_lng      numeric;
+  v_d_lat      numeric;
+  v_d_lng      numeric;
+  v_cupom      text := upper(btrim(coalesce(p->>'cupom', '')));
+  v_cupom_obj  jsonb;
+  v_desconto   numeric := 0;
+  v_pct        numeric;
 
   v_itens  jsonb := coalesce(p->'itens',  '[]'::jsonb);
   v_caixas jsonb := coalesce(p->'caixas', '[]'::jsonb);
@@ -423,6 +476,72 @@ begin
     return jsonb_build_object('ok', false, 'motivo', 'Pedido demasiado grande para a loja. Fala connosco diretamente.');
   end if;
 
+  -- ── cupão: % sobre os cookies (não sobre a entrega), válido até ao fim do
+  --    dia em Lisboa. Calculado aqui — o browser só manda o código ─────────────
+  if v_cupom <> '' then
+    select c into v_cupom_obj
+      from jsonb_array_elements(coalesce(v_cfg.loja_cupons, '[]'::jsonb)) c
+     where upper(btrim(c->>'codigo')) = v_cupom
+       and coalesce(c->>'ativo', '') = 'true'
+       and (coalesce(c->>'validoAte', '') !~ '^\d{4}-\d{2}-\d{2}$'
+            or (now() at time zone 'Europe/Lisbon')::date <= (c->>'validoAte')::date)
+     limit 1;
+    if v_cupom_obj is null then
+      return jsonb_build_object('ok', false, 'campo', 'cupom',
+        'motivo', 'Este cupão não é válido ou já expirou.');
+    end if;
+    v_pct := case when (v_cupom_obj->>'percent') ~ '^\d+(\.\d+)?$'
+                  then least((v_cupom_obj->>'percent')::numeric, 100) else 0 end;
+    v_desconto := round(v_total * v_pct / 100, 2);
+    v_cupom := upper(btrim(v_cupom_obj->>'codigo'));
+  else
+    v_cupom := null;
+  end if;
+
+  -- ── taxa de entrega por distância (linha reta) ─────────────────────────────
+  -- Sem coordenadas (a morada não foi encontrada no mapa), aceita-se o pedido
+  -- com a taxa "a confirmar" — a dona combina com o cliente.
+  v_ent_cfg := coalesce(v_cfg.loja_entrega_config, '{}'::jsonb);
+  if v_tipo = 'entrega'
+     and coalesce(v_ent_cfg->>'ativo', '') = 'true'
+     and (v_ent_cfg #>> '{origem,lat}') ~ '^-?\d+(\.\d+)?$'
+     and (v_ent_cfg #>> '{origem,lng}') ~ '^-?\d+(\.\d+)?$'
+     and jsonb_typeof(v_ent_cfg->'faixas') = 'array'
+     and jsonb_array_length(v_ent_cfg->'faixas') > 0
+  then
+    if coalesce(v_ent->>'lat', '') ~ '^-?\d+(\.\d+)?$' and coalesce(v_ent->>'lng', '') ~ '^-?\d+(\.\d+)?$' then
+      v_o_lat := (v_ent_cfg #>> '{origem,lat}')::numeric;
+      v_o_lng := (v_ent_cfg #>> '{origem,lng}')::numeric;
+      v_d_lat := (v_ent->>'lat')::numeric;
+      v_d_lng := (v_ent->>'lng')::numeric;
+      v_km := 2 * 6371 * asin(sqrt(
+                power(sin(radians(v_d_lat - v_o_lat) / 2), 2) +
+                cos(radians(v_o_lat)) * cos(radians(v_d_lat)) *
+                power(sin(radians(v_d_lng - v_o_lng) / 2), 2)));
+
+      select f into v_faixa
+        from jsonb_array_elements(v_ent_cfg->'faixas') f
+       where (f->>'ateKm') ~ '^\d+(\.\d+)?$' and v_km <= (f->>'ateKm')::numeric
+       order by (f->>'ateKm')::numeric
+       limit 1;
+      if v_faixa is null then
+        return jsonb_build_object('ok', false, 'campo', 'morada',
+          'motivo', format('Ainda não entregamos tão longe (cerca de %s km). Podes escolher levantar.',
+                           replace(round(v_km, 1)::text, '.', ',')));
+      end if;
+
+      v_taxa := case when (v_faixa->>'preco') ~ '^\d+(\.\d+)?$' then (v_faixa->>'preco')::numeric else 0 end;
+      if v_taxa > 0 then
+        v_linhas := v_linhas || jsonb_build_object(
+          'cookieId', 'entrega', 'qty', 1, 'preco', v_taxa,
+          'customLabel', format('Entrega (%s km)', replace(round(v_km, 1)::text, '.', ',')));
+      end if;
+      v_entrega := v_entrega || jsonb_build_object('distanciaKm', round(v_km, 1), 'taxa', v_taxa);
+    else
+      v_entrega := v_entrega || jsonb_build_object('taxaAConfirmar', true);
+    end if;
+  end if;
+
   -- ── stock: tranca as linhas antes de ler, para dois clientes em simultâneo
   --    não venderem o mesmo último cookie ─────────────────────────────────────
   perform 1 from estoque
@@ -486,13 +605,16 @@ begin
   v_ref := loja_nova_referencia();
 
   -- ── pedido ───────────────────────────────────────────────────────────────
+  -- total = cookies − cupão + entrega
+  v_total := v_total - v_desconto + v_taxa;
+
   insert into pedidos (cliente_id, linhas, box, total_eur, desconto, data_pedido,
-                       forma_pagamento, status, notas, origem, referencia, entrega)
+                       forma_pagamento, status, notas, origem, referencia, entrega, cupom)
   values (
-    v_cliente_id, v_linhas, v_box, v_total, 0,
+    v_cliente_id, v_linhas, v_box, v_total, v_desconto,
     current_date, v_pag, 'pendente',
     left(v_notas, 400),
-    'loja', v_ref, v_entrega
+    'loja', v_ref, v_entrega, v_cupom
   )
   returning id into v_pedido_id;
 
@@ -516,7 +638,46 @@ begin
     'ok', true,
     'pedidoId', v_pedido_id,
     'referencia', v_ref,
-    'total', v_total
+    'total', v_total,
+    'desconto', v_desconto,
+    'taxaEntrega', v_taxa
+  );
+end $$;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 2b) Validar um cupão (para a loja mostrar o desconto antes de pedir)
+-- ────────────────────────────────────────────────────────────────────────────
+-- Responde só sobre o código escrito; nunca devolve a lista de cupões.
+create or replace function loja_validar_cupom(p_codigo text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg configuracao%rowtype;
+  v_c   jsonb;
+  v_cod text := upper(btrim(coalesce(p_codigo, '')));
+begin
+  if v_cod = '' then
+    return jsonb_build_object('ok', false, 'motivo', 'Escreve o código do cupão.');
+  end if;
+  select * into v_cfg from configuracao where id = 'main';
+  select c into v_c
+    from jsonb_array_elements(coalesce(v_cfg.loja_cupons, '[]'::jsonb)) c
+   where upper(btrim(c->>'codigo')) = v_cod
+     and coalesce(c->>'ativo', '') = 'true'
+     and (coalesce(c->>'validoAte', '') !~ '^\d{4}-\d{2}-\d{2}$'
+          or (now() at time zone 'Europe/Lisbon')::date <= (c->>'validoAte')::date)
+   limit 1;
+  if v_c is null or coalesce(v_c->>'percent', '') !~ '^\d+(\.\d+)?$' then
+    return jsonb_build_object('ok', false, 'motivo', 'Este cupão não é válido ou já expirou.');
+  end if;
+  return jsonb_build_object(
+    'ok', true,
+    'codigo', upper(btrim(v_c->>'codigo')),
+    'percent', least((v_c->>'percent')::numeric, 100)
   );
 end $$;
 
@@ -669,6 +830,8 @@ begin
     'status', v_p.status,
     'etapa', v_etapa,
     'etapaEm', v_p.etapa_em,
+    'desconto', v_p.desconto,
+    'cupom', v_p.cupom,
     'estado', v_estado,
     'seguinte', v_seguinte,
     'total', v_p.total_eur,
@@ -686,6 +849,8 @@ revoke all on function loja_nova_referencia()    from public, anon, authenticate
 revoke all on function loja_cardapio()           from public, anon, authenticated;
 revoke all on function loja_criar_pedido(jsonb)  from public, anon, authenticated;
 revoke all on function loja_ver_pedido(text, text) from public, anon, authenticated;
+revoke all on function loja_validar_cupom(text)  from public, anon, authenticated;
 grant execute on function loja_cardapio()             to anon, authenticated;
 grant execute on function loja_criar_pedido(jsonb)    to anon, authenticated;
 grant execute on function loja_ver_pedido(text, text) to anon, authenticated;
+grant execute on function loja_validar_cupom(text)    to anon, authenticated;

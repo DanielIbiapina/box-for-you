@@ -8,6 +8,9 @@ import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
 import { CardapioAdmin } from '../components/CardapioAdmin'
 import { LocaisLevantamento } from '../components/LocaisLevantamento'
+import { EntregaTaxa } from '../components/EntregaTaxa'
+import { Cupoes } from '../components/Cupoes'
+import { CONFIG_PROPRIOS } from '../stores/mappers'
 import { NotificacoesAparelho } from '../components/NotificacoesAparelho'
 import { guardarSom, somLigado, tocarSino } from '../lib/avisos'
 
@@ -72,11 +75,10 @@ export function Configuracoes() {
 
   function handleSave(e) {
     e.preventDefault()
-    // Os locais de levantamento gravam-se sozinhos (cartão próprio); a cópia
+    // Locais, entregas e cupões gravam-se sozinhos (cartões próprios); a cópia
     // deles neste formulário é de quando a página abriu e não pode voltar.
     const dados = { ...form }
-    delete dados.locaisLevantamento
-    delete dados.locaisDisponivel
+    for (const campo of CONFIG_PROPRIOS) delete dados[campo]
     update(dados)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -272,6 +274,8 @@ export function Configuracoes() {
       </form>
 
       <LocaisLevantamento />
+      <EntregaTaxa />
+      <Cupoes />
 
       {/* Cardápio global */}
       <div className="bfy-card p-6 mb-5">

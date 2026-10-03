@@ -246,6 +246,9 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
                     {fmtEuro(dados.total)}
                   </span>
                 </div>
+                {(dados.desconto ?? 0) > 0 && (
+                  <Linha rotulo={`Cupão${dados.cupom ? ` ${dados.cupom}` : ''}`} valor={`−${fmtEuro(dados.desconto)}`} />
+                )}
                 <Linha rotulo="Pagamento" valor={dados.pagamento} />
                 {entregaTexto(dados.entrega) && (
                   <Linha rotulo="Receber" valor={entregaTexto(dados.entrega)} />
