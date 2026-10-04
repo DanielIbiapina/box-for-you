@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { IconeBox } from './ui'
 import {
-  fmtEuro, livreSabor, livreExtra, vezes, precoExtra, MINI_BOX_ID, TASTING_BOX_ID,
+  fmtEuro, livreSabor, livreExtra, vezes, precoExtra, MINI_BOX_ID, chaveMini50,
 } from './util'
 
 function saudacao() {
@@ -21,6 +21,8 @@ export function Menu({ cardapio, picks, extras, poupancaBox, onJuntar, onTirar, 
   const cookies = [...(cardapio.cookies ?? [])]
     .sort((a, b) => Number((a.stock ?? 0) <= 0) - Number((b.stock ?? 0) <= 0))
   const fotos = cookies.filter((c) => c.image).map((c) => c.image)
+  // sabores com mini cookies de 50 g em stock (só os cookies normais têm versão mini)
+  const mini50 = cookies.filter((c) => (c.stock50 ?? 0) > 0)
 
   return (
     <main className="loja-menu">
@@ -35,7 +37,11 @@ export function Menu({ cardapio, picks, extras, poupancaBox, onJuntar, onTirar, 
         )}
       </section>
 
-      <section className="loja-wrap-largo" aria-label="Cookies">
+      <section className="loja-wrap-largo" aria-labelledby="titulo-cookies">
+        <h2 id="titulo-cookies" className="loja-h2">Cookies</h2>
+        {cardapio.negocio?.textoCookies && (
+          <p className="loja-h2-sub">{cardapio.negocio.textoCookies}</p>
+        )}
         {cookies.length === 0 ? (
           <p className="text-sm ink-2 py-8">Neste momento não há cookies. Volta daqui a pouco.</p>
         ) : (
@@ -54,31 +60,43 @@ export function Menu({ cardapio, picks, extras, poupancaBox, onJuntar, onTirar, 
         )}
       </section>
 
-      {/* sem preço (0 €), uma caixa especial não está à venda — nem aparece */}
-      {(precoExtra(cardapio, TASTING_BOX_ID) > 0 || precoExtra(cardapio, MINI_BOX_ID) > 0) && (
+      {/* Mini cookies de 50 g: os mesmos sabores, stock próprio, um preço só. Sem preço, não aparecem. */}
+      {(Number(cardapio.mini50?.price) || 0) > 0 && (
+        <section className="loja-wrap-largo loja-mini50" aria-labelledby="titulo-mini50">
+          <h2 id="titulo-mini50" className="loja-h2">Mini cookies</h2>
+          <p className="loja-h2-sub">{cardapio.mini50?.descricao || 'Os mesmos sabores, em tamanho mini: 50 g cada.'}</p>
+          {mini50.length === 0 ? (
+            <p className="text-sm ink-2 py-2">Neste momento não há mini cookies. Volta daqui a pouco.</p>
+          ) : (
+            <div className="cookie-grelha">
+              {mini50.map((c) => {
+                const chave = chaveMini50(c.id)
+                return (
+                  <CookieCard
+                    key={chave}
+                    cookie={{ ...c, id: chave, nome: `${c.nome} · 50 g`, price: cardapio.mini50.price, stock: c.stock50 }}
+                    qty={extras[chave] ?? 0}
+                    livre={livreExtra(cardapio, extras, chave)}
+                    onJuntar={onJuntarExtra}
+                    onTirar={onTirarExtra}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* A Tasting Box foi extinta. Sem preço (0 €), a Mini Box também não aparece. */}
+      {precoExtra(cardapio, MINI_BOX_ID) > 0 && (
       <section className="loja-wrap-largo loja-especiais" aria-labelledby="titulo-especiais">
         <h2 id="titulo-especiais" className="loja-h2">Caixas especiais</h2>
         <div className="especiais-grelha">
-          {precoExtra(cardapio, TASTING_BOX_ID) > 0 && (
-          <Especial
-            id={TASTING_BOX_ID}
-            titulo="Tasting Box"
-            texto={`Um mini de cada um dos ${cardapio.tastingBox.sabores} sabores. Para quem não se decide.`}
-            preco={precoExtra(cardapio, TASTING_BOX_ID)}
-            fotos={fotos.slice(0, 9)}
-            mosaico="tasting"
-            qty={extras[TASTING_BOX_ID] ?? 0}
-            livre={livreExtra(cardapio, extras, TASTING_BOX_ID)}
-            esgotado={(cardapio.tastingBox.stock ?? 0) <= 0}
-            onJuntar={onJuntarExtra}
-            onTirar={onTirarExtra}
-          />
-          )}
           {precoExtra(cardapio, MINI_BOX_ID) > 0 && (
           <Especial
             id={MINI_BOX_ID}
             titulo="Mini Box"
-            texto="Cookies mini sortidos, para petiscar."
+            texto={cardapio.miniBox.descricao || '5 mini cookies de 25 g, para petiscar.'}
             preco={precoExtra(cardapio, MINI_BOX_ID)}
             fotos={fotos.slice(0, 4)}
             mosaico="mini"
@@ -105,7 +123,7 @@ function CookieCard({ cookie, qty, livre, onJuntar, onTirar }) {
   let etiqueta = null
   if (esgotado) etiqueta = <span className="cookie-tag cookie-tag-fim">Esgotado</span>
   else if (livre === 0) etiqueta = <span className="cookie-tag">Levas os últimos</span>
-  else if (pouco) etiqueta = <span className="cookie-tag">{livre === 1 ? 'Só 1!' : `Só ${livre}`}</span>
+  else if (pouco) etiqueta = <span className="cookie-tag">{livre === 1 ? 'Resta 1' : `Restam ${livre}`}</span>
 
   return (
     <div className="cookie-card" data-qty={qty > 0} data-esgotado={esgotado} ref={card}>

@@ -4,6 +4,7 @@ import { fmtEuro, fmtData } from './util'
 import { verPedido } from './api'
 import { MBWAY, MBWAY_COPIA, linkWhatsApp } from './negocio'
 import { etapaAtual, etapasDo, rotuloEtapa, textoParaCliente } from '../lib/etapas'
+import { rotuloHora } from './horarios'
 
 /** De quanto em quanto tempo a página do pedido volta a perguntar como está. */
 const ATUALIZAR_MS = 30000
@@ -31,7 +32,7 @@ function bilheteDe(ref) {
 
 function entregaTexto(e) {
   if (!e?.tipo) return ''
-  const dia = e.data ? fmtData(e.data) : ''
+  const dia = [e.data ? fmtData(e.data) : '', rotuloHora(e.hora)].filter(Boolean).join(' · ')
   if (e.tipo === 'levantar') return ['Levantamento', e.local?.nome, dia, e.local?.morada].filter(Boolean).join(' · ')
   const morada = [e.morada, e.localidade, e.cp].filter(Boolean).join(', ')
   return ['Entrega', dia, morada].filter(Boolean).join(' · ')

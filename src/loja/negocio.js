@@ -9,8 +9,8 @@ export const MBWAY = '926 937 941'
 /** O que vai para a área de transferência (sem espaços, como se marca). */
 export const MBWAY_COPIA = MBWAY.replace(/\s/g, '')
 
-/** WhatsApp da loja (com indicativo, só dígitos). */
-export const WHATSAPP = '351926937941'
+/** WhatsApp da loja (com indicativo, só dígitos) — não é o mesmo número do MB WAY. */
+export const WHATSAPP = '351939826591'
 
 /** Abre conversa com a loja no WhatsApp, já com uma mensagem escrita. */
 export const linkWhatsApp = (texto) =>

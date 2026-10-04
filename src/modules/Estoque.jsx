@@ -9,6 +9,12 @@ import { Modal } from '../components/Modal'
 import { Icon } from '../components/Icon'
 import { SearchInput } from '../components/SearchInput'
 
+/**
+ * A Mini Box da loja e do caixa também tem stock (no mesmo sítio dos cookies
+ * prontos, com o id 'mini-box'). Aparece primeiro na lista de Cookies prontos.
+ */
+const MINI_BOX_STOCK = { id: 'mini-box', nome: 'Mini Box', emoji: '📦', image: '' }
+
 const EMPTY_ING = {
   nome: '', unidade: 'g',
   quantidadeCompra: '', unidadeCompra: 'g', precoCompra: '',
@@ -192,11 +198,6 @@ export function Estoque() {
   const totalMassaKg = cookies.reduce((s, c) => s + (stockMassa[c.id] ?? 0), 0)
   const totalCookies50 = cookies.reduce((s, c) => s + (stockCookies50[c.id] ?? 0), 0)
 
-  // Quantas Tasting Box dá para montar: limitada pelo sabor com menos stock de 50g
-  const saboresAtivos = cookies.filter((c) => c.ativoNoCardapio !== false)
-  const tastingBoxPossiveis = saboresAtivos.length === 0
-    ? 0
-    : Math.min(...saboresAtivos.map((c) => stockCookies50[c.id] ?? 0))
 
   return (
     <div className="bfy-page">
@@ -450,7 +451,7 @@ export function Estoque() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-              {cookies.map((c) => {
+              {[MINI_BOX_STOCK, ...cookies].map((c) => {
                 const qty = stockCookies[c.id] ?? 0
                 const raw = editQty[chaveEdit(c.id, 'cookie')]
                 const low = qty <= 3 && qty > 0
@@ -532,26 +533,10 @@ export function Estoque() {
       {activeTab === 'cookies50' && (
         <>
           <p className="text-sm mb-4 ink-3">
-            Cookies pequenos de 50g. A <strong>Tasting Box</strong> leva 1 de cada sabor ativo no
-            cardápio, e sai deste stock quando é vendida.
+            Mini cookies de 50 g, por sabor. São vendidos na loja online como <strong>Mini cookies</strong>
+            (o preço está em Definições › Cardápio) e saem deste stock a cada pedido.
           </p>
 
-          {/* Quantas caixas dá para montar — limitada pelo sabor com menos stock */}
-          {saboresAtivos.length > 0 && (
-            <div
-              className="rounded-2xl px-4 py-3 mb-4 flex items-center justify-between gap-3"
-              style={{
-                background: tastingBoxPossiveis > 0 ? 'var(--color-accent-soft)' : 'var(--color-warning-soft)',
-                border: `1px solid ${tastingBoxPossiveis > 0 ? 'rgba(154,59,28,0.2)' : 'rgba(181,122,33,0.28)'}`,
-              }}
-            >
-              <span className="text-sm" style={{ color: tastingBoxPossiveis > 0 ? 'var(--color-accent-dark)' : '#7A5214' }}>
-                {tastingBoxPossiveis > 0
-                  ? <>Dá para montar <strong>{tastingBoxPossiveis}</strong> Tasting Box ({saboresAtivos.length} sabores)</>
-                  : <>Falta stock de 50g em pelo menos um sabor para montar uma Tasting Box</>}
-              </span>
-            </div>
-          )}
 
           {cookies.length === 0 ? (
             <div className="bfy-card bfy-empty">

@@ -54,6 +54,21 @@ alter table configuracao add column if not exists loja_entrega_config jsonb not 
 alter table configuracao add column if not exists loja_cupons jsonb not null default '[]'::jsonb;
 alter table pedidos add column if not exists cupom text;
 
+-- Mini cookies de 50 g: cada sabor tem a sua versão pequena, com stock em
+-- estoque(tipo 'cookie50') e um preço único. { "price": 2.5, "descricao": "..." }
+-- Preço 0 = não aparecem na loja. (A Tasting Box foi extinta em out/2026.)
+alter table configuracao add column if not exists loja_mini50 jsonb not null default '{"price": 0}'::jsonb;
+
+-- Texto por baixo do título "Cookies" na loja (editável em Definições).
+alter table configuracao add column if not exists loja_texto_cookies text not null
+  default 'Os nossos cookies individuais têm, em média, 100 g cada.';
+
+-- Horário do levantamento/entrega, por faixas de 1 hora (ex.: 14h–15h).
+-- { "abre": 10, "fecha": 20, "antecedenciaHoras": 2 }: a primeira faixa
+-- possível começa pelo menos `antecedenciaHoras` depois do pedido.
+alter table configuracao add column if not exists loja_horarios jsonb not null
+  default '{"abre": 10, "fecha": 20, "antecedenciaHoras": 2}'::jsonb;
+
 -- Cupões de outubro/2026 — só entram se ainda não houver nenhum cupão.
 update configuracao
    set loja_cupons = '[
@@ -136,10 +151,12 @@ begin
         'emoji',  c.emoji,
         'price',  c.price,
         'image',  c.image,
-        'stock',  floor(coalesce(e.qty, 0))::int
+        'stock',  floor(coalesce(e.qty, 0))::int,
+        'stock50', floor(coalesce(e50.qty, 0))::int
       ) as x
     from cookies_catalogo c
-    left join estoque e on e.tipo = 'cookie' and e.cookie_id = c.id
+    left join estoque e   on e.tipo   = 'cookie'   and e.cookie_id   = c.id
+    left join estoque e50 on e50.tipo = 'cookie50' and e50.cookie_id = c.id
     where c.ativo_no_cardapio
   ) s;
 
@@ -191,21 +208,37 @@ begin
       'instrucoesLevantamento', coalesce(nullif(btrim(v_cfg.loja_instrucoes_levantamento), ''),
         'Combinamos o sítio e a hora contigo por mensagem.'),
       'instrucoesEntrega', coalesce(nullif(btrim(v_cfg.loja_instrucoes_entrega), ''),
-        'Entregamos na morada que indicares. Combinamos o horário contigo.')
+        'Entregamos na morada que indicares. Combinamos o horário contigo.'),
+      'textoCookies', nullif(btrim(coalesce(v_cfg.loja_texto_cookies, '')), '')
+    ),
+    -- faixas de horário: a loja mostra só as que cumprem a antecedência;
+    -- `agora` é a hora de Lisboa no servidor (o relógio do telemóvel pode estar errado)
+    'horarios', jsonb_build_object(
+      'abre', case when (v_cfg.loja_horarios->>'abre') ~ '^\d{1,2}$' then (v_cfg.loja_horarios->>'abre')::int else 10 end,
+      'fecha', case when (v_cfg.loja_horarios->>'fecha') ~ '^\d{1,2}$' then (v_cfg.loja_horarios->>'fecha')::int else 20 end,
+      'antecedenciaHoras', case when (v_cfg.loja_horarios->>'antecedenciaHoras') ~ '^\d+(\.\d+)?$'
+                                then (v_cfg.loja_horarios->>'antecedenciaHoras')::numeric else 2 end,
+      'agora', to_char(now() at time zone 'Europe/Lisbon', 'YYYY-MM-DD"T"HH24:MI:SS')
     ),
     'cookies', v_cookies,
     'box', jsonb_build_object(
       'size',  coalesce((v_cfg.box_config->>'size')::int, 4),
       'price', coalesce((v_cfg.box_config->>'price')::numeric, 12)
     ),
+    'mini50', jsonb_build_object(
+      'price', case when (v_cfg.loja_mini50->>'price') ~ '^\d+(\.\d+)?$' then (v_cfg.loja_mini50->>'price')::numeric else 0 end,
+      'descricao', nullif(btrim(coalesce(v_cfg.loja_mini50->>'descricao', '')), '')
+    ),
     'miniBox', jsonb_build_object(
       'price', coalesce((v_cfg.mini_box_config->>'price')::numeric, 7),
-      'stock', floor(coalesce(v_mini, 0))::int
+      'stock', floor(coalesce(v_mini, 0))::int,
+      'descricao', nullif(btrim(coalesce(v_cfg.mini_box_config->>'descricao', '')), '')
     ),
     'tastingBox', jsonb_build_object(
       'price',   coalesce((v_cfg.tasting_box_config->>'price')::numeric, 16),
       'sabores', v_n_ativos,
-      'stock',   case when v_n_ativos = 0 then 0 else floor(coalesce(v_min50, 0))::int end
+      'stock',   case when v_n_ativos = 0 then 0 else floor(coalesce(v_min50, 0))::int end,
+      'descricao', nullif(btrim(coalesce(v_cfg.tasting_box_config->>'descricao', '')), '')
     )
   );
 end $$;
@@ -265,6 +298,14 @@ declare
   v_d_lat      numeric;
   v_d_lng      numeric;
   v_normal     numeric;
+  v_need50     jsonb := '{}'::jsonb;   -- { cookieId: qty } de mini cookies de 50 g
+  v_m50_price  numeric;
+  v_m50_id     text;
+  v_hora       text;
+  v_h          int;
+  v_abre       int;
+  v_fecha      int;
+  v_antec      numeric;
   v_cupom      text := upper(btrim(coalesce(p->>'cupom', '')));
   v_cupom_obj  jsonb;
   v_desconto   numeric := 0;
@@ -345,6 +386,26 @@ begin
 
   select * into v_cfg from configuracao where id = 'main';
 
+  -- ── hora: faixa de 1 hora, com antecedência mínima (hora de Lisboa) ───────
+  v_abre  := case when (v_cfg.loja_horarios->>'abre') ~ '^\d{1,2}$' then (v_cfg.loja_horarios->>'abre')::int else 10 end;
+  v_fecha := case when (v_cfg.loja_horarios->>'fecha') ~ '^\d{1,2}$' then (v_cfg.loja_horarios->>'fecha')::int else 20 end;
+  v_antec := case when (v_cfg.loja_horarios->>'antecedenciaHoras') ~ '^\d+(\.\d+)?$'
+                  then (v_cfg.loja_horarios->>'antecedenciaHoras')::numeric else 2 end;
+  v_hora  := btrim(coalesce(v_ent->>'hora', ''));
+  if v_hora !~ '^\d{2}:00$' then
+    return jsonb_build_object('ok', false, 'campo', 'hora', 'motivo', 'Escolhe a hora.');
+  end if;
+  v_h := substr(v_hora, 1, 2)::int;
+  if v_h < v_abre or v_h >= v_fecha then
+    return jsonb_build_object('ok', false, 'campo', 'hora', 'motivo', 'Essa hora não está disponível. Escolhe outra.');
+  end if;
+  if v_data::date + make_interval(hours => v_h)
+     < (now() at time zone 'Europe/Lisbon') + v_antec * interval '1 hour' then
+    return jsonb_build_object('ok', false, 'campo', 'hora',
+      'motivo', format('Precisamos de pelo menos %s horas para preparar. Escolhe uma hora mais tarde.',
+                       replace(trim(trailing '.' from trim(trailing '0' from v_antec::text)), '.', ',')));
+  end if;
+
   -- Levantar num dos locais que a dona tem LIGADOS (se ela configurou locais).
   v_locais := coalesce(v_cfg.loja_locais_levantamento, '[]'::jsonb);
   if v_tipo = 'levantar' and jsonb_array_length(v_locais) > 0 then
@@ -369,6 +430,8 @@ begin
   v_entrega := jsonb_strip_nulls(jsonb_build_object(
     'tipo', v_tipo,
     'data', v_data,
+    'hora', v_hora,
+    'horaFim', lpad((v_h + 1)::text, 2, '0') || ':00',
     'local', case when v_local is not null then jsonb_strip_nulls(jsonb_build_object(
                'id', v_local->>'id',
                'nome', left(v_local->>'nome', 80),
@@ -383,10 +446,12 @@ begin
   v_box_price  := coalesce((v_cfg.box_config->>'price')::numeric, 12);
   v_mini_price := coalesce((v_cfg.mini_box_config->>'price')::numeric, 7);
   v_tast_price := coalesce((v_cfg.tasting_box_config->>'price')::numeric, 16);
+  v_m50_price  := case when (v_cfg.loja_mini50->>'price') ~ '^\d+(\.\d+)?$'
+                       then (v_cfg.loja_mini50->>'price')::numeric else 0 end;
 
   -- Preço "normal" de um cookie: o mais comum no cardápio (empate → o mais
-  -- baixo). Na Box só entram cookies até esse preço; os mais caros (ex.:
-  -- "Mini Cookies" a 5 €) vão à parte. Mesma regra de src/loja/util.js.
+  -- baixo). Na Box só entram cookies a esse preço; os outros (ex.:
+  -- "Mini Cookies" a 5 €, um de 50 g) vão à parte. Mesma regra de src/loja/util.js.
   select price into v_normal
     from cookies_catalogo
    where ativo_no_cardapio
@@ -428,6 +493,25 @@ begin
         'preco', v_mini_price, 'customLabel', 'Mini Box'
       );
 
+    elsif v_item.id like 'mini50:%' then
+      -- mini cookie de 50 g de um sabor: preço único, stock em cookie50
+      if coalesce(v_m50_price, 0) <= 0 then
+        return jsonb_build_object('ok', false, 'motivo', 'Os mini cookies não estão disponíveis de momento.');
+      end if;
+      v_m50_id := substr(v_item.id, 8);
+      select * into v_cookie from cookies_catalogo
+       where id = v_m50_id and ativo_no_cardapio;
+      if not found then
+        return jsonb_build_object('ok', false, 'motivo', 'Um dos sabores já não está disponível. Atualiza a página.');
+      end if;
+      v_total  := v_total + v_item.qty * v_m50_price;
+      v_need50 := jsonb_set(v_need50, array[v_m50_id],
+                    to_jsonb(coalesce((v_need50->>v_m50_id)::int, 0) + v_item.qty));
+      v_linhas := v_linhas || jsonb_build_object(
+        'cookieId', v_m50_id, 'qty', v_item.qty, 'preco', v_m50_price,
+        'customLabel', coalesce(nullif(btrim(v_cookie.nome), ''), v_m50_id) || ' · 50 g'
+      );
+
     else
       select * into v_cookie from cookies_catalogo
        where id = v_item.id and ativo_no_cardapio;
@@ -458,7 +542,7 @@ begin
       if not found then
         return jsonb_build_object('ok', false, 'motivo', 'Um dos sabores da caixa já não está disponível. Atualiza a página.');
       end if;
-      if v_normal is not null and v_cookie.price > v_normal then
+      if v_normal is not null and v_cookie.price <> v_normal then
         return jsonb_build_object('ok', false, 'motivo',
           format('%s não entra na Box (vai à parte). Atualiza a página.', coalesce(nullif(btrim(v_cookie.nome), ''), v_par.id)));
       end if;
@@ -567,6 +651,7 @@ begin
   --    não venderem o mesmo último cookie ─────────────────────────────────────
   perform 1 from estoque
    where (tipo = 'cookie'   and cookie_id in (select k from jsonb_object_keys(v_need) k))
+      or (tipo = 'cookie50' and cookie_id in (select k from jsonb_object_keys(v_need50) k))
       or (tipo = 'cookie50' and v_tasting > 0)
    for update;
 
@@ -596,6 +681,25 @@ begin
         'motivo', format('Só temos %s Tasting Box neste momento.', floor(coalesce(v_have, 0))::int));
     end if;
   end if;
+
+  -- mini cookies de 50 g: stock por sabor em cookie50
+  for v_par in select key as id, value::int as qty from jsonb_each_text(v_need50) t(key, value)
+  loop
+    select coalesce(qty, 0) into v_have
+      from estoque where tipo = 'cookie50' and cookie_id = v_par.id;
+    v_have := coalesce(v_have, 0);
+    if v_have < v_par.qty then
+      select coalesce(nullif(short, ''), nome) into v_faltou
+        from cookies_catalogo where id = v_par.id;
+      return jsonb_build_object(
+        'ok', false, 'esgotado', true,
+        'motivo', format('Só temos %s %s de %s neste momento. Ajusta o carrinho.',
+                         floor(v_have)::int,
+                         case when floor(v_have) = 1 then 'mini cookie' else 'mini cookies' end,
+                         coalesce(v_faltou, v_par.id))
+      );
+    end if;
+  end loop;
 
   -- ── cliente: reaproveita pelo telemóvel (só dígitos) ──────────────────────
   select id into v_cliente_id
@@ -654,6 +758,13 @@ begin
      where c.ativo_no_cardapio
     on conflict (tipo, cookie_id) do update set qty = excluded.qty;
   end if;
+
+  -- baixa dos mini cookies de 50 g
+  insert into estoque (tipo, cookie_id, qty)
+  select 'cookie50', t.key, greatest(0, coalesce(e.qty, 0) - t.value::int)
+    from jsonb_each_text(v_need50) t(key, value)
+    left join estoque e on e.tipo = 'cookie50' and e.cookie_id = t.key
+  on conflict (tipo, cookie_id) do update set qty = excluded.qty;
 
   return jsonb_build_object(
     'ok', true,

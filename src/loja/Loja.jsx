@@ -219,6 +219,7 @@ export function Loja() {
       entrega: {
         tipo: form.tipo,
         data: form.data,
+        hora: form.hora,
         local: form.tipo === 'levantar' ? form.local || undefined : undefined,
         morada: form.morada,
         localidade: form.localidade,

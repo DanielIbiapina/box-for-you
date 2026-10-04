@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useCookies } from '../stores/useCookies'
+import { useConfiguracoes } from '../stores/useConfiguracoes'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
 
@@ -11,12 +12,10 @@ const EMPTY_COOKIE_FORM = { nome: '', short: '', emoji: '🍪', price: 3.50, ima
 /** Gestão global de sabores — visível no cardápio da feira, preços, BOX */
 export function CardapioAdmin() {
   const {
-    cookies, boxConfig, miniBoxConfig, tastingBoxConfig,
+    cookies, boxConfig, miniBoxConfig,
     addCookie, updateCookie, removeCookie, toggleCardapio,
-    setBoxConfig, setMiniBoxConfig, setTastingBoxConfig,
+    setBoxConfig, setMiniBoxConfig,
   } = useCookies()
-
-  const ativosNoCardapio = cookies.filter((c) => c.ativoNoCardapio !== false).length
 
   const [modal, setModal] = useState(null)
   const [form, setForm] = useState(EMPTY_COOKIE_FORM)
@@ -166,29 +165,18 @@ export function CardapioAdmin() {
             onChange={(e) => setMiniBoxConfig((p) => ({ ...p, price: parseFloat(e.target.value) || 0 }))}
           />
         </label>
+        <DescricaoLoja
+          valor={miniBoxConfig.descricao}
+          padrao="5 mini cookies de 25 g, para petiscar."
+          onGuardar={(descricao) => setMiniBoxConfig((p) => ({ ...p, descricao }))}
+        />
+        <p className="text-[11px] ink-3">
+          Para aparecer disponível na loja: põe a quantidade em <strong>Estoque › Cookies prontos › Mini Box</strong>.
+        </p>
       </div>
 
-      <div className="bfy-card p-5 space-y-3">
-        <h3 className="text-sm font-bold bfy-card-title">
-          Tasting Box
-        </h3>
-        <p className="text-sm ink-3">
-          Leva <strong>1 cookie de 50g de cada sabor ativo</strong> no cardápio — hoje são{' '}
-          {ativosNoCardapio} sabor{ativosNoCardapio !== 1 ? 'es' : ''}. Não é preciso definir tamanho:
-          acompanha o cardápio. O stock sai de <strong>Estoque › Cookies 50g</strong>.
-        </p>
-        <label className="block max-w-xs">
-          <span className="bfy-label">Preço (€)</span>
-          <input
-            className="bfy-input"
-            type="number"
-            min="0"
-            step="0.5"
-            value={tastingBoxConfig.price}
-            onChange={(e) => setTastingBoxConfig((p) => ({ ...p, price: parseFloat(e.target.value) || 0 }))}
-          />
-        </label>
-      </div>
+      <MiniCookies50 />
+
 
       {modal !== null && (
         <Modal title={modal === 'new' ? 'Novo Cookie' : 'Editar Cookie'} onClose={() => setModal(null)} size="sm">
@@ -230,6 +218,79 @@ export function CardapioAdmin() {
         >
           {toast}
         </div>
+      )}
+    </div>
+  )
+}
+
+/** Descrição que a loja mostra numa caixa especial. Grava ao sair do campo. */
+function DescricaoLoja({ valor, padrao, onGuardar }) {
+  const [texto, setTexto] = useState(valor ?? '')
+  return (
+    <label className="block">
+      <span className="bfy-label">Descrição na loja</span>
+      <textarea
+        className="bfy-input"
+        rows={2}
+        value={texto}
+        placeholder={padrao}
+        onChange={(e) => setTexto(e.target.value)}
+        onBlur={() => { if ((valor ?? '') !== texto.trim()) onGuardar(texto.trim()) }}
+      />
+      <span className="text-[11px] mt-1 block ink-3">Vazio = “{padrao}”</span>
+    </label>
+  )
+}
+
+/**
+ * Mini cookies de 50 g na loja: os mesmos sabores, em pequeno, a um preço só.
+ * O stock é por sabor, em Estoque › Cookies 50g. Preço 0 € = não aparecem.
+ */
+function MiniCookies50() {
+  const { config, update } = useConfiguracoes()
+  const mini50 = config.mini50 ?? {}
+  const [preco, setPreco] = useState(mini50.price != null ? String(mini50.price) : '')
+  const disponivel = config.mini50Disponivel !== false
+
+  function guardarPreco() {
+    const p = parseFloat(String(preco).replace(',', '.'))
+    const valor = Number.isFinite(p) && p > 0 ? p : 0
+    if (valor !== (Number(mini50.price) || 0)) update({ mini50: { ...mini50, price: valor } })
+    setPreco(valor ? String(valor) : '')
+  }
+
+  return (
+    <div className="bfy-card p-5 space-y-3">
+      <h3 className="text-sm font-bold bfy-card-title">Mini cookies (50 g)</h3>
+      <p className="text-sm ink-3">
+        Cada sabor também em 50 g. Na loja aparecem os sabores com stock em{' '}
+        <strong>Estoque › Cookies 50g</strong>, todos ao mesmo preço.
+      </p>
+      {!disponivel ? (
+        <p className="bfy-sunk p-3 text-sm ink-2">
+          Para vender mini cookies na loja, corre o <code>supabase/loja.sql</code> atualizado no Supabase.
+        </p>
+      ) : (
+        <>
+          <label className="block max-w-xs">
+            <span className="bfy-label">Preço de cada mini cookie (€)</span>
+            <input
+              className="bfy-input"
+              inputMode="decimal"
+              placeholder="0,00"
+              value={preco}
+              onChange={(e) => setPreco(e.target.value)}
+              onBlur={guardarPreco}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+            />
+          </label>
+          <DescricaoLoja
+            valor={mini50.descricao}
+            padrao="Os mesmos sabores, em tamanho mini: 50 g cada."
+            onGuardar={(descricao) => update({ mini50: { ...mini50, descricao } })}
+          />
+          <p className="text-[11px] ink-3">Com preço 0 €, os mini cookies não aparecem na loja.</p>
+        </>
       )}
     </div>
   )

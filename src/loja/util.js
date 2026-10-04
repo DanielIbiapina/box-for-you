@@ -3,7 +3,20 @@ export const fmtEuro = (v) =>
 
 export const MINI_BOX_ID = 'mini-box'
 export const TASTING_BOX_ID = 'tasting-box'
-export const EXTRAS = [TASTING_BOX_ID, MINI_BOX_ID]
+// A Tasting Box foi extinta (out/2026): a loja só vende a Mini Box como caixa especial.
+export const EXTRAS = [MINI_BOX_ID]
+
+/**
+ * Mini cookies de 50 g: cada sabor tem a sua versão pequena, com stock próprio
+ * (Estoque › Cookies 50g) e um preço único. No saco vivem junto das caixas
+ * especiais (`extras`), com a chave "mini50:<sabor>".
+ */
+export const MINI50 = 'mini50:'
+export const ehMini50 = (id) => String(id).startsWith(MINI50)
+export const chaveMini50 = (cookieId) => `${MINI50}${cookieId}`
+const saborMini50 = (id) => String(id).slice(MINI50.length)
+/** As chaves do saco que a loja ainda vende (Mini Box e mini cookies de 50 g). */
+export const chavesExtras = (extras) => Object.keys(extras ?? {}).filter((id) => EXTRAS.includes(id) || ehMini50(id))
 
 export function findCookie(cardapio, id) {
   return cardapio?.cookies?.find((c) => c.id === id) ?? null
@@ -31,15 +44,19 @@ export function livreSabor(cookie, picks) {
 export function livreExtra(cardapio, extras, id) {
   // sem preço (0 €) não está à venda — nunca sair de graça por engano
   if (!(precoExtra(cardapio, id) > 0)) return 0
-  const stock = id === MINI_BOX_ID ? cardapio?.miniBox?.stock : cardapio?.tastingBox?.stock
+  let stock
+  if (ehMini50(id)) stock = findCookie(cardapio, saborMini50(id))?.stock50
+  else stock = id === MINI_BOX_ID ? cardapio?.miniBox?.stock : cardapio?.tastingBox?.stock
   return Math.max(0, (stock ?? 0) - (extras[id] ?? 0))
 }
 
 export function precoExtra(cardapio, id) {
+  if (ehMini50(id)) return Number(cardapio?.mini50?.price) || 0
   return (id === MINI_BOX_ID ? cardapio?.miniBox?.price : cardapio?.tastingBox?.price) ?? 0
 }
 
-export function nomeExtra(id) {
+export function nomeExtra(id, cardapio) {
+  if (ehMini50(id)) return `${findCookie(cardapio, saborMini50(id))?.nome ?? 'Mini cookie'} · 50 g`
   return id === MINI_BOX_ID ? 'Mini Box' : 'Tasting Box'
 }
 
@@ -68,12 +85,13 @@ export function precoNormal(cardapio) {
 }
 
 /**
- * Na Box entram os cookies de preço normal. Os mais caros (ex.: "Mini Cookies"
- * a 5 €) vão sempre à parte, pelo seu preço — senão saíam a preço de Box.
+ * Na Box só entram os cookies normais (100 g, ao preço normal). Os que custam
+ * outra coisa — mais caros (ex.: "Mini Cookies" a 5 €) ou mais baratos (ex.:
+ * um cookie de 50 g) — vão sempre à parte, pelo seu preço.
  */
 export function entraNaBox(cardapio, id, normal = precoNormal(cardapio)) {
   const c = findCookie(cardapio, id)
-  return Boolean(c) && (Number(c.price) || 0) <= normal
+  return Boolean(c) && Math.abs((Number(c.price) || 0) - normal) < 0.005
 }
 
 /** Arruma a escolha: primeiro os que podem ir na Box (por ordem de toque), depois os que vão à parte. */
@@ -150,19 +168,23 @@ export function resumoPedido(picks, extras, cardapio) {
     })
   }
 
-  for (const id of EXTRAS) {
+  // mini cookies de 50 g primeiro (são cookies), a Mini Box no fim
+  const chaves = chavesExtras(extras).sort((a, b) => Number(ehMini50(b)) - Number(ehMini50(a)))
+  for (const id of chaves) {
     const qty = extras[id] ?? 0
     if (!qty) continue
+    const preco = precoExtra(cardapio, id)
     linhas.push({
-      key: id, tipo: 'extra', id, nome: nomeExtra(id),
-      detalhe: id === TASTING_BOX_ID
-        ? `1 mini de cada um dos ${cardapio.tastingBox.sabores} sabores`
-        : 'cookies mini sortidos',
-      qty, subtotal: qty * precoExtra(cardapio, id),
+      key: id, tipo: 'extra', id, nome: nomeExtra(id, cardapio),
+      image: ehMini50(id) ? findCookie(cardapio, saborMini50(id))?.image : undefined,
+      detalhe: ehMini50(id)
+        ? `${fmtEuro(preco)} cada`
+        : cardapio.miniBox?.descricao || '5 mini cookies de 25 g',
+      qty, subtotal: qty * preco,
     })
   }
 
-  const nExtras = EXTRAS.reduce((s, id) => s + (extras[id] ?? 0), 0)
+  const nExtras = chaves.reduce((s, id) => s + (extras[id] ?? 0), 0)
   return {
     ...g,
     linhas,
@@ -176,7 +198,8 @@ export function resumoPedido(picks, extras, cardapio) {
 export function payloadPedido(picks, extras, cardapio) {
   const g = agrupar(picks, cardapio)
   const itens = Object.entries(g.avulsos).map(([id, qty]) => ({ id, qty }))
-  for (const id of EXTRAS) {
+  // "mini-box" e "mini50:<sabor>" — o servidor reconhece os dois
+  for (const id of chavesExtras(extras)) {
     if ((extras[id] ?? 0) > 0) itens.push({ id, qty: extras[id] })
   }
   return { itens, caixas: g.caixas.map((c) => c.counts) }
@@ -199,7 +222,7 @@ export function clampEscolha(cardapio, picks, extras) {
     nextPicks.push(id)
   }
   const nextExtras = {}
-  for (const id of EXTRAS) {
+  for (const id of chavesExtras(extras)) {
     const n = Math.min(extras?.[id] ?? 0, livreExtra(cardapio, {}, id))
     if (n > 0) nextExtras[id] = n
   }

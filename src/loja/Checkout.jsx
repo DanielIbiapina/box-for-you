@@ -4,6 +4,7 @@ import { fmtEuro, fmtData, proximosDias, hojeIso, findCookie } from './util'
 import { gravarContacto, lerContacto } from './storage'
 import { toquePasso } from './sensacao'
 import { localizar, distanciaKm, taxaPara } from './geo'
+import { faixasDoDia, desvioRelogio, rotuloHora } from './horarios'
 import { validarCupom } from './api'
 
 const RECEBER = [
@@ -18,7 +19,7 @@ const PAGAMENTOS = [
 
 /** Para onde levar a pessoa quando o servidor recusa um campo. */
 const PASSO_DO_CAMPO = {
-  entrega: 'receber', local: 'local', data: 'quando', morada: 'morada', localidade: 'morada',
+  entrega: 'receber', local: 'local', data: 'quando', hora: 'quando', morada: 'morada', localidade: 'morada',
   nome: 'contacto', telefone: 'contacto', pagamento: 'pagar', cupom: 'confirmar',
 }
 
@@ -63,7 +64,7 @@ export function Checkout({
       ...inicial,
       tipo: inicial.tipo === 'levantar' && semLev ? '' : inicial.tipo,
       local: ls?.some((l) => l.id === inicial.local) ? inicial.local : '',
-      data: '', pagamento: '', notas: '',
+      data: '', hora: '', pagamento: '', notas: '',
     }
   })
   const [passo, setPasso] = useState('pedido')
@@ -78,6 +79,12 @@ export function Checkout({
   const [geo, setGeo] = useState(null)
   /** Cupão aplicado: { codigo, percent } */
   const [cupom, setCupom] = useState(null)
+  // Faixas de horário: só os dias que ainda têm alguma faixa possível
+  const horarios = cardapio?.horarios
+  const [desvio] = useState(() => desvioRelogio(cardapio?.horarios))
+  const faixas = faixasDoDia(form.data, horarios, desvio)
+  const diasComHora = dias.filter((d) => faixasDoDia(d.iso, horarios, desvio).length > 0)
+  const horaValida = Boolean(form.hora) && faixas.some((f) => f.hora === form.hora)
   const titulo = useRef(null)
   const corpo = useRef(null)
   const timer = useRef(null)
@@ -192,6 +199,7 @@ export function Checkout({
       return [escolheLocal ? 'local' : 'receber', 'Escolhe onde vens buscar.']
     }
     if (!form.data || form.data < hoje) return ['quando', 'Escolhe o dia em que queres os cookies.']
+    if (!horaValida) return ['quando', 'Escolhe a hora (essa já não dá tempo de preparar).']
     if (form.tipo === 'entrega' && semMorada()) return ['morada', semMorada()]
     if (semContacto()) return ['contacto', semContacto()]
     if (!form.pagamento) return ['pagar', 'Escolhe como preferes pagar.']
@@ -209,10 +217,15 @@ export function Checkout({
     setForm((f) => ({ ...f, local: id }))
     depois('quando')
   }
+  /** O dia não avança sozinho: a seguir escolhe-se a faixa de horário. */
   function escolherDia(iso) {
     toquePasso()
     setOutroDia(false)
-    setForm((f) => ({ ...f, data: iso }))
+    setForm((f) => ({ ...f, data: iso, hora: '' }))
+  }
+  function escolherHora(hora) {
+    toquePasso()
+    setForm((f) => ({ ...f, hora }))
     depois(form.tipo === 'entrega' ? 'morada' : 'contacto')
   }
   function escolherPagamento(p) {
@@ -235,6 +248,7 @@ export function Checkout({
     }
     if (passo === 'quando') {
       if (!form.data || form.data < hoje) return setErro('Escolhe o dia em que queres os cookies.')
+      if (!horaValida) return setErro('Escolhe a hora.')
       return irPara(form.tipo === 'entrega' ? 'morada' : 'contacto')
     }
     if (passo === 'morada') {
@@ -298,7 +312,7 @@ export function Checkout({
   if (passo === 'pedido') cta = { rotulo: `Continuar · ${fmtEuro(resumo.total)}`, off: resumo.linhas.length === 0 }
   else if (passo === 'receber' && form.tipo) cta = { rotulo: 'Continuar' }
   else if (passo === 'local' && localEscolhido) cta = { rotulo: 'Continuar' }
-  else if (passo === 'quando' && form.data) cta = { rotulo: 'Continuar' }
+  else if (passo === 'quando' && form.data && horaValida) cta = { rotulo: 'Continuar' }
   else if (passo === 'morada' && geoAtual?.estado === 'a-ver') cta = { rotulo: 'A calcular a distância…', off: true }
   else if (passo === 'morada' || passo === 'contacto') cta = { rotulo: 'Continuar' }
   else if (passo === 'pagar' && form.pagamento) cta = { rotulo: 'Continuar' }
@@ -433,7 +447,7 @@ export function Checkout({
                     : `O dia em que vens buscar${localEscolhido ? ` · ${localEscolhido.nome}` : ''}.`}
                 </p>
                 <div className="dias">
-                  {dias.map((d) => (
+                  {diasComHora.map((d) => (
                     <button
                       key={d.iso}
                       type="button"
@@ -446,12 +460,12 @@ export function Checkout({
                     </button>
                   ))}
                 </div>
-                {outroDia || (form.data && !dias.some((d) => d.iso === form.data)) ? (
+                {outroDia || (form.data && !diasComHora.some((d) => d.iso === form.data)) ? (
                   <label className="block mt-4">
                     <span className="bfy-label">Outro dia</span>
                     <input
                       className="bfy-input" type="date" min={hoje}
-                      value={form.data} onChange={set('data')}
+                      value={form.data} onChange={(e) => setForm((f) => ({ ...f, data: e.target.value, hora: '' }))}
                     />
                   </label>
                 ) : (
@@ -459,6 +473,27 @@ export function Checkout({
                     Outro dia…
                   </button>
                 )}
+
+                {form.data && (faixas.length > 0 ? (
+                  <div className="horas-bloco">
+                    <p className="bfy-label">A que horas?</p>
+                    <div className="horas" role="group" aria-label="Faixa de horário">
+                      {faixas.map((f) => (
+                        <button
+                          key={f.hora}
+                          type="button"
+                          className="hora"
+                          aria-pressed={form.hora === f.hora}
+                          onClick={() => escolherHora(f.hora)}
+                        >
+                          {f.rotulo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="passo-info">Nesse dia já não há horas disponíveis. Escolhe outro dia.</p>
+                ))}
               </>
             )}
 
@@ -768,7 +803,7 @@ function Confirmar({
         </ResumoLinha>
         <ResumoLinha
           icone={form.tipo === 'entrega' ? '🛵' : '🛍️'}
-          titulo={`${form.tipo === 'entrega' ? 'Entrega' : 'Levantar'} · ${fmtData(form.data)}`}
+          titulo={`${form.tipo === 'entrega' ? 'Entrega' : 'Levantar'} · ${fmtData(form.data)}${form.hora ? ` · ${rotuloHora(form.hora)}` : ''}`}
           detalhe={onde}
           onMudar={() => irPara('receber')}
         />

@@ -85,9 +85,12 @@ function pedidoSummary(p, cookies) {
 
 function entregaLabel(e) {
   if (!e?.tipo) return ''
-  const data = e.data
+  const dia = e.data
     ? parseDate(e.data).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' })
     : ''
+  // faixa de horário escolhida na loja (ex.: 16h–17h)
+  const hora = e.hora ? `${Number(e.hora.slice(0, 2))}h–${Number(e.hora.slice(0, 2)) + 1}h` : ''
+  const data = [dia, hora].filter(Boolean).join(' ')
   if (e.tipo === 'levantar') return ['Levantar', e.local?.nome, data].filter(Boolean).join(' · ')
   const morada = [e.morada, e.localidade, e.cp].filter(Boolean).join(', ')
   return ['Entrega', data, morada].filter(Boolean).join(' · ')

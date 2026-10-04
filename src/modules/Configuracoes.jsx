@@ -9,6 +9,7 @@ import { Modal } from '../components/Modal'
 import { CardapioAdmin } from '../components/CardapioAdmin'
 import { LocaisLevantamento } from '../components/LocaisLevantamento'
 import { EntregaTaxa } from '../components/EntregaTaxa'
+import { Horarios } from '../components/Horarios'
 import { Cupoes } from '../components/Cupoes'
 import { CONFIG_PROPRIOS } from '../stores/mappers'
 import { NotificacoesAparelho } from '../components/NotificacoesAparelho'
@@ -79,6 +80,8 @@ export function Configuracoes() {
     // deles neste formulário é de quando a página abriu e não pode voltar.
     const dados = { ...form }
     for (const campo of CONFIG_PROPRIOS) delete dados[campo]
+    // antes de correr o loja.sql atualizado a coluna não existe — não a mandar
+    if (config.textoCookiesDisponivel === false) delete dados.textoCookies
     update(dados)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -248,6 +251,19 @@ export function Configuracoes() {
           </div>
         </div>
 
+        {config.textoCookiesDisponivel !== false && (
+          <Field label="Texto sobre os cookies (loja online)">
+            <textarea
+              className="bfy-input"
+              rows={2}
+              value={form.textoCookies ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, textoCookies: e.target.value }))}
+              placeholder="Ex.: Os nossos cookies individuais têm, em média, 100 g cada."
+            />
+            <span className="text-[11px] mt-1 block ink-3">Aparece por baixo do título “Cookies”, antes dos sabores.</span>
+          </Field>
+        )}
+
         <Field label="Instruções de levantamento (loja online)">
           <textarea
             className="bfy-input"
@@ -274,6 +290,7 @@ export function Configuracoes() {
       </form>
 
       <LocaisLevantamento />
+      <Horarios />
       <EntregaTaxa />
       <Cupoes />
 

@@ -128,6 +128,15 @@ export function configToApp(row) {
     // [{ codigo, percent, validoAte, ativo }]
     cupons: Array.isArray(row?.loja_cupons) ? row.loja_cupons : [],
     cuponsDisponivel: !row || 'loja_cupons' in row,
+    // texto por baixo de "Cookies" na loja (ex.: o peso)
+    textoCookies: row?.loja_texto_cookies ?? '',
+    textoCookiesDisponivel: !row || 'loja_texto_cookies' in row,
+    // { abre, fecha, antecedenciaHoras } — faixas de 1 hora para levantar/receber
+    horarios: row?.loja_horarios && typeof row.loja_horarios === 'object' ? row.loja_horarios : {},
+    horariosDisponivel: !row || 'loja_horarios' in row,
+    // { price, descricao } — mini cookies de 50 g (preço único; 0 = não aparecem)
+    mini50: row?.loja_mini50 && typeof row.loja_mini50 === 'object' ? row.loja_mini50 : {},
+    mini50Disponivel: !row || 'loja_mini50' in row,
   }
 }
 
@@ -136,6 +145,9 @@ export const CONFIG_PROPRIOS = [
   'locaisLevantamento', 'locaisDisponivel',
   'entregaConfig', 'entregaDisponivel',
   'cupons', 'cuponsDisponivel',
+  'horarios', 'horariosDisponivel',
+  'mini50', 'mini50Disponivel',
+  'textoCookiesDisponivel',
 ]
 export function configToRow(patch) {
   const r = {}
@@ -149,5 +161,8 @@ export function configToRow(patch) {
   if (patch.locaisLevantamento !== undefined) r.loja_locais_levantamento = patch.locaisLevantamento
   if (patch.entregaConfig !== undefined) r.loja_entrega_config = patch.entregaConfig
   if (patch.cupons !== undefined) r.loja_cupons = patch.cupons
+  if (patch.textoCookies !== undefined) r.loja_texto_cookies = patch.textoCookies
+  if (patch.horarios !== undefined) r.loja_horarios = patch.horarios
+  if (patch.mini50 !== undefined) r.loja_mini50 = patch.mini50
   return r
 }
