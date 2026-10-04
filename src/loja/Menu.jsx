@@ -54,9 +54,12 @@ export function Menu({ cardapio, picks, extras, poupancaBox, onJuntar, onTirar, 
         )}
       </section>
 
+      {/* sem preço (0 €), uma caixa especial não está à venda — nem aparece */}
+      {(precoExtra(cardapio, TASTING_BOX_ID) > 0 || precoExtra(cardapio, MINI_BOX_ID) > 0) && (
       <section className="loja-wrap-largo loja-especiais" aria-labelledby="titulo-especiais">
         <h2 id="titulo-especiais" className="loja-h2">Caixas especiais</h2>
         <div className="especiais-grelha">
+          {precoExtra(cardapio, TASTING_BOX_ID) > 0 && (
           <Especial
             id={TASTING_BOX_ID}
             titulo="Tasting Box"
@@ -70,6 +73,8 @@ export function Menu({ cardapio, picks, extras, poupancaBox, onJuntar, onTirar, 
             onJuntar={onJuntarExtra}
             onTirar={onTirarExtra}
           />
+          )}
+          {precoExtra(cardapio, MINI_BOX_ID) > 0 && (
           <Especial
             id={MINI_BOX_ID}
             titulo="Mini Box"
@@ -83,8 +88,10 @@ export function Menu({ cardapio, picks, extras, poupancaBox, onJuntar, onTirar, 
             onJuntar={onJuntarExtra}
             onTirar={onTirarExtra}
           />
+          )}
         </div>
       </section>
+      )}
     </main>
   )
 }

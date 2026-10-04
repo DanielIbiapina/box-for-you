@@ -29,6 +29,8 @@ export function livreSabor(cookie, picks) {
 }
 
 export function livreExtra(cardapio, extras, id) {
+  // sem preço (0 €) não está à venda — nunca sair de graça por engano
+  if (!(precoExtra(cardapio, id) > 0)) return 0
   const stock = id === MINI_BOX_ID ? cardapio?.miniBox?.stock : cardapio?.tastingBox?.stock
   return Math.max(0, (stock ?? 0) - (extras[id] ?? 0))
 }
@@ -49,19 +51,58 @@ export function resumoCaixa(counts, cardapio) {
 }
 
 /**
- * A escolha é uma lista de sabores pela ordem em que foram tocados.
- * A cada `size`, fecha-se uma Box: é assim que vai embalada e sai mais em
+ * O preço "normal" de um cookie: o mais comum no cardápio (em empate, o mais
+ * baixo). O servidor usa a mesma regra (supabase/loja.sql).
+ */
+export function precoNormal(cardapio) {
+  const conta = new Map()
+  for (const c of cardapio?.cookies ?? []) {
+    const p = Number(c.price) || 0
+    conta.set(p, (conta.get(p) ?? 0) + 1)
+  }
+  let melhor = null
+  for (const [p, n] of conta) {
+    if (!melhor || n > melhor.n || (n === melhor.n && p < melhor.p)) melhor = { p, n }
+  }
+  return melhor?.p ?? 0
+}
+
+/**
+ * Na Box entram os cookies de preço normal. Os mais caros (ex.: "Mini Cookies"
+ * a 5 €) vão sempre à parte, pelo seu preço — senão saíam a preço de Box.
+ */
+export function entraNaBox(cardapio, id, normal = precoNormal(cardapio)) {
+  const c = findCookie(cardapio, id)
+  return Boolean(c) && (Number(c.price) || 0) <= normal
+}
+
+/** Arruma a escolha: primeiro os que podem ir na Box (por ordem de toque), depois os que vão à parte. */
+export function arrumarEscolha(picks, cardapio) {
+  const normal = precoNormal(cardapio)
+  const naBox = []
+  const fora = []
+  for (const id of picks ?? []) (entraNaBox(cardapio, id, normal) ? naBox : fora).push(id)
+  return [...naBox, ...fora]
+}
+
+/**
+ * A escolha é uma lista de sabores pela ordem em que foram tocados (arrumada
+ * por arrumarEscolha: os que vão à parte ficam no fim). A cada `size` cookies
+ * de preço normal fecha-se uma Box: é assim que vai embalada e sai mais em
  * conta. Só vira Box se for mesmo mais barato; o que sobra vai avulso.
  */
 export function agrupar(picks, cardapio) {
   const size = cardapio?.box?.size ?? 4
   const precoBox = cardapio?.box?.price ?? 0
   const preco = (id) => findCookie(cardapio, id)?.price ?? 0
+  const normal = precoNormal(cardapio)
+  const naBox = picks.filter((id) => entraNaBox(cardapio, id, normal))
+  const fora = picks.filter((id) => !entraNaBox(cardapio, id, normal))
   const caixas = []
   const soltos = []
-  const nCheias = Math.floor(picks.length / size)
+  const nCheias = Math.floor(naBox.length / size)
   for (let i = 0; i < nCheias; i++) {
-    const ids = picks.slice(i * size, (i + 1) * size)
+    const ids = naBox.slice(i * size, (i + 1) * size)
     const soma = ids.reduce((s, id) => s + preco(id), 0)
     if (precoBox > 0 && precoBox < soma) {
       caixas.push({ inicio: i * size, ids, counts: contar(ids), poupa: soma - precoBox })
@@ -69,22 +110,22 @@ export function agrupar(picks, cardapio) {
       soltos.push(...ids)
     }
   }
-  const resto = picks.slice(nCheias * size)
+  const resto = naBox.slice(nCheias * size)
   return {
     size,
     caixas,
     resto,
-    avulsos: contar([...soltos, ...resto]),
+    fora,
+    avulsos: contar([...soltos, ...resto, ...fora]),
     poupanca: caixas.reduce((s, c) => s + c.poupa, 0),
   }
 }
 
-/** Quanto se poupa, em média, por Box — para a promessa "a cada 4, poupas X". */
+/** Quanto se poupa por Box com cookies de preço normal — a promessa "a cada 4, poupas X". */
 export function poupancaPorBox(cardapio) {
-  const cs = (cardapio?.cookies ?? []).filter((c) => (c.stock ?? 0) > 0)
-  if (!cs.length || !cardapio?.box) return 0
-  const medio = cs.reduce((s, c) => s + (c.price ?? 0), 0) / cs.length
-  return Math.max(0, Math.round((medio * cardapio.box.size - cardapio.box.price) * 100) / 100)
+  if (!cardapio?.box || !(cardapio.cookies ?? []).length) return 0
+  const normal = precoNormal(cardapio)
+  return Math.max(0, Math.round((normal * cardapio.box.size - cardapio.box.price) * 100) / 100)
 }
 
 /** Tudo o que o saco precisa de mostrar: linhas, totais, poupança. */
@@ -162,7 +203,8 @@ export function clampEscolha(cardapio, picks, extras) {
     const n = Math.min(extras?.[id] ?? 0, livreExtra(cardapio, {}, id))
     if (n > 0) nextExtras[id] = n
   }
-  return { picks: nextPicks, extras: nextExtras }
+  // preços podem ter mudado desde que o carrinho foi guardado
+  return { picks: arrumarEscolha(nextPicks, cardapio), extras: nextExtras }
 }
 
 function isoLocal(d) {

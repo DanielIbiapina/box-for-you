@@ -264,6 +264,7 @@ declare
   v_o_lng      numeric;
   v_d_lat      numeric;
   v_d_lng      numeric;
+  v_normal     numeric;
   v_cupom      text := upper(btrim(coalesce(p->>'cupom', '')));
   v_cupom_obj  jsonb;
   v_desconto   numeric := 0;
@@ -383,6 +384,16 @@ begin
   v_mini_price := coalesce((v_cfg.mini_box_config->>'price')::numeric, 7);
   v_tast_price := coalesce((v_cfg.tasting_box_config->>'price')::numeric, 16);
 
+  -- Preço "normal" de um cookie: o mais comum no cardápio (empate → o mais
+  -- baixo). Na Box só entram cookies até esse preço; os mais caros (ex.:
+  -- "Mini Cookies" a 5 €) vão à parte. Mesma regra de src/loja/util.js.
+  select price into v_normal
+    from cookies_catalogo
+   where ativo_no_cardapio
+   group by price
+   order by count(*) desc, price asc
+   limit 1;
+
   -- ── itens avulsos ────────────────────────────────────────────────────────
   for v_item in
     select e->>'id' as id, floor(coalesce((e->>'qty')::numeric, 0))::int as qty
@@ -395,6 +406,9 @@ begin
     v_unidades := v_unidades + v_item.qty;
 
     if v_item.id = 'tasting-box' then
+      if coalesce(v_tast_price, 0) <= 0 then
+        return jsonb_build_object('ok', false, 'motivo', 'A Tasting Box não está disponível de momento.');
+      end if;
       v_tasting := v_tasting + v_item.qty;
       v_total   := v_total + v_item.qty * v_tast_price;
       v_linhas  := v_linhas || jsonb_build_object(
@@ -403,6 +417,9 @@ begin
       );
 
     elsif v_item.id = 'mini-box' then
+      if coalesce(v_mini_price, 0) <= 0 then
+        return jsonb_build_object('ok', false, 'motivo', 'A Mini Box não está disponível de momento.');
+      end if;
       v_total  := v_total + v_item.qty * v_mini_price;
       v_need   := jsonb_set(v_need, array['mini-box'],
                     to_jsonb(coalesce((v_need->>'mini-box')::int, 0) + v_item.qty));
@@ -440,6 +457,10 @@ begin
        where id = v_par.id and ativo_no_cardapio;
       if not found then
         return jsonb_build_object('ok', false, 'motivo', 'Um dos sabores da caixa já não está disponível. Atualiza a página.');
+      end if;
+      if v_normal is not null and v_cookie.price > v_normal then
+        return jsonb_build_object('ok', false, 'motivo',
+          format('%s não entra na Box (vai à parte). Atualiza a página.', coalesce(nullif(btrim(v_cookie.nome), ''), v_par.id)));
       end if;
       v_soma   := v_soma + v_par.qty;
       v_resumo := v_resumo || case when v_resumo = '' then '' else ', ' end

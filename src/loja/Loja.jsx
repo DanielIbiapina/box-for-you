@@ -8,7 +8,7 @@ import { linkWhatsApp } from './negocio'
 import { criarPedido, fetchCardapio, isSupabaseConfigured } from './api'
 import {
   findCookie, livreSabor, livreExtra, contar, agrupar,
-  resumoPedido, payloadPedido, clampEscolha, poupancaPorBox,
+  resumoPedido, payloadPedido, clampEscolha, poupancaPorBox, arrumarEscolha, entraNaBox,
 } from './util'
 import {
   lerCarrinho, gravarCarrinho, limparCarrinho,
@@ -94,18 +94,29 @@ export function Loja() {
       abanar(cardEl)
       return
     }
-    const proximo = [...picks, id]
+    // os mais caros (ex.: Mini Cookies) ficam no fim e não contam para a Box
+    const proximo = arrumarEscolha([...picks, id], cardapio)
     const size = cardapio.box.size
-    const fechouAgora = agrupar(proximo, cardapio).caixas.length > agrupar(picks, cardapio).caixas.length
-    if (fechouAgora) {
+    const antes = agrupar(picks, cardapio)
+    const depois = agrupar(proximo, cardapio)
+    if (!entraNaBox(cardapio, id)) {
+      toqueJuntar(size)
+      setFechou(null)
+      saltar(fotoEl)
+      voar(fotoEl, document.querySelector('[data-alvo="total"]'))
+      setPicks(proximo)
+      return
+    }
+    const nNaBox = proximo.length - depois.fora.length
+    if (depois.caixas.length > antes.caixas.length) {
       toqueBoxFechada()
-      setFechou({ ids: proximo.slice(-size), n: proximo.length })
+      setFechou({ ids: depois.caixas[depois.caixas.length - 1].ids, n: nNaBox })
     } else {
-      toqueJuntar(((proximo.length - 1) % size) + 1)
+      toqueJuntar(((nNaBox - 1) % size) + 1)
       setFechou(null)
     }
     saltar(fotoEl)
-    voar(fotoEl, document.querySelector(`[data-slot="${(proximo.length - 1) % size}"]`))
+    voar(fotoEl, document.querySelector(`[data-slot="${(nNaBox - 1) % size}"]`))
     setPicks(proximo)
   }
 
@@ -174,7 +185,8 @@ export function Loja() {
     }
     const size = cardapio.box.size
     const ids = picks.slice(inicio, inicio + size)
-    const cheias = Math.floor(picks.length / size) * size
+    const nNaBox = picks.filter((x) => entraNaBox(cardapio, x)).length
+    const cheias = Math.floor(nNaBox / size) * size
     toqueBoxFechada()
     setFechou(null)
     setPicks([...picks.slice(0, cheias), ...ids, ...picks.slice(cheias)])
