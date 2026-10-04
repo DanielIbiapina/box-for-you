@@ -57,7 +57,7 @@ alter table pedidos add column if not exists cupom text;
 -- Mini cookies de 50 g: cada sabor tem a sua versão pequena, com stock em
 -- estoque(tipo 'cookie50') e um preço único. { "price": 2.5, "descricao": "..." }
 -- Preço 0 = não aparecem na loja. (A Tasting Box foi extinta em out/2026.)
-alter table configuracao add column if not exists loja_mini50 jsonb not null default '{"price": 0}'::jsonb;
+alter table configuracao add column if not exists loja_mini50 jsonb not null default '{"price": 2.5}'::jsonb;
 
 -- Texto por baixo do título "Cookies" na loja (editável em Definições).
 alter table configuracao add column if not exists loja_texto_cookies text not null

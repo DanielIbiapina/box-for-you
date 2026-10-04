@@ -179,7 +179,7 @@ export function resumoPedido(picks, extras, cardapio) {
       image: ehMini50(id) ? findCookie(cardapio, saborMini50(id))?.image : undefined,
       detalhe: ehMini50(id)
         ? `${fmtEuro(preco)} cada`
-        : cardapio.miniBox?.descricao || '5 mini cookies de 25 g',
+        : cardapio.miniBox?.descricao || '5 mini cookies sortidos de 25 g',
       qty, subtotal: qty * preco,
     })
   }

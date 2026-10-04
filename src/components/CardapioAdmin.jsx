@@ -167,7 +167,7 @@ export function CardapioAdmin() {
         </label>
         <DescricaoLoja
           valor={miniBoxConfig.descricao}
-          padrao="5 mini cookies de 25 g, para petiscar."
+          padrao="5 mini cookies sortidos de 25 g. Os sabores são surpresa."
           onGuardar={(descricao) => setMiniBoxConfig((p) => ({ ...p, descricao }))}
         />
         <p className="text-[11px] ink-3">

@@ -96,7 +96,7 @@ export function Menu({ cardapio, picks, extras, poupancaBox, onJuntar, onTirar, 
           <Especial
             id={MINI_BOX_ID}
             titulo="Mini Box"
-            texto={cardapio.miniBox.descricao || '5 mini cookies de 25 g, para petiscar.'}
+            texto={cardapio.miniBox.descricao || '5 mini cookies sortidos de 25 g. Os sabores são surpresa.'}
             preco={precoExtra(cardapio, MINI_BOX_ID)}
             fotos={fotos.slice(0, 4)}
             mosaico="mini"
