@@ -1,11 +1,23 @@
 /**
  * Distância da morada do cliente até à nossa morada de partida, para a taxa
- * de entrega. A morada vira coordenadas pelo OpenStreetMap (Nominatim —
- * gratuito, sem chave); a distância é em linha reta. O servidor volta a
- * calcular a taxa ao criar o pedido — isto é só para o cliente a ver antes.
+ * de entrega (em linha reta). O servidor volta a calcular a taxa ao criar o
+ * pedido — isto é para o cliente a ver antes.
+ *
+ * Só se aceita uma posição quando o mapa (OpenStreetMap) encontra a rua, a
+ * localidade E o código postal juntos. Sem essa certeza a taxa fica "a
+ * confirmar" e a dona combina com o cliente.
+ *
+ * Porquê: o OpenStreetMap quase não conhece os códigos postais da zona do
+ * Porto e a pesquisa só por rua apanhava ruas homónimas noutro sítio (uma
+ * morada a 11 km deu 3,9 km). Provisório: a seguir vem uma tabela de códigos
+ * postais dentro do próprio site.
  */
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search'
+const CP7 = /^(\d{4})\s*-?\s*(\d{3})$/
+
+/** O código postal está completo (4 + 3 dígitos)? */
+export const cpCompleto = (cp) => CP7.test(String(cp ?? '').trim())
 
 async function procurar(params) {
   const url = `${NOMINATIM}?${new URLSearchParams({
@@ -20,30 +32,24 @@ async function procurar(params) {
   return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null
 }
 
-/**
- * Coordenadas de uma morada portuguesa. Tenta a morada completa e, se o mapa
- * não a conhecer, só o código postal (que chega para a distância). null = não deu.
- */
-export async function localizar({ morada, localidade, cp }) {
-  const cpLimpo = String(cp ?? '').trim()
-  try {
-    return (
-      (await procurar({ street: String(morada ?? '').trim(), city: String(localidade ?? '').trim(), ...(cpLimpo ? { postalcode: cpLimpo } : {}) })) ??
-      (cpLimpo ? await procurar({ postalcode: cpLimpo }) : null) ??
-      (await procurar({ q: `${String(morada ?? '').trim()}, ${String(localidade ?? '').trim()}` }))
-    )
-  } catch {
-    return null
-  }
+const tentar = async (fn) => {
+  try { return await fn() } catch { return null }
 }
 
-/** Coordenadas de uma morada escrita de uma vez (ex.: a morada de partida, no CRM). */
+/** Coordenadas de uma morada portuguesa (rua + localidade + CP juntos). null = não deu. */
+export async function localizar({ morada, localidade, cp }) {
+  const cpLimpo = String(cp ?? '').trim()
+  if (!cpCompleto(cpLimpo)) return null
+  return tentar(() => procurar({
+    street: String(morada ?? '').trim(),
+    city: String(localidade ?? '').trim(),
+    postalcode: cpLimpo,
+  }))
+}
+
+/** Coordenadas de uma morada escrita de uma vez (a morada de partida, no CRM). */
 export async function localizarTexto(texto) {
-  try {
-    return await procurar({ q: String(texto ?? '').trim() })
-  } catch {
-    return null
-  }
+  return tentar(() => procurar({ q: String(texto ?? '').trim() }))
 }
 
 /** Distância em linha reta, em km (fórmula de haversine — a mesma do servidor). */

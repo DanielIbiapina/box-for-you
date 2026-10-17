@@ -3,7 +3,7 @@ import { Aviso, IconeBox, Stepper } from './ui'
 import { fmtEuro, fmtData, proximosDias, hojeIso, findCookie } from './util'
 import { gravarContacto, lerContacto } from './storage'
 import { toquePasso } from './sensacao'
-import { localizar, distanciaKm, taxaPara } from './geo'
+import { localizar, distanciaKm, taxaPara, cpCompleto } from './geo'
 import { faixasDoDia, desvioRelogio, rotuloHora } from './horarios'
 import { validarCupom } from './api'
 
@@ -180,6 +180,8 @@ export function Checkout({
   const semMorada = () => {
     if (form.morada.trim().length < 4) return 'Indica a morada de entrega.'
     if (form.localidade.trim().length < 2) return 'Indica a localidade.'
+    // com taxa por distância, o código postal é o que dá a distância certa
+    if (regrasEntrega && !cpCompleto(form.cp)) return 'Indica o código postal completo (ex.: 4400-123).'
     return ''
   }
   const semContacto = () => {
@@ -546,7 +548,7 @@ export function Checkout({
                   <p className="passo-info">Não encontrámos esta morada no mapa — confirmamos a taxa de entrega contigo.</p>
                 )}
                 {regrasEntrega && (
-                  <p className="mapa-credito">Distância em linha reta · mapa © OpenStreetMap</p>
+                  <p className="mapa-credito">Distância em linha reta a partir do código postal · dados CTT/GEO API PT e © OpenStreetMap</p>
                 )}
               </>
             )}
