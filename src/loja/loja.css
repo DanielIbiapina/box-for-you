@@ -988,6 +988,7 @@ button.linha-box-fotos:active { transform: scale(0.94); }
   color: var(--ink-2);
 }
 .mapa-credito { margin-top: 0.5rem; font-size: var(--text-2xs); color: var(--ink-4); }
+.mapa-credito a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
 .checkout-contas { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.3rem; }
 .checkout-conta {

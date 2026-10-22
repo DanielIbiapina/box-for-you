@@ -257,9 +257,12 @@ export function Checkout({
       const p = semMorada()
       if (p) return setErro(p)
       // com taxa por distância, só avança depois de saber quanto custa (ou que não chegamos lá)
+      const avisado = geoAtual?.estado === 'sem-mapa'
       calcularEntrega().then((r) => {
         if (r?.estado === 'fora') {
           setErro(`Ainda não entregamos tão longe (cerca de ${fmtKm(r.km)}). Podes voltar e escolher levantar.`)
+        } else if (r?.estado === 'sem-mapa' && !avisado) {
+          // fica aqui uma vez, para o aviso se ver (pode ser um erro na rua ou no código postal)
         } else {
           irPara('contacto')
         }
@@ -316,6 +319,7 @@ export function Checkout({
   else if (passo === 'local' && localEscolhido) cta = { rotulo: 'Continuar' }
   else if (passo === 'quando' && form.data && horaValida) cta = { rotulo: 'Continuar' }
   else if (passo === 'morada' && geoAtual?.estado === 'a-ver') cta = { rotulo: 'A calcular a distância…', off: true }
+  else if (passo === 'morada' && geoAtual?.estado === 'sem-mapa') cta = { rotulo: 'Continuar mesmo assim' }
   else if (passo === 'morada' || passo === 'contacto') cta = { rotulo: 'Continuar' }
   else if (passo === 'pagar' && form.pagamento) cta = { rotulo: 'Continuar' }
   else if (passo === 'confirmar') {
@@ -545,10 +549,15 @@ export function Checkout({
                   </p>
                 )}
                 {regrasEntrega && geoAtual?.estado === 'sem-mapa' && (
-                  <p className="passo-info">Não encontrámos esta morada no mapa — confirmamos a taxa de entrega contigo.</p>
+                  <p className="passo-info">Não encontrámos esta rua com este código postal. Confirma se estão certos — se estiverem, combinamos a taxa de entrega contigo.</p>
                 )}
                 {regrasEntrega && (
-                  <p className="mapa-credito">Distância em linha reta a partir do código postal · dados CTT/GEO API PT e © OpenStreetMap</p>
+                  <p className="mapa-credito">
+                    Distância em linha reta até à rua · mapa ©{' '}
+                    <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">contribuidores OpenStreetMap</a>
+                    {' '}· zonas postais{' '}
+                    <a href="https://www.geonames.org" target="_blank" rel="noopener noreferrer">GeoNames</a> (CC BY 4.0)
+                  </p>
                 )}
               </>
             )}

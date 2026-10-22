@@ -124,5 +124,16 @@ box beyond the first, so they read well in Vendas. Those lines are skipped by th
 app's stock restore on cancel/delete (`deductPedidoStock` filters `customLabel`) —
 the flavors of an extra box are not returned to stock automatically.
 
+The delivery fee is a straight-line distance from the origin set in the CRM
+(`EntregaTaxa.jsx`) to the customer's street, worked out in the browser by
+`src/loja/geo.js` and re-priced by `loja_criar_pedido` from the lat/lng it sends.
+The 4-digit postal code picks a search area from `public/cp4.json` (GeoNames,
+regenerate with `node scripts/gerar-cp.mjs PT.txt`). Those points are municipality
+centres, too coarse for the fee itself. The street is then looked up in
+OpenStreetMap inside that area, and a result counts only when both the street name
+and the first 4 digits of OSM's postcode match. Otherwise the fee stays "a
+confirmar". Never fall back to a free-text search: it matches same-named streets
+in other towns.
+
 `src/loja/api.js` calls PostgREST with plain `fetch` rather than `supabase-js`, to
 keep the customer-facing bundle small. Don't import `supabase-js` into `src/loja/`.
