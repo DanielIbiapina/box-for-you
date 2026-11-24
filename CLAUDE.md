@@ -193,10 +193,11 @@ is hidden and `loja_criar_pedido` refuses with `fim: true`. After `fim` everythi
 back to normal and the Black tab is gone.
 
 - Combos are N cookies at a fixed price; every combo carries `brindePorCombo` free
-  50 g mini cookies whose flavour the customer picks in the builder (second step,
-  `minis` in the payload). Minis come out of the `cookie50` stock and are stored as
-  0 € lines with `stock50`; without `minis` (old cached bundle) the server falls back
-  to one "sabor surpresa" line. Payment is MB WAY only, paid right away.
+  50 g mini cookies of **surprise flavour** (Dhara's call, 24/11: the customer does
+  not choose). The store sends no `minis`, so the server adds one 0 € "sabor surpresa"
+  line and touches no 50 g stock. The server still accepts `minis` (chosen flavours →
+  0 € lines with `stock50`, out of `cookie50`, returned by Vendas on cancel) in case a
+  future campaign lets people pick. Payment is MB WAY only, paid right away.
 - Flavours are always available: the order deducts stock even below zero (negative =
   still to bake). For that reason `estoque_ajustar` and `aplicarDeltas` no longer
   clamp at 0; only setting an absolute value does.

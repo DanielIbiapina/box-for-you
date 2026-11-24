@@ -31,14 +31,14 @@ export function fmtDiaSemana(iso) {
 
 export const comboDef = (black, id) => black?.combos?.find((c) => c.id === id) ?? null
 
-/** O saco da Black Crumb: [{ combo: 'duo', ids: ['nutella', 'pistache'], minis: ['all-black'] }]. */
+/** O saco da Black Crumb: [{ combo: 'duo', ids: ['nutella', 'pistache'] }]. */
 export function lerSacoBlack() {
   try {
     const d = JSON.parse(localStorage.getItem(SACO_KEY) ?? 'null')
     if (!d || !Array.isArray(d.combos) || Date.now() - (d.savedAt ?? 0) > 7 * 864e5) return []
     return d.combos
       .filter((c) => typeof c?.combo === 'string' && Array.isArray(c.ids))
-      .map((c) => ({ ...c, minis: Array.isArray(c.minis) ? c.minis.filter((x) => typeof x === 'string') : [] }))
+      .map((c) => ({ combo: c.combo, ids: c.ids }))
   } catch {
     return []
   }
@@ -51,25 +51,12 @@ export function gravarSacoBlack(combos) {
   } catch { /* quota / modo privado */ }
 }
 
-/**
- * Tira do saco os combos que já não existem ou com sabores que saíram do
- * cardápio. Um mini que saiu do cardápio cai; o combo fica (sem mini escolhido
- * o servidor manda um de sabor surpresa).
- */
+/** Tira do saco os combos que já não existem ou com sabores que saíram do cardápio. */
 export function limparSacoBlack(combos, cardapio) {
-  return combos
-    .filter((c) => {
-      const def = comboDef(cardapio?.black, c.combo)
-      return def && c.ids.length === def.cookies && c.ids.every((id) => findCookie(cardapio, id))
-    })
-    .map((c) => ({ ...c, minis: (c.minis ?? []).filter((id) => findCookie(cardapio, id)) }))
-}
-
-/** "mini Pistache" (ou "minis Pistache e Nutella") a partir dos ids escolhidos. */
-function textoMinis(minis, cardapio) {
-  const nomes = (minis ?? []).map((id) => findCookie(cardapio, id)?.nome).filter(Boolean)
-  if (!nomes.length) return ''
-  return `${nomes.length > 1 ? 'minis' : 'mini'} ${nomes.join(' e ')} de oferta`
+  return combos.filter((c) => {
+    const def = comboDef(cardapio?.black, c.combo)
+    return def && c.ids.length === def.cookies && c.ids.every((id) => findCookie(cardapio, id))
+  })
 }
 
 /** Linhas para o passo "O teu pedido" do checkout (mesma forma que util.resumoPedido). */
@@ -80,7 +67,7 @@ export function resumoBlack(combos, cardapio) {
     return {
       key: `combo-${i}`, tipo: 'combo', inicio: i, ids: c.ids,
       nome: def?.nome ?? c.combo,
-      detalhe: [resumoCaixa(contar(c.ids), cardapio), textoMinis(c.minis, cardapio)].filter(Boolean).join(' + '),
+      detalhe: resumoCaixa(contar(c.ids), cardapio),
       qty: 1, subtotal: Number(def?.preco) || 0,
     }
   })
@@ -94,14 +81,10 @@ export function resumoBlack(combos, cardapio) {
 }
 
 /**
- * O que vai para o servidor: só a escolha. Os minis só vão quando estão
- * todos escolhidos; sem eles o servidor manda o mini de sabor surpresa.
+ * O que vai para o servidor: só a escolha. Sem `minis`, o servidor junta o
+ * mini de oferta de sabor surpresa (a dona escolhe o sabor).
  */
-export const payloadBlack = (combos, brindePorCombo = 0) => combos.map((c) => ({
-  combo: c.combo,
-  sabores: contar(c.ids),
-  ...((c.minis ?? []).length === brindePorCombo && brindePorCombo > 0 ? { minis: c.minis } : {}),
-}))
+export const payloadBlack = (combos) => combos.map((c) => ({ combo: c.combo, sabores: contar(c.ids) }))
 
 /**
  * Taxa de entrega com as regras da campanha (o servidor faz a mesma conta):

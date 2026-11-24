@@ -412,7 +412,7 @@ export function Checkout({
                 )}
                 {campanha?.brinde > 0 && resumo.linhas.length > 0 && (
                   <p className="poupanca">
-                    <IconePresente size={18} /> +{campanha.brinde} mini {campanha.brinde === 1 ? 'cookie' : 'cookies'} de 50 g de oferta
+                    <IconePresente size={18} /> +{campanha.brinde} mini {campanha.brinde === 1 ? 'cookie' : 'cookies'} de 50 g de oferta, sabor surpresa
                   </p>
                 )}
                 {resumo.poupanca > 0 && (

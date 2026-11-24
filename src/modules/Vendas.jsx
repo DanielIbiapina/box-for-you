@@ -838,7 +838,7 @@ export function Vendas() {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs truncate ink-3">
+                      <p className="text-xs ink-3 leading-snug">
                         {pedidoSummary(p, cookies)}
                       </p>
                       {entregaLabel(p.entrega) && (
@@ -847,7 +847,7 @@ export function Vendas() {
                         </p>
                       )}
                       {p.notas && (
-                        <p className="text-[11px] italic truncate ink-3">
+                        <p className="text-[11px] italic ink-3 leading-snug">
                           {p.notas}
                         </p>
                       )}
@@ -1041,7 +1041,7 @@ function PedidoCard({ pedido, cookies, st, onEdit, onDelete, etapa }) {
             </span>
           )}
         </div>
-        <p className="text-xs truncate ink-3">
+        <p className="text-xs ink-3 leading-snug">
           {pedidoSummary(pedido, cookies)}
         </p>
         {entregaLabel(pedido.entrega) && (
@@ -1370,14 +1370,21 @@ function PedidoModal({
           </button>
           {customLinhas.length > 0 && (
             <div className="space-y-1.5 pt-1">
-              {customLinhas.map((l) => (
+              {customLinhas.map((l) => {
+                // "THE BIG CRUMB · 1× NUTELLA, 1× RED V, …": o nome por cima e os sabores
+                // por baixo, inteiros — cortados com "…" não se sabia o que fazer
+                const corte = l.label.indexOf(' · ')
+                const nome = corte > 0 ? l.label.slice(0, corte) : l.label
+                const detalhe = corte > 0 ? l.label.slice(corte + 3) : ''
+                return (
                 <div
                   key={l.id}
-                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs"
+                  className="flex items-start gap-2 rounded-lg px-2 py-1.5 text-xs"
                   style={{ background: 'rgba(154,59,28,0.08)' }}
                 >
-                  <span className="flex-1 font-semibold truncate" style={{ color: 'var(--color-text)' }}>
-                    {l.qty}× {l.label}
+                  <span className="flex-1 min-w-0" style={{ color: 'var(--color-text)' }}>
+                    <span className="block font-semibold">{l.qty}× {nome}</span>
+                    {detalhe && <span className="block ink-2 leading-snug mt-0.5">{detalhe}</span>}
                   </span>
                   <span className="font-black tabular-nums" style={{ color: 'var(--color-accent-dark)' }}>
                     {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(l.preco * l.qty)}
@@ -1389,7 +1396,8 @@ function PedidoModal({
                     aria-label={`Remover ${l.label}`}
                   ><Icon name="fechar" size={14} /></button>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

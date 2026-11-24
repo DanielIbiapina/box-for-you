@@ -272,13 +272,13 @@ export function Loja() {
   }
   const repetirCombo = (i) => {
     toqueBoxFechada()
-    setSacoBlack((s) => (s[i] ? [...s.slice(0, i + 1), { ...s[i], ids: [...s[i].ids], minis: [...(s[i].minis ?? [])] }, ...s.slice(i + 1)] : s))
+    setSacoBlack((s) => (s[i] ? [...s.slice(0, i + 1), { ...s[i], ids: [...s[i].ids] }, ...s.slice(i + 1)] : s))
   }
 
   async function enviarBlack(form) {
     const resposta = await criarPedidoBlack({
       cliente: { nome: form.nome, telefone: form.telefone },
-      combos: payloadBlack(sacoBlack, Number(cardapio.black?.brindePorCombo) || 0),
+      combos: payloadBlack(sacoBlack),
       entrega: entregaDe(form),
       notas: form.notas,
     })
