@@ -79,6 +79,14 @@ Uses `h-[100dvh]` for mobile-safe full height. Feiras module uses `overflow-hidd
 
 Design tokens and utility classes (`.bfy-card`, `.btn-accent`, `.btn-primary`, `.btn-ghost`, `.bfy-input`) are in [`src/index.css`](src/index.css).
 
+Typography comes from the logo (Google Fonts, linked in `index.html` / `crm/index.html`):
+- `--font-marca` **Climate Crisis** — the "CRUMB" lettering. Store only, big titles,
+  always uppercase (lowercase i/j have cuts that read as colons). One weight: the
+  `YEAR` axis sets how heavy (1979 = as in the logo, 2000 = lighter for medium titles).
+  Never ask it for bold — the browser would fake one.
+- `--font-title` / `--font-body` **Archivo** — titles use it wide (`font-stretch` 110–115%) and heavy.
+- `--font-script` **Mr Dafoe** — the "Lab" brush; only small touches (greeting, handwritten note).
+
 ### Static assets
 
 Nav icons are served from [`public/icons/`](public/icons/) as `/icons/nav-*.png`. Add PNGs with the exact filenames referenced in `App.jsx` (`nav-inicio.png`, `nav-receitas.png`, etc.) plus `logo.png` for the tablet sidebar.
@@ -86,8 +94,9 @@ Nav icons are served from [`public/icons/`](public/icons/) as `/icons/nav-*.png`
 ## Storefront (`src/loja/`)
 
 The public page never touches tables: RLS still admits authenticated users only.
-Anonymous visitors may execute exactly three SECURITY DEFINER functions, defined in
-[`supabase/loja.sql`](supabase/loja.sql):
+Anonymous visitors may execute only the SECURITY DEFINER functions granted at the end
+of [`supabase/loja.sql`](supabase/loja.sql) (also `loja_validar_cupom` and
+`loja_criar_pedido_black`); the main ones:
 
 - `loja_cardapio()` — active flavors, box prices, stock, pickup/delivery copy
 - `loja_criar_pedido(jsonb)` — validates, **recomputes the total server-side**,
@@ -137,3 +146,45 @@ in other towns.
 
 `src/loja/api.js` calls PostgREST with plain `fetch` rather than `supabase-js`, to
 keep the customer-facing bundle small. Don't import `supabase-js` into `src/loja/`.
+
+### Hours per weekday
+
+`configuracao.loja_horarios.semana` holds each weekday's `{ abre, fecha }` (keys
+`"0"` = Sunday … `"6"` = Saturday, like `extract(dow)` and `getDay()`); `null` means
+closed. `loja_horario_dia()` (SQL) and `horarioDoDia()` (`src/loja/horarios.js`) apply
+the same rule; without `semana` the single `abre`/`fecha` still applies. The CRM card
+is `src/components/Horarios.jsx`, which also saves `abre`/`fecha` as the window common
+to every open day, for clients still running an old bundle.
+
+### Campaigns: Black Crumb (Black Friday, Nov 2026)
+
+A campaign gets its own tab in the store (`src/loja/Black.jsx`, rules in
+`src/loja/blackCrumb.js`) and its own order function, `loja_criar_pedido_black(jsonb)`.
+Its config is `configuracao.loja_black` (dates, combos, prices, gift, delivery rules);
+`loja_black_estado()` turns it into what the store sees in `loja_cardapio().black`.
+
+The campaign runs in phases (`fase`), all in Lisbon time:
+1. `antecipado` — until `antecipadoAte` (Fri 19h): pre-orders with perks, any day of
+   `diasAntecipado` (28/11–6/12).
+2. `pausa` — until `reabre` (Sat 0h): nobody can order (`aberta: false`).
+3. `noDia` — until `fim` (Mon 0h): orders only for `diasNoDia` (Sat/Sun), normal fee.
+
+With `fechaLojaNormal`, the normal store is closed for the whole campaign: the menu tab
+is hidden and `loja_criar_pedido` refuses with `fim: true`. After `fim` everything is
+back to normal and the Black tab is gone.
+
+- Combos are N cookies at a fixed price; every combo carries 1 free 50 g mini cookie
+  (surprise flavour, not taken from stock). Payment is MB WAY only, paid right away.
+- Flavours are always available: the order deducts stock even below zero (negative =
+  still to bake). For that reason `estoque_ajustar` and `aplicarDeltas` no longer
+  clamp at 0; only setting an absolute value does.
+- Each combo is stored as a `linhas` entry with `customLabel` **and** `stock`
+  (`{ cookieId: qty per unit }`). `Vendas.jsx` (`stockDoPedido`), the Home agenda and
+  `salesAnalytics` read `stock`, so cancelling or deleting returns the right flavours.
+  Keep `stock` when rebuilding lines.
+- Orders have `campanha = 'black'`; `entrega.antecipado = true` means pre-order
+  (double loyalty stamps). Vendas shows a 🖤 Black chip.
+- `Checkout.jsx` takes a `campanha` prop (fixed days, fixed payment, own delivery-fee
+  rule, no coupon), so the next campaign (Christmas) can reuse it.
+- `loja_entrega_validar()` is the shared pickup/delivery validation for campaign
+  order functions; the original `loja_criar_pedido` keeps its own copy.

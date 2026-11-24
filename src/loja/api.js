@@ -34,6 +34,12 @@ export const fetchCardapio = () => rpc('loja_cardapio')
  */
 export const criarPedido = (pedido) => rpc('loja_criar_pedido', { p: pedido })
 
+/**
+ * Pedido da Black Crumb: { cliente, combos: [{ combo, sabores }], entrega, notas }.
+ * Preços, brinde e taxa de entrega são do servidor; pagamento é sempre MB WAY.
+ */
+export const criarPedidoBlack = (pedido) => rpc('loja_criar_pedido_black', { p: pedido })
+
 /** Confirma um cupão sem expor a lista: { ok, codigo, percent } ou { ok:false, motivo }. */
 export const validarCupom = (codigo) => rpc('loja_validar_cupom', { p_codigo: codigo })
 

@@ -133,6 +133,11 @@ export function aggregatePedidoCookieCounts(pedidos) {
   for (const p of pedidos) {
     if (p.status === 'cancelado') continue
     for (const ln of p.linhas ?? []) {
+      // combos (Black Crumb) trazem os sabores em `stock` ({ sabor: qty por unidade })
+      if (ln.stock && typeof ln.stock === 'object') {
+        for (const [id, n] of Object.entries(ln.stock)) add(id, (Number(n) || 0) * (ln.qty ?? 0))
+        continue
+      }
       if (ln.customLabel) continue
       if (ln.cookieId === MINI_BOX_ID || ln.cookieId === TASTING_BOX_ID) continue
       add(ln.cookieId, ln.qty ?? 0)

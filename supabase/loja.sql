@@ -11,6 +11,7 @@
 --   loja_criar_pedido(jsonb) → valida, RECALCULA o total no servidor, cria o
 --                              cliente + pedido e dá baixa no stock
 --   loja_ver_pedido(ref,tel) → acompanhamento público (os dois juntos)
+--   loja_criar_pedido_black(jsonb) → pedido da campanha Black Crumb (combos)
 --
 -- Recalcular no servidor é o ponto central: o preço que o browser envia é
 -- ignorado, portanto ninguém compra uma caixa por €0,01 mexendo no devtools.
@@ -69,6 +70,69 @@ alter table configuracao add column if not exists loja_texto_cookies text not nu
 alter table configuracao add column if not exists loja_horarios jsonb not null
   default '{"abre": 10, "fecha": 20, "antecedenciaHoras": 2}'::jsonb;
 
+-- Horário por dia da semana (nov/2026): `semana` tem uma entrada por dia,
+-- 0 = domingo … 6 = sábado (como extract(dow) e o getDay() do JavaScript).
+-- Um dia a null está fechado. `abre`/`fecha` ficam como o horário comum a
+-- todos os dias, para quem ainda tenha a loja antiga aberta no telemóvel.
+-- Só entra se a dona ainda não tiver horário por dia.
+update configuracao
+   set loja_horarios = loja_horarios || '{
+     "abre": 15, "fecha": 19,
+     "semana": {
+       "0": {"abre": 10, "fecha": 22},
+       "1": {"abre": 15, "fecha": 19},
+       "2": {"abre": 15, "fecha": 19},
+       "3": {"abre": 15, "fecha": 19},
+       "4": {"abre": 15, "fecha": 19},
+       "5": {"abre": 15, "fecha": 19},
+       "6": {"abre": 13, "fecha": 22}
+     }
+   }'::jsonb
+ where id = 'main' and not (loja_horarios ? 'semana');
+
+-- Campanhas com aba própria na loja (Black Crumb, Natal…). O pedido guarda de
+-- que campanha veio, para a dona o distinguir em Vendas.
+alter table pedidos add column if not exists campanha text;
+
+-- Black Crumb (Black Friday, nov/2026). Horas em hora de Lisboa. Três fases:
+--   1. até antecipadoAte (sex 19h): "encomenda antecipada" — selos a dobrar e
+--      vantagem na entrega; marca-se de diasAntecipado[0] a diasAntecipado[1].
+--   2. de antecipadoAte até reabre (sáb 0h): tudo fechado, ninguém encomenda.
+--   3. de reabre até fim (seg 0h): Black Crumb outra vez, só para os dias de
+--      diasNoDia (sáb e dom), com a taxa de entrega normal.
+--   fechaLojaNormal: enquanto a campanha dura (até `fim`) a loja normal fica
+--      fechada — só há a aba da Black Crumb. A partir de `fim` tudo volta ao normal.
+--   combos:        N cookies por um preço fechado; cada combo leva
+--                  brindePorCombo mini cookie(s) de 50 g de oferta.
+--   Entrega: grátis a partir de freteGratisAPartirDe €; abaixo disso, a
+--   encomenda antecipada não paga até antecipadoFreteGratisAteKm km e tem
+--   antecipadoDescontoFrete € de desconto mais longe. Levantar é sempre grátis.
+-- Os sabores estão sempre disponíveis: o stock desconta e pode ficar negativo
+-- (é o que falta fazer).
+alter table configuracao add column if not exists loja_black jsonb not null default '{}'::jsonb;
+
+update configuracao
+   set loja_black = '{
+     "ativo": true,
+     "nome": "Black Crumb",
+     "antecipadoAte": "2026-11-27T19:00",
+     "reabre": "2026-11-28T00:00",
+     "fim": "2026-11-30T00:00",
+     "fechaLojaNormal": true,
+     "diasAntecipado": ["2026-11-28", "2026-12-06"],
+     "diasNoDia": ["2026-11-28", "2026-11-29"],
+     "combos": [
+       {"id": "duo", "nome": "THE DUO",       "cookies": 2, "preco": 6,  "gramas": 250},
+       {"id": "box", "nome": "THE BOX",       "cookies": 4, "preco": 10, "gramas": 450},
+       {"id": "big", "nome": "THE BIG CRUMB", "cookies": 6, "preco": 14, "gramas": 650}
+     ],
+     "brindePorCombo": 1,
+     "freteGratisAPartirDe": 20,
+     "antecipadoFreteGratisAteKm": 7,
+     "antecipadoDescontoFrete": 2
+   }'::jsonb
+ where id = 'main' and loja_black = '{}'::jsonb;
+
 -- Cupões de outubro/2026 — só entram se ainda não houver nenhum cupão.
 update configuracao
    set loja_cupons = '[
@@ -118,6 +182,138 @@ begin
   raise exception 'Não foi possível gerar uma referência única';
 end
 $$;
+
+-- Horas de abrir e fechar num dia: [abre, fecha], ou null se estiver fechado.
+-- Com `semana`, vale o horário desse dia da semana; sem ela, o horário único.
+create or replace function loja_horario_dia(h jsonb, d date)
+returns int[]
+language plpgsql
+immutable
+set search_path = public
+as $$
+declare
+  v_dia   jsonb;
+  v_abre  int;
+  v_fecha int;
+begin
+  h := coalesce(h, '{}'::jsonb);
+  if jsonb_typeof(h->'semana') = 'object' then
+    v_dia := h->'semana'->(extract(dow from d)::int::text);
+    if v_dia is null or jsonb_typeof(v_dia) <> 'object'
+       or coalesce(v_dia->>'abre', '') !~ '^\d{1,2}$'
+       or coalesce(v_dia->>'fecha', '') !~ '^\d{1,2}$' then
+      return null;
+    end if;
+    v_abre  := (v_dia->>'abre')::int;
+    v_fecha := (v_dia->>'fecha')::int;
+  else
+    v_abre  := case when coalesce(h->>'abre', '') ~ '^\d{1,2}$' then (h->>'abre')::int else 10 end;
+    v_fecha := case when coalesce(h->>'fecha', '') ~ '^\d{1,2}$' then (h->>'fecha')::int else 20 end;
+  end if;
+  if v_fecha <= v_abre or v_fecha > 24 then
+    return null;
+  end if;
+  return array[v_abre, v_fecha];
+end $$;
+
+-- O que a loja precisa de saber da Black Crumb agora. Fora da campanha (antes
+-- de ligar ou depois de `fim`) devolve { ativo: false } e a loja é a normal.
+-- Dentro dela, `fase` diz em que ponto estamos:
+--   'antecipado' → encomendas com vantagens, dias de diasAntecipado
+--   'pausa'      → fechado até `reabre` (ninguém encomenda)
+--   'noDia'      → só para os dias de diasNoDia que ainda não passaram
+-- `aberta` = dá para encomendar agora; `fechaLoja` = a loja normal está fechada.
+create or replace function loja_black_estado(c jsonb)
+returns jsonb
+language plpgsql
+stable
+set search_path = public
+as $$
+declare
+  v_agora  timestamp := now() at time zone 'Europe/Lisbon';
+  v_hoje   date := (now() at time zone 'Europe/Lisbon')::date;
+  v_ate    timestamp;
+  v_reabre timestamp;
+  v_fim    timestamp;
+  v_fase   text;
+  v_ant    boolean;
+  v_dias   jsonb := '[]'::jsonb;
+  v_combos jsonb;
+  v_num    text := '^\d+(\.\d+)?$';
+  v_ts     text := '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}';
+begin
+  c := coalesce(c, '{}'::jsonb);
+  if coalesce(c->>'ativo', '') <> 'true' then
+    return jsonb_build_object('ativo', false);
+  end if;
+
+  v_ate    := case when coalesce(c->>'antecipadoAte', '') ~ v_ts then (c->>'antecipadoAte')::timestamp end;
+  v_reabre := case when coalesce(c->>'reabre', '') ~ v_ts then (c->>'reabre')::timestamp end;
+  v_fim    := case when coalesce(c->>'fim', '') ~ v_ts then (c->>'fim')::timestamp end;
+  if v_fim is not null and v_agora >= v_fim then
+    return jsonb_build_object('ativo', false);
+  end if;
+
+  v_fase := case
+    when v_ate is not null and v_agora < v_ate then 'antecipado'
+    when v_reabre is not null and v_agora < v_reabre then 'pausa'
+    else 'noDia'
+  end;
+  v_ant := v_fase = 'antecipado';
+
+  if v_ant
+     and coalesce(c#>>'{diasAntecipado,0}', '') ~ '^\d{4}-\d{2}-\d{2}$'
+     and coalesce(c#>>'{diasAntecipado,1}', '') ~ '^\d{4}-\d{2}-\d{2}$' then
+    select coalesce(jsonb_agg(to_char(d, 'YYYY-MM-DD') order by d), '[]'::jsonb)
+      into v_dias
+      from generate_series(greatest((c#>>'{diasAntecipado,0}')::date, v_hoje)::timestamp,
+                           (c#>>'{diasAntecipado,1}')::date::timestamp,
+                           interval '1 day') d;
+  elsif v_fase = 'noDia' then
+    select coalesce(jsonb_agg(x order by x), '[]'::jsonb)
+      into v_dias
+      from jsonb_array_elements_text(case when jsonb_typeof(c->'diasNoDia') = 'array'
+                                          then c->'diasNoDia' else '[]'::jsonb end) x
+     where case when x ~ '^\d{4}-\d{2}-\d{2}$' then x::date >= v_hoje else false end;
+  end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', x->>'id',
+           'nome', coalesce(nullif(btrim(x->>'nome'), ''), x->>'id'),
+           'cookies', (x->>'cookies')::int,
+           'preco', (x->>'preco')::numeric,
+           'gramas', case when coalesce(x->>'gramas', '') ~ '^\d+$' then (x->>'gramas')::int end
+         ) order by (x->>'cookies')::int), '[]'::jsonb)
+    into v_combos
+    from jsonb_array_elements(case when jsonb_typeof(c->'combos') = 'array'
+                                   then c->'combos' else '[]'::jsonb end) x
+   where coalesce(x->>'id', '') <> ''
+     and case when coalesce(x->>'cookies', '') ~ '^\d{1,2}$' then (x->>'cookies')::int > 0 else false end
+     and coalesce(x->>'preco', '') ~ v_num;
+
+  if jsonb_array_length(v_combos) = 0 then
+    return jsonb_build_object('ativo', false);
+  end if;
+
+  return jsonb_build_object(
+    'ativo', true,
+    'nome', coalesce(nullif(btrim(c->>'nome'), ''), 'Black Crumb'),
+    'fase', v_fase,
+    'aberta', v_fase <> 'pausa' and jsonb_array_length(v_dias) > 0,
+    'fechaLoja', coalesce(c->>'fechaLojaNormal', '') = 'true',
+    'antecipado', v_ant,
+    'antecipadoAte', case when v_ant then to_char(v_ate, 'YYYY-MM-DD"T"HH24:MI') end,
+    'reabre', case when v_fase = 'pausa' then to_char(v_reabre, 'YYYY-MM-DD"T"HH24:MI') end,
+    'fim', to_char(v_fim, 'YYYY-MM-DD"T"HH24:MI'),
+    'diasNoDia', case when jsonb_typeof(c->'diasNoDia') = 'array' then c->'diasNoDia' else '[]'::jsonb end,
+    'dias', v_dias,
+    'combos', v_combos,
+    'brindePorCombo', case when coalesce(c->>'brindePorCombo', '') ~ '^\d+$' then (c->>'brindePorCombo')::int else 0 end,
+    'freteGratisAPartirDe', case when coalesce(c->>'freteGratisAPartirDe', '') ~ v_num then (c->>'freteGratisAPartirDe')::numeric end,
+    'antecipadoFreteGratisAteKm', case when coalesce(c->>'antecipadoFreteGratisAteKm', '') ~ v_num then (c->>'antecipadoFreteGratisAteKm')::numeric end,
+    'antecipadoDescontoFrete', case when coalesce(c->>'antecipadoDescontoFrete', '') ~ v_num then (c->>'antecipadoDescontoFrete')::numeric end
+  );
+end $$;
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- 1) Cardápio público
@@ -218,8 +414,17 @@ begin
       'fecha', case when (v_cfg.loja_horarios->>'fecha') ~ '^\d{1,2}$' then (v_cfg.loja_horarios->>'fecha')::int else 20 end,
       'antecedenciaHoras', case when (v_cfg.loja_horarios->>'antecedenciaHoras') ~ '^\d+(\.\d+)?$'
                                 then (v_cfg.loja_horarios->>'antecedenciaHoras')::numeric else 2 end,
-      'agora', to_char(now() at time zone 'Europe/Lisbon', 'YYYY-MM-DD"T"HH24:MI:SS')
+      'agora', to_char(now() at time zone 'Europe/Lisbon', 'YYYY-MM-DD"T"HH24:MI:SS'),
+      -- horário de cada dia da semana (0 = domingo); null = fechado. 2023-01-01 foi domingo.
+      'semana', case when jsonb_typeof(v_cfg.loja_horarios->'semana') = 'object' then (
+        select jsonb_object_agg(k::text, case when r is null then 'null'::jsonb
+                                              else jsonb_build_object('abre', r[1], 'fecha', r[2]) end)
+          from generate_series(0, 6) k,
+               lateral (select loja_horario_dia(v_cfg.loja_horarios, date '2023-01-01' + k) as r) x
+      ) end
     ),
+    -- campanha Black Crumb: combos, dias marcáveis e regras ({ ativo: false } fora do prazo)
+    'black', loja_black_estado(v_cfg.loja_black),
     'cookies', v_cookies,
     'box', jsonb_build_object(
       'size',  coalesce((v_cfg.box_config->>'size')::int, 4),
@@ -303,6 +508,7 @@ declare
   v_m50_id     text;
   v_hora       text;
   v_h          int;
+  v_hd         int[];
   v_abre       int;
   v_fecha      int;
   v_antec      numeric;
@@ -334,7 +540,19 @@ declare
   v_cliente_id text;
   v_pedido_id  text;
   v_ref        text;
+  v_bf         jsonb;
 begin
+  -- ── loja fechada durante uma campanha (ex.: Black Crumb) ──────────────────
+  select * into v_cfg from configuracao where id = 'main';
+  v_bf := loja_black_estado(v_cfg.loja_black);
+  if coalesce((v_bf->>'ativo')::boolean, false) and coalesce((v_bf->>'fechaLoja')::boolean, false) then
+    return jsonb_build_object('ok', false, 'fim', true, 'motivo',
+      case when coalesce(v_bf->>'fim', '') ~ '^\d{4}-\d{2}-\d{2}'
+           then format('Por agora só temos a Black Crumb. A loja normal volta no dia %s.',
+                       to_char(left(v_bf->>'fim', 10)::date, 'DD/MM'))
+           else 'Por agora só temos a Black Crumb.' end);
+  end if;
+
   -- ── validação do contacto ────────────────────────────────────────────────
   if length(v_nome) < 2 then
     return jsonb_build_object('ok', false, 'campo', 'nome', 'motivo', 'Diz-nos o teu nome.');
@@ -386,9 +604,14 @@ begin
 
   select * into v_cfg from configuracao where id = 'main';
 
-  -- ── hora: faixa de 1 hora, com antecedência mínima (hora de Lisboa) ───────
-  v_abre  := case when (v_cfg.loja_horarios->>'abre') ~ '^\d{1,2}$' then (v_cfg.loja_horarios->>'abre')::int else 10 end;
-  v_fecha := case when (v_cfg.loja_horarios->>'fecha') ~ '^\d{1,2}$' then (v_cfg.loja_horarios->>'fecha')::int else 20 end;
+  -- ── hora: faixa de 1 hora dentro do horário desse dia, com antecedência
+  --    mínima (hora de Lisboa) ─────────────────────────────────────────────
+  v_hd := loja_horario_dia(v_cfg.loja_horarios, v_data::date);
+  if v_hd is null then
+    return jsonb_build_object('ok', false, 'campo', 'data', 'motivo', 'Nesse dia estamos fechados. Escolhe outro dia.');
+  end if;
+  v_abre  := v_hd[1];
+  v_fecha := v_hd[2];
   v_antec := case when (v_cfg.loja_horarios->>'antecedenciaHoras') ~ '^\d+(\.\d+)?$'
                   then (v_cfg.loja_horarios->>'antecedenciaHoras')::numeric else 2 end;
   v_hora  := btrim(coalesce(v_ent->>'hora', ''));
@@ -666,7 +889,7 @@ begin
       return jsonb_build_object(
         'ok', false, 'esgotado', true,
         'motivo', format('Só temos %s de %s neste momento. Ajusta o carrinho.',
-                         floor(v_have)::int, coalesce(v_faltou, v_par.id))
+                         greatest(0, floor(v_have))::int, coalesce(v_faltou, v_par.id))
       );
     end if;
   end loop;
@@ -694,7 +917,7 @@ begin
       return jsonb_build_object(
         'ok', false, 'esgotado', true,
         'motivo', format('Só temos %s %s de %s neste momento. Ajusta o carrinho.',
-                         floor(v_have)::int,
+                         greatest(0, floor(v_have))::int,
                          case when floor(v_have) = 1 then 'mini cookie' else 'mini cookies' end,
                          coalesce(v_faltou, v_par.id))
       );
@@ -773,6 +996,391 @@ begin
     'total', v_total,
     'desconto', v_desconto,
     'taxaEntrega', v_taxa
+  );
+end $$;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 2a) Levantamento / entrega de um pedido de campanha
+-- ────────────────────────────────────────────────────────────────────────────
+-- As mesmas regras do loja_criar_pedido (tipo, dia, faixa de hora no horário
+-- desse dia, local ligado, distância), num sítio só para as campanhas.
+-- Devolve { ok: false, campo, motivo } ou
+--   { ok: true, entrega, entregaAtiva, km, taxa, semMapa }
+-- onde `taxa` é a da tabela por distância — cada campanha aplica as suas regras.
+create or replace function loja_entrega_validar(p jsonb, c configuracao)
+returns jsonb
+language plpgsql
+stable
+set search_path = public
+as $$
+declare
+  v_ent        jsonb := p->'entrega';
+  v_tipo       text;
+  v_data       text;
+  v_morada     text;
+  v_localidade text;
+  v_cp         text;
+  v_hora       text;
+  v_h          int;
+  v_hd         int[];
+  v_antec      numeric;
+  v_locais     jsonb;
+  v_local      jsonb;
+  v_entrega    jsonb;
+  v_ent_cfg    jsonb;
+  v_faixa      jsonb;
+  v_km         numeric;
+begin
+  if v_ent is null or jsonb_typeof(v_ent) <> 'object' then
+    v_ent := '{}'::jsonb;
+  end if;
+  v_tipo       := btrim(coalesce(v_ent->>'tipo', ''));
+  v_data       := btrim(coalesce(v_ent->>'data', ''));
+  v_morada     := btrim(coalesce(v_ent->>'morada', ''));
+  v_localidade := btrim(coalesce(v_ent->>'localidade', ''));
+  v_cp         := btrim(coalesce(v_ent->>'cp', ''));
+  v_hora       := btrim(coalesce(v_ent->>'hora', ''));
+
+  if v_tipo not in ('levantar', 'entrega') then
+    return jsonb_build_object('ok', false, 'campo', 'entrega',
+      'motivo', 'Diz-nos se preferes levantar ou receber em casa.');
+  end if;
+  if v_data !~ '^\d{4}-\d{2}-\d{2}$' then
+    return jsonb_build_object('ok', false, 'campo', 'data', 'motivo', 'Escolhe o dia em que queres os cookies.');
+  end if;
+  if v_data::date < (now() at time zone 'Europe/Lisbon')::date then
+    return jsonb_build_object('ok', false, 'campo', 'data', 'motivo', 'Essa data já passou.');
+  end if;
+  if v_tipo = 'entrega' then
+    if length(v_morada) < 4 then
+      return jsonb_build_object('ok', false, 'campo', 'morada', 'motivo', 'Indica a morada de entrega.');
+    end if;
+    if length(v_localidade) < 2 then
+      return jsonb_build_object('ok', false, 'campo', 'localidade', 'motivo', 'Indica a localidade.');
+    end if;
+  end if;
+
+  v_hd := loja_horario_dia(c.loja_horarios, v_data::date);
+  if v_hd is null then
+    return jsonb_build_object('ok', false, 'campo', 'data', 'motivo', 'Nesse dia estamos fechados. Escolhe outro dia.');
+  end if;
+  v_antec := case when (c.loja_horarios->>'antecedenciaHoras') ~ '^\d+(\.\d+)?$'
+                  then (c.loja_horarios->>'antecedenciaHoras')::numeric else 2 end;
+  if v_hora !~ '^\d{2}:00$' then
+    return jsonb_build_object('ok', false, 'campo', 'hora', 'motivo', 'Escolhe a hora.');
+  end if;
+  v_h := substr(v_hora, 1, 2)::int;
+  if v_h < v_hd[1] or v_h >= v_hd[2] then
+    return jsonb_build_object('ok', false, 'campo', 'hora', 'motivo', 'Essa hora não está disponível. Escolhe outra.');
+  end if;
+  if v_data::date + make_interval(hours => v_h)
+     < (now() at time zone 'Europe/Lisbon') + v_antec * interval '1 hour' then
+    return jsonb_build_object('ok', false, 'campo', 'hora',
+      'motivo', format('Precisamos de pelo menos %s horas para preparar. Escolhe uma hora mais tarde.',
+                       replace(trim(trailing '.' from trim(trailing '0' from v_antec::text)), '.', ',')));
+  end if;
+
+  v_locais := coalesce(c.loja_locais_levantamento, '[]'::jsonb);
+  if v_tipo = 'levantar' and jsonb_array_length(v_locais) > 0 then
+    if not exists (select 1 from jsonb_array_elements(v_locais) l where coalesce((l->>'ativo')::boolean, false)) then
+      return jsonb_build_object('ok', false, 'campo', 'entrega',
+        'motivo', 'De momento não temos levantamento. Escolhe a entrega.');
+    end if;
+    select l into v_local
+      from jsonb_array_elements(v_locais) l
+     where l->>'id' = btrim(coalesce(v_ent->>'local', ''))
+       and coalesce((l->>'ativo')::boolean, false)
+     limit 1;
+    if v_local is null then
+      return jsonb_build_object('ok', false, 'campo', 'local',
+        'motivo', 'Esse local de levantamento já não está disponível. Escolhe outro.');
+    end if;
+  end if;
+
+  v_entrega := jsonb_strip_nulls(jsonb_build_object(
+    'tipo', v_tipo,
+    'data', v_data,
+    'hora', v_hora,
+    'horaFim', lpad((v_h + 1)::text, 2, '0') || ':00',
+    'local', case when v_local is not null then jsonb_strip_nulls(jsonb_build_object(
+               'id', v_local->>'id',
+               'nome', left(v_local->>'nome', 80),
+               'morada', nullif(left(coalesce(v_local->>'morada', ''), 160), '')
+             )) end,
+    'morada',     case when v_tipo = 'entrega' then left(v_morada, 160) end,
+    'localidade', case when v_tipo = 'entrega' then left(v_localidade, 80) end,
+    'cp',         case when v_tipo = 'entrega' then nullif(left(v_cp, 12), '') end
+  ));
+
+  v_ent_cfg := coalesce(c.loja_entrega_config, '{}'::jsonb);
+  if v_tipo <> 'entrega'
+     or coalesce(v_ent_cfg->>'ativo', '') <> 'true'
+     or coalesce(v_ent_cfg #>> '{origem,lat}', '') !~ '^-?\d+(\.\d+)?$'
+     or coalesce(v_ent_cfg #>> '{origem,lng}', '') !~ '^-?\d+(\.\d+)?$'
+     or jsonb_typeof(v_ent_cfg->'faixas') is distinct from 'array'
+     or jsonb_array_length(v_ent_cfg->'faixas') = 0 then
+    return jsonb_build_object('ok', true, 'entrega', v_entrega, 'entregaAtiva', false);
+  end if;
+
+  -- sem coordenadas (a rua não apareceu no mapa) a taxa fica a confirmar
+  if coalesce(v_ent->>'lat', '') !~ '^-?\d+(\.\d+)?$' or coalesce(v_ent->>'lng', '') !~ '^-?\d+(\.\d+)?$' then
+    return jsonb_build_object('ok', true, 'entrega', v_entrega, 'entregaAtiva', true, 'semMapa', true);
+  end if;
+
+  v_km := 2 * 6371 * asin(sqrt(
+            power(sin(radians((v_ent->>'lat')::numeric - (v_ent_cfg #>> '{origem,lat}')::numeric) / 2), 2) +
+            cos(radians((v_ent_cfg #>> '{origem,lat}')::numeric)) * cos(radians((v_ent->>'lat')::numeric)) *
+            power(sin(radians((v_ent->>'lng')::numeric - (v_ent_cfg #>> '{origem,lng}')::numeric) / 2), 2)));
+
+  select f into v_faixa
+    from jsonb_array_elements(v_ent_cfg->'faixas') f
+   where (f->>'ateKm') ~ '^\d+(\.\d+)?$'
+     and v_km <= case when (f->>'ateKm') ~ '^\d+(\.\d+)?$' then (f->>'ateKm')::numeric end
+   order by case when (f->>'ateKm') ~ '^\d+(\.\d+)?$' then (f->>'ateKm')::numeric end
+   limit 1;
+  if v_faixa is null then
+    return jsonb_build_object('ok', false, 'campo', 'morada',
+      'motivo', format('Ainda não entregamos tão longe (cerca de %s km). Podes escolher levantar.',
+                       replace(round(v_km, 1)::text, '.', ',')));
+  end if;
+
+  return jsonb_build_object(
+    'ok', true, 'entrega', v_entrega, 'entregaAtiva', true, 'semMapa', false,
+    'km', round(v_km, 1),
+    'taxa', case when (v_faixa->>'preco') ~ '^\d+(\.\d+)?$' then (v_faixa->>'preco')::numeric else 0 end
+  );
+end $$;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- 2c) Pedido da Black Crumb
+-- ────────────────────────────────────────────────────────────────────────────
+-- Entrada:
+-- {
+--   "cliente": { "nome": "...", "telefone": "..." },
+--   "combos":  [ { "combo": "duo", "sabores": { "nutella": 1, "pistache": 1 } } ],
+--   "entrega": { ... como no loja_criar_pedido ... },
+--   "notas":   "..."
+-- }
+-- Pagamento só por MB WAY, na hora. O preço de cada combo, o brinde e a taxa
+-- de entrega saem daqui (configuracao.loja_black) — o browser só manda a escolha.
+-- Cada combo vira uma linha com etiqueta e com `stock` (os sabores que tirou),
+-- para a app devolver o stock certo se o pedido for cancelado.
+-- Saída: { ok: true, pedidoId, referencia, total, taxaEntrega, antecipado } | { ok: false, motivo, campo }
+create or replace function loja_criar_pedido_black(p jsonb)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_cfg     configuracao%rowtype;
+  v_bf      jsonb;
+  v_ant     boolean;
+  v_nome    text := btrim(coalesce(p#>>'{cliente,nome}', ''));
+  v_tel     text := btrim(coalesce(p#>>'{cliente,telefone}', ''));
+  v_notas   text := btrim(coalesce(p->>'notas', ''));
+  v_combos  jsonb := coalesce(p->'combos', '[]'::jsonb);
+  v_val     jsonb;
+  v_entrega jsonb;
+  v_combo   jsonb;
+  v_def     jsonb;
+  v_par     record;
+  v_cookie  record;
+  v_soma    int;
+  v_resumo  text;
+  v_stock   jsonb;
+  v_need    jsonb := '{}'::jsonb;
+  v_linhas  jsonb := '[]'::jsonb;
+  v_n       int := 0;
+  v_brinde  int;
+  v_total   numeric := 0;
+  v_taxa    numeric := 0;
+  v_km      numeric;
+  v_gratis  numeric;
+  v_ate_km  numeric;
+  v_desc    numeric;
+  v_cliente_id text;
+  v_pedido_id  text;
+  v_ref     text;
+begin
+  select * into v_cfg from configuracao where id = 'main';
+  v_bf := loja_black_estado(v_cfg.loja_black);
+  if not coalesce((v_bf->>'ativo')::boolean, false) then
+    return jsonb_build_object('ok', false, 'fim', true, 'motivo', 'A Black Crumb já terminou. Obrigada!');
+  end if;
+  if v_bf->>'fase' = 'pausa' then
+    return jsonb_build_object('ok', false, 'fim', true, 'motivo',
+      format('As encomendas estão fechadas por agora. Voltamos a abrir no dia %s.',
+             to_char((v_bf->>'reabre')::timestamp, 'DD/MM')));
+  end if;
+  if not coalesce((v_bf->>'aberta')::boolean, false) then
+    return jsonb_build_object('ok', false, 'fim', true, 'motivo', 'As encomendas da Black Crumb já terminaram. Obrigada!');
+  end if;
+  v_ant := coalesce((v_bf->>'antecipado')::boolean, false);
+
+  -- ── contacto ─────────────────────────────────────────────────────────────
+  if length(v_nome) < 2 then
+    return jsonb_build_object('ok', false, 'campo', 'nome', 'motivo', 'Diz-nos o teu nome.');
+  end if;
+  if length(regexp_replace(v_tel, '\D', '', 'g')) < 6 then
+    return jsonb_build_object('ok', false, 'campo', 'telefone', 'motivo', 'Precisamos de um telemóvel para confirmar o pedido.');
+  end if;
+
+  -- ── combos ───────────────────────────────────────────────────────────────
+  if jsonb_typeof(v_combos) <> 'array' or jsonb_array_length(v_combos) = 0 then
+    return jsonb_build_object('ok', false, 'motivo', 'Escolhe pelo menos um combo.');
+  end if;
+  if jsonb_array_length(v_combos) > 20 then
+    return jsonb_build_object('ok', false, 'motivo', 'Para encomendas grandes, fala connosco diretamente.');
+  end if;
+
+  for v_combo in select value from jsonb_array_elements(v_combos)
+  loop
+    v_def := null;
+    select x into v_def
+      from jsonb_array_elements(v_bf->'combos') x
+     where x->>'id' = coalesce(v_combo->>'combo', '')
+     limit 1;
+    if v_def is null then
+      return jsonb_build_object('ok', false, 'motivo', 'Esse combo já não existe. Atualiza a página.');
+    end if;
+    if jsonb_typeof(v_combo->'sabores') is distinct from 'object' then
+      return jsonb_build_object('ok', false, 'motivo', format('Escolhe os sabores do %s.', v_def->>'nome'));
+    end if;
+
+    v_soma := 0;
+    v_resumo := '';
+    v_stock := '{}'::jsonb;
+    for v_par in
+      select key as id,
+             case when value ~ '^\d{1,2}$' then value::int else 0 end as qty
+      from jsonb_each_text(v_combo->'sabores') t(key, value)
+    loop
+      if v_par.qty <= 0 then continue; end if;
+      select * into v_cookie from cookies_catalogo
+       where id = v_par.id and ativo_no_cardapio;
+      if not found then
+        return jsonb_build_object('ok', false, 'motivo', 'Um dos sabores já não está disponível. Atualiza a página.');
+      end if;
+      v_soma   := v_soma + v_par.qty;
+      v_resumo := v_resumo || case when v_resumo = '' then '' else ', ' end
+                            || v_par.qty || '× ' || coalesce(nullif(v_cookie.short, ''), v_cookie.nome);
+      v_stock  := v_stock || jsonb_build_object(v_par.id, v_par.qty);
+      v_need   := jsonb_set(v_need, array[v_par.id],
+                    to_jsonb(coalesce((v_need->>v_par.id)::int, 0) + v_par.qty));
+    end loop;
+
+    if v_soma <> (v_def->>'cookies')::int then
+      return jsonb_build_object('ok', false, 'motivo',
+        format('O %s leva exatamente %s cookies.', v_def->>'nome', v_def->>'cookies'));
+    end if;
+
+    v_n     := v_n + 1;
+    v_total := v_total + (v_def->>'preco')::numeric;
+    v_linhas := v_linhas || jsonb_build_object(
+      'cookieId', format('black-%s-%s', v_def->>'id', v_n),
+      'qty', 1,
+      'preco', (v_def->>'preco')::numeric,
+      'customLabel', format('%s · %s', v_def->>'nome', v_resumo),
+      'stock', v_stock
+    );
+  end loop;
+
+  -- brinde: mini cookie(s) de 50 g por combo, sabor surpresa (não mexe no stock)
+  v_brinde := v_n * coalesce((v_bf->>'brindePorCombo')::int, 0);
+  if v_brinde > 0 then
+    v_linhas := v_linhas || jsonb_build_object(
+      'cookieId', 'black-brinde', 'qty', v_brinde, 'preco', 0,
+      'customLabel', 'Mini cookie 50 g de oferta (sabor surpresa)'
+    );
+  end if;
+
+  -- ── levantamento / entrega ───────────────────────────────────────────────
+  v_val := loja_entrega_validar(p, v_cfg);
+  if not coalesce((v_val->>'ok')::boolean, false) then
+    return v_val;
+  end if;
+  v_entrega := v_val->'entrega';
+  if not ((v_bf->'dias') ? (v_entrega->>'data')) then
+    return jsonb_build_object('ok', false, 'campo', 'data',
+      'motivo', 'Esse dia não está disponível na Black Crumb. Escolhe outro.');
+  end if;
+
+  -- ── taxa de entrega com as regras da campanha ────────────────────────────
+  if v_entrega->>'tipo' = 'entrega' and coalesce((v_val->>'entregaAtiva')::boolean, false) then
+    v_gratis := (v_bf->>'freteGratisAPartirDe')::numeric;
+    v_ate_km := (v_bf->>'antecipadoFreteGratisAteKm')::numeric;
+    v_desc   := (v_bf->>'antecipadoDescontoFrete')::numeric;
+    v_km     := (v_val->>'km')::numeric;
+
+    if v_gratis is not null and v_total >= v_gratis then
+      v_taxa := 0;
+      v_entrega := v_entrega || jsonb_strip_nulls(jsonb_build_object('distanciaKm', v_km, 'taxa', 0));
+    elsif coalesce((v_val->>'semMapa')::boolean, false) then
+      v_entrega := v_entrega || jsonb_build_object('taxaAConfirmar', true);
+    else
+      v_taxa := coalesce((v_val->>'taxa')::numeric, 0);
+      if v_ant and v_ate_km is not null and v_km <= v_ate_km then
+        v_taxa := 0;
+      elsif v_ant and v_desc is not null then
+        v_taxa := greatest(0, v_taxa - v_desc);
+      end if;
+      if v_taxa > 0 then
+        v_linhas := v_linhas || jsonb_build_object(
+          'cookieId', 'entrega', 'qty', 1, 'preco', v_taxa,
+          'customLabel', format('Entrega (%s km)', replace(v_km::text, '.', ',')));
+      end if;
+      v_entrega := v_entrega || jsonb_build_object('distanciaKm', v_km, 'taxa', v_taxa);
+    end if;
+  end if;
+
+  if v_ant then
+    v_entrega := v_entrega || jsonb_build_object('antecipado', true);
+  end if;
+
+  -- ── cliente: reaproveita pelo telemóvel (só dígitos) ──────────────────────
+  select id into v_cliente_id
+    from clientes
+   where loja_tel_norm(telefone) = loja_tel_norm(v_tel)
+     and loja_tel_norm(telefone) <> ''
+   order by criado_em asc
+   limit 1;
+
+  if v_cliente_id is null then
+    insert into clientes (nome, telefone, instagram, email, notas)
+    values (left(v_nome, 80), left(v_tel, 40), '', '', 'Cliente da loja online')
+    returning id into v_cliente_id;
+  elsif (select count(*) from pedidos
+          where cliente_id = v_cliente_id and origem = 'loja'
+            and status = 'pendente' and criado_em > now() - interval '24 hours') >= 5 then
+    return jsonb_build_object('ok', false, 'motivo',
+      'Já tens pedidos por confirmar. Falamos contigo em breve!');
+  end if;
+
+  v_ref := loja_nova_referencia();
+  v_total := v_total + v_taxa;
+
+  insert into pedidos (cliente_id, linhas, box, total_eur, desconto, data_pedido,
+                       forma_pagamento, status, notas, origem, referencia, entrega, campanha)
+  values (v_cliente_id, v_linhas, null, v_total, 0, current_date,
+          'MB WAY', 'pendente', left(v_notas, 400), 'loja', v_ref, v_entrega, 'black')
+  returning id into v_pedido_id;
+
+  -- ── stock: desconta sempre, mesmo que fique negativo (é o que falta fazer).
+  --    Soma no banco, para dois pedidos ao mesmo tempo não se atropelarem ──
+  insert into estoque (tipo, cookie_id, qty)
+  select 'cookie', t.key, -(t.value::numeric)
+    from jsonb_each_text(v_need) t(key, value)
+  on conflict (tipo, cookie_id) do update set qty = estoque.qty + excluded.qty;
+
+  return jsonb_build_object(
+    'ok', true,
+    'pedidoId', v_pedido_id,
+    'referencia', v_ref,
+    'total', v_total,
+    'taxaEntrega', v_taxa,
+    'antecipado', v_ant
   );
 end $$;
 
@@ -926,7 +1534,9 @@ begin
   case v_p.status
     when 'pendente' then
       v_estado := 'Recebemos. Vamos confirmar contigo.';
-      v_seguinte := case v_p.forma_pagamento
+      v_seguinte := case when v_p.campanha = 'black' and v_p.forma_pagamento = 'MB WAY'
+        then 'Assim que recebermos o MB WAY, confirmamos a tua encomenda.'
+        else case v_p.forma_pagamento
         when 'MB WAY' then 'Vamos enviar-te o pedido de pagamento MB WAY para o número que deixaste.'
         when 'Dinheiro' then
           case when v_tipo = 'levantar'
@@ -934,7 +1544,7 @@ begin
             else 'Pagas em dinheiro na entrega. Falamos contigo em breve.'
           end
         else 'Falamos contigo em breve para confirmar tudo.'
-      end;
+      end end;
     when 'pago' then
       v_estado := 'Confirmado. Estamos a preparar.';
       v_seguinte := case when v_tipo = 'levantar'
@@ -964,6 +1574,7 @@ begin
     'etapaEm', v_p.etapa_em,
     'desconto', v_p.desconto,
     'cupom', v_p.cupom,
+    'campanha', v_p.campanha,
     'estado', v_estado,
     'seguinte', v_seguinte,
     'total', v_p.total_eur,
@@ -982,7 +1593,12 @@ revoke all on function loja_cardapio()           from public, anon, authenticate
 revoke all on function loja_criar_pedido(jsonb)  from public, anon, authenticated;
 revoke all on function loja_ver_pedido(text, text) from public, anon, authenticated;
 revoke all on function loja_validar_cupom(text)  from public, anon, authenticated;
+revoke all on function loja_horario_dia(jsonb, date) from public, anon, authenticated;
+revoke all on function loja_black_estado(jsonb)   from public, anon, authenticated;
+revoke all on function loja_entrega_validar(jsonb, configuracao) from public, anon, authenticated;
+revoke all on function loja_criar_pedido_black(jsonb) from public, anon, authenticated;
 grant execute on function loja_cardapio()             to anon, authenticated;
 grant execute on function loja_criar_pedido(jsonb)    to anon, authenticated;
+grant execute on function loja_criar_pedido_black(jsonb) to anon, authenticated;
 grant execute on function loja_ver_pedido(text, text) to anon, authenticated;
 grant execute on function loja_validar_cupom(text)    to anon, authenticated;

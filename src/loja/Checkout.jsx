@@ -28,11 +28,14 @@ const fmtKm = (km) => `${km.toFixed(1).replace('.', ',')} km`
 const FALLBACK_LEVANTAR = 'Combinamos o sítio e a hora contigo por mensagem.'
 const FALLBACK_ENTREGA = 'Entregamos na morada que indicares. Combinamos o horário contigo.'
 
-/** Com mais de um local de levantamento ligado, há um passo para escolher. */
-const passosPara = (tipo, escolheLocal = false) => [
+/**
+ * Com mais de um local de levantamento ligado, há um passo para escolher.
+ * Numa campanha com pagamento fixo (Black Crumb: só MB WAY) não há passo de pagar.
+ */
+const passosPara = (tipo, escolheLocal = false, semPagar = false) => [
   'pedido', 'receber',
   ...(tipo === 'levantar' && escolheLocal ? ['local'] : []),
-  'quando', ...(tipo === 'entrega' ? ['morada'] : []), 'contacto', 'pagar', 'confirmar',
+  'quando', ...(tipo === 'entrega' ? ['morada'] : []), 'contacto', ...(semPagar ? [] : ['pagar']), 'confirmar',
 ]
 
 /**
@@ -48,11 +51,21 @@ const descLocal = (l) => [l.nome, l.morada, l.notas].filter(Boolean).join(' · '
  * sozinhas; só pedimos "Continuar" quando há que escrever. Entrega abre o
  * passo da morada, levantar salta-o. Quem já pediu antes encontra tudo
  * preenchido — o segundo pedido é quase só confirmar.
+ *
+ * `campanha` (opcional, ex.: Black Crumb) muda as regras:
+ *   { dias: [{ iso, rotulo, dia }],  só estes dias, sem "Outro dia…"
+ *     pagamento: 'MB WAY',           pagamento fixo — salta o passo de pagar
+ *     taxa({ total, km, taxa, semMapa }) → número | null (a confirmar)
+ *     regrasEntrega: ['…'],          frases no passo da morada
+ *     brinde: n }                    mini cookies de oferta a mostrar
+ * Sem cupão nas campanhas. As linhas `tipo: 'combo'` só se removem ou repetem.
  */
 export function Checkout({
   cardapio, resumo, poupancaBox, caixaInicial = null, onFechar,
   onTirarDaCaixa, onTirarCaixa, onRepetirCaixa, onPodeRepetirCaixa, onAjustar, onPodeMais, onEnviar,
+  campanha = null,
 }) {
+  const semPagar = Boolean(campanha?.pagamento)
   const [inicial] = useState(lerContacto)
   /** Box aberta para mexer cookie a cookie (pelo índice onde começa na escolha). */
   const [caixaAberta, setCaixaAberta] = useState(caixaInicial)
@@ -64,7 +77,7 @@ export function Checkout({
       ...inicial,
       tipo: inicial.tipo === 'levantar' && semLev ? '' : inicial.tipo,
       local: ls?.some((l) => l.id === inicial.local) ? inicial.local : '',
-      data: '', hora: '', pagamento: '', notas: '',
+      data: '', hora: '', pagamento: campanha?.pagamento ?? '', notas: '',
     }
   })
   const [passo, setPasso] = useState('pedido')
@@ -73,7 +86,7 @@ export function Checkout({
   const [enviando, setEnviando] = useState(false)
   const [outroDia, setOutroDia] = useState(false)
   const [comNota, setComNota] = useState(false)
-  const [dias] = useState(() => proximosDias(8))
+  const [dias] = useState(() => campanha?.dias ?? proximosDias(8))
   const [hoje] = useState(hojeIso)
   /** Distância/taxa da morada de entrega: { chave, estado: 'a-ver'|'ok'|'sem-mapa', km, taxa, lat, lng } */
   const [geo, setGeo] = useState(null)
@@ -102,7 +115,18 @@ export function Checkout({
   const chaveMorada = `${form.morada.trim()}|${form.localidade.trim()}|${form.cp.trim()}`.toLowerCase()
   // A distância só vale para a morada com que foi calculada.
   const geoAtual = geo && geo.chave === chaveMorada ? geo : null
-  const taxaEntrega = form.tipo === 'entrega' && regrasEntrega && geoAtual?.estado === 'ok' ? geoAtual.taxa : 0
+  // Taxa da tabela por distância; uma campanha pode ter as suas regras por cima.
+  // Sem a rua no mapa fica "a confirmar" — a não ser que a campanha a dê grátis.
+  const semMapa = geoAtual?.estado === 'sem-mapa'
+  let taxaEntrega = 0
+  let taxaPendente = false
+  if (form.tipo === 'entrega' && regrasEntrega && (geoAtual?.estado === 'ok' || semMapa)) {
+    const t = campanha?.taxa
+      ? campanha.taxa({ total: resumo.total, km: geoAtual.km, taxa: geoAtual.taxa, semMapa })
+      : (semMapa ? null : geoAtual.taxa)
+    if (t === null) taxaPendente = true
+    else taxaEntrega = t
+  }
   const desconto = cupom ? Math.round(resumo.total * cupom.percent) / 100 : 0
   const totalFinal = Math.max(0, resumo.total - desconto + taxaEntrega)
 
@@ -123,7 +147,7 @@ export function Checkout({
     return r
   }
 
-  const passos = passosPara(form.tipo, escolheLocal)
+  const passos = passosPara(form.tipo, escolheLocal, semPagar)
   const idx = Math.max(0, passos.indexOf(passo))
   const { nome, telefone, tipo, morada, localidade, cp, local } = form
 
@@ -157,7 +181,7 @@ export function Checkout({
 
   function irPara(alvo, { tipoAgora = form.tipo, som = true } = {}) {
     clearTimeout(timer.current)
-    const lista = passosPara(tipoAgora, escolheLocal)
+    const lista = passosPara(tipoAgora, escolheLocal, semPagar)
     setDir(lista.indexOf(alvo) >= idx ? 1 : -1)
     setPasso(alvo)
     setErro('')
@@ -201,6 +225,7 @@ export function Checkout({
       return [escolheLocal ? 'local' : 'receber', 'Escolhe onde vens buscar.']
     }
     if (!form.data || form.data < hoje) return ['quando', 'Escolhe o dia em que queres os cookies.']
+    if (campanha && !dias.some((d) => d.iso === form.data)) return ['quando', 'Escolhe um dos dias disponíveis.']
     if (!horaValida) return ['quando', 'Escolhe a hora (essa já não dá tempo de preparar).']
     if (form.tipo === 'entrega' && semMorada()) return ['morada', semMorada()]
     if (semContacto()) return ['contacto', semContacto()]
@@ -230,6 +255,7 @@ export function Checkout({
     setForm((f) => ({ ...f, hora }))
     depois(form.tipo === 'entrega' ? 'morada' : 'contacto')
   }
+  const depoisDoContacto = semPagar ? 'confirmar' : 'pagar'
   function escolherPagamento(p) {
     toquePasso()
     setForm((f) => ({ ...f, pagamento: p }))
@@ -271,7 +297,7 @@ export function Checkout({
     }
     if (passo === 'contacto') {
       const p = semContacto()
-      return p ? setErro(p) : irPara('pagar')
+      return p ? setErro(p) : irPara(depoisDoContacto)
     }
     if (passo === 'pagar') return irPara('confirmar')
     return submeter()
@@ -380,6 +406,11 @@ export function Checkout({
                     ))}
                   </ul>
                 )}
+                {campanha?.brinde > 0 && resumo.linhas.length > 0 && (
+                  <p className="poupanca">
+                    <span aria-hidden="true">🎁</span> +{campanha.brinde} mini {campanha.brinde === 1 ? 'cookie' : 'cookies'} de 50 g de oferta
+                  </p>
+                )}
                 {resumo.poupanca > 0 && (
                   <p className="poupanca">
                     <span aria-hidden="true">🎉</span> Com a Box poupas {fmtEuro(resumo.poupanca)}
@@ -452,6 +483,9 @@ export function Checkout({
                     ? 'O dia em que te levamos os cookies.'
                     : `O dia em que vens buscar${localEscolhido ? ` · ${localEscolhido.nome}` : ''}.`}
                 </p>
+                {campanha && diasComHora.length === 0 && (
+                  <p className="passo-info">Já não há horários disponíveis para encomendar.</p>
+                )}
                 <div className="dias">
                   {diasComHora.map((d) => (
                     <button
@@ -466,7 +500,7 @@ export function Checkout({
                     </button>
                   ))}
                 </div>
-                {outroDia || (form.data && !diasComHora.some((d) => d.iso === form.data)) ? (
+                {campanha ? null : outroDia || (form.data && !diasComHora.some((d) => d.iso === form.data)) ? (
                   <label className="block mt-4">
                     <span className="bfy-label">Outro dia</span>
                     <input
@@ -507,6 +541,11 @@ export function Checkout({
               <>
                 <h2 ref={titulo} tabIndex={-1} className="passo-titulo">Onde entregamos?</h2>
                 <p className="passo-sub">{txtEntrega}</p>
+                {campanha?.regrasEntrega?.length > 0 && (
+                  <ul className="faixas-entrega faixas-campanha" aria-label="Regras de entrega da campanha">
+                    {campanha.regrasEntrega.map((t) => <li key={t}>{t}</li>)}
+                  </ul>
+                )}
                 {regrasEntrega && (
                   <ul className="faixas-entrega" aria-label="Taxa de entrega">
                     {regrasEntrega.faixas.map((f, i) => (
@@ -545,11 +584,14 @@ export function Checkout({
                 {regrasEntrega && geoAtual?.estado === 'ok' && (
                   <p className="passo-info">
                     Fica a cerca de {fmtKm(geoAtual.km)} · entrega{' '}
-                    <b>{geoAtual.taxa > 0 ? fmtEuro(geoAtual.taxa) : 'grátis'}</b>
+                    <b>{taxaEntrega > 0 ? fmtEuro(taxaEntrega) : 'grátis'}</b>
                   </p>
                 )}
                 {regrasEntrega && geoAtual?.estado === 'sem-mapa' && (
-                  <p className="passo-info">Não encontrámos esta rua com este código postal. Confirma se estão certos — se estiverem, combinamos a taxa de entrega contigo.</p>
+                  <p className="passo-info">
+                    Não encontrámos esta rua com este código postal. Confirma se estão certos
+                    {taxaPendente ? ' — se estiverem, combinamos a taxa de entrega contigo.' : '. A entrega é grátis.'}
+                  </p>
                 )}
                 {regrasEntrega && (
                   <p className="mapa-credito">
@@ -623,6 +665,8 @@ export function Checkout({
                 irPara={irPara}
                 entrega={form.tipo === 'entrega' && regrasEntrega ? geoAtual : null}
                 taxaEntrega={taxaEntrega}
+                taxaPendente={taxaPendente}
+                campanha={campanha}
                 cupom={cupom}
                 desconto={desconto}
                 totalFinal={totalFinal}
@@ -646,7 +690,11 @@ export function Checkout({
               </button>
             )}
             {passo === 'confirmar' && (
-              <p className="checkout-letra">Não pagas nada agora. Falamos contigo para confirmar.</p>
+              <p className="checkout-letra">
+                {campanha?.pagamento === 'MB WAY'
+                  ? 'A seguir mostramos o número MB WAY para pagares. Confirmamos assim que o pagamento chegar.'
+                  : 'Não pagas nada agora. Falamos contigo para confirmar.'}
+              </p>
             )}
           </footer>
         )}
@@ -679,6 +727,31 @@ function Linha({
   l, cardapio, aberta, onAlternar, onTirarDaCaixa, onEscolherOutro,
   onTirarCaixa, onRepetirCaixa, podeRepetir, onAjustar, podeMais,
 }) {
+  // combo de campanha: os sabores escolhem-se no construtor; aqui só remover ou repetir
+  if (l.tipo === 'combo') {
+    return (
+      <li className="linha linha-caixa">
+        <span className="linha-box-fotos" aria-hidden="true">
+          {l.ids.slice(0, 4).map((id, i) => {
+            const src = findCookie(cardapio, id)?.image
+            return src ? <img key={i} src={src} alt="" /> : <span key={i} />
+          })}
+        </span>
+        <div className="linha-txt">
+          <div className="linha-topo">
+            <p className="linha-nome">{l.nome}</p>
+            <span className="linha-preco bfy-num">{fmtEuro(l.subtotal)}</span>
+          </div>
+          <p className="linha-detalhe">{l.detalhe}</p>
+          <div className="linha-acoes">
+            <button type="button" className="linha-acao" onClick={() => onTirarCaixa(l.inicio)}>Remover</button>
+            <button type="button" className="linha-acao" onClick={() => onRepetirCaixa(l.inicio)}>+ Repetir</button>
+          </div>
+        </div>
+      </li>
+    )
+  }
+
   if (l.tipo === 'caixa') {
     const painel = `caixa-${l.inicio}-cookies`
     return (
@@ -783,17 +856,24 @@ function Linha({
 
 function Confirmar({
   titulo, cardapio, resumo, form, txtLevantar, comNota, onComNota, onNotas, irPara,
-  entrega, taxaEntrega, cupom, desconto, totalFinal, onCupom,
+  entrega, taxaEntrega, taxaPendente, campanha, cupom, desconto, totalFinal, onCupom,
 }) {
-  const pag = PAGAMENTOS.find((p) => p.id === form.pagamento)
+  const pag = campanha?.pagamento
+    ? { icone: '📱', nota: 'Pagas já a seguir, para o número que te mostramos.' }
+    : PAGAMENTOS.find((p) => p.id === form.pagamento)
   const nCaixas = resumo.caixas.length
   const nSoltos = resumo.linhas.filter((l) => l.tipo === 'avulso').reduce((s, l) => s + l.qty, 0)
   const partes = []
   if (nCaixas) partes.push(`${nCaixas} ${nCaixas === 1 ? 'Box' : 'Boxes'} de ${resumo.size}`)
   if (nSoltos) partes.push(`${nSoltos} ${nSoltos === 1 ? 'cookie' : 'cookies'}`)
   for (const l of resumo.linhas.filter((x) => x.tipo === 'extra')) partes.push(`${l.qty > 1 ? `${l.qty}× ` : ''}${l.nome}`)
+  // combos de campanha: "2× THE DUO + THE BOX"
+  const combos = {}
+  for (const l of resumo.linhas.filter((x) => x.tipo === 'combo')) combos[l.nome] = (combos[l.nome] ?? 0) + 1
+  for (const [nome, n] of Object.entries(combos)) partes.push(`${n > 1 ? `${n}× ` : ''}${nome}`)
+  if (campanha?.brinde > 0) partes.push(`${campanha.brinde} mini de oferta`)
   const fotos = resumo.linhas
-    .flatMap((l) => (l.tipo === 'caixa' ? l.ids.map((id) => findCookie(cardapio, id)?.image) : [l.image]))
+    .flatMap((l) => (l.ids ? l.ids.map((id) => findCookie(cardapio, id)?.image) : [l.image]))
     .filter(Boolean)
     .slice(0, 8)
 
@@ -819,7 +899,12 @@ function Confirmar({
           onMudar={() => irPara('receber')}
         />
         <ResumoLinha icone="🙋" titulo={form.nome} detalhe={form.telefone} onMudar={() => irPara('contacto')} />
-        <ResumoLinha icone={pag?.icone ?? '💶'} titulo={form.pagamento} detalhe={pag?.nota} onMudar={() => irPara('pagar')} />
+        <ResumoLinha
+          icone={pag?.icone ?? '💶'}
+          titulo={form.pagamento}
+          detalhe={pag?.nota}
+          onMudar={campanha?.pagamento ? null : () => irPara('pagar')}
+        />
       </ul>
 
       {comNota ? (
@@ -837,7 +922,7 @@ function Confirmar({
         </button>
       )}
 
-      <Cupao cupom={cupom} desconto={desconto} onCupom={onCupom} />
+      {!campanha && <Cupao cupom={cupom} desconto={desconto} onCupom={onCupom} />}
 
       <div className="checkout-contas">
         {(desconto > 0 || entrega) && (
@@ -856,7 +941,9 @@ function Confirmar({
           <div className="checkout-conta">
             <span>Entrega{entrega.estado === 'ok' ? ` (${fmtKm(entrega.km)})` : ''}</span>
             <span className="bfy-num">
-              {entrega.estado === 'ok' ? (taxaEntrega > 0 ? fmtEuro(taxaEntrega) : 'grátis') : 'a confirmar'}
+              {(entrega.estado === 'ok' || entrega.estado === 'sem-mapa') && !taxaPendente
+                ? (taxaEntrega > 0 ? fmtEuro(taxaEntrega) : 'grátis')
+                : 'a confirmar'}
             </span>
           </div>
         )}
@@ -943,7 +1030,7 @@ function ResumoLinha({ icone, titulo, detalhe, onMudar, children }) {
         {detalhe && <p className="resumo-detalhe">{detalhe}</p>}
         {children}
       </div>
-      <button type="button" className="resumo-mudar" onClick={onMudar}>Mudar</button>
+      {onMudar && <button type="button" className="resumo-mudar" onClick={onMudar}>Mudar</button>}
     </li>
   )
 }

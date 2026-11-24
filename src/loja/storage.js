@@ -101,6 +101,7 @@ export function lerUltimoPedido() {
     telefone: String(data.telefone ?? ''),
     total: Number(data.total) || 0,
     pagamento: String(data.pagamento ?? ''),
+    campanha: String(data.campanha ?? ''),
   }
 }
 
@@ -110,6 +111,7 @@ export function gravarUltimoPedido(pedido) {
     telefone: pedido.telefone ?? '',
     total: pedido.total ?? 0,
     pagamento: pedido.pagamento ?? '',
+    campanha: pedido.campanha ?? '',
   })
 }
 

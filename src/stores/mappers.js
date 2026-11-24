@@ -76,6 +76,8 @@ export const MAPPERS = {
           formaPagamento: 'forma_pagamento', status: 'status', notas: 'notas', criadoEm: 'criado_em',
           origem: 'origem', referencia: 'referencia', entrega: 'entrega',
           etapa: 'etapa', etapaEm: 'etapa_em', cupom: 'cupom',
+          // campanha de onde veio o pedido (ex.: 'black') — ver supabase/loja.sql
+          campanha: 'campanha',
         },
         ['totalEur', 'desconto'],
       ),
@@ -137,6 +139,9 @@ export function configToApp(row) {
     // { price, descricao } — mini cookies de 50 g (preço único; 0 = não aparecem)
     mini50: row?.loja_mini50 && typeof row.loja_mini50 === 'object' ? row.loja_mini50 : {},
     mini50Disponivel: !row || 'loja_mini50' in row,
+    // campanha Black Crumb: { ativo, antecipadoAte, fim, combos, … } — ver supabase/loja.sql
+    black: row?.loja_black && typeof row.loja_black === 'object' ? row.loja_black : {},
+    blackDisponivel: !row || 'loja_black' in row,
   }
 }
 
@@ -147,6 +152,7 @@ export const CONFIG_PROPRIOS = [
   'cupons', 'cuponsDisponivel',
   'horarios', 'horariosDisponivel',
   'mini50', 'mini50Disponivel',
+  'black', 'blackDisponivel',
   'textoCookiesDisponivel',
 ]
 export function configToRow(patch) {
@@ -164,5 +170,6 @@ export function configToRow(patch) {
   if (patch.textoCookies !== undefined) r.loja_texto_cookies = patch.textoCookies
   if (patch.horarios !== undefined) r.loja_horarios = patch.horarios
   if (patch.mini50 !== undefined) r.loja_mini50 = patch.mini50
+  if (patch.black !== undefined) r.loja_black = patch.black
   return r
 }

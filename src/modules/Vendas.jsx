@@ -36,6 +36,19 @@ function ChipLoja() {
   )
 }
 
+/** Pedido da Black Crumb. Antecipado = encomendado até sexta 19h: leva selos a dobrar. */
+function ChipBlack({ antecipado }) {
+  return (
+    <span
+      className="bfy-chip"
+      title={antecipado ? 'Black Crumb · encomenda antecipada: selos a dobrar' : 'Black Crumb'}
+      style={{ background: '#0A0604', color: '#EFE4CB' }}
+    >
+      🖤 Black{antecipado ? ' · selos ×2' : ''}
+    </span>
+  )
+}
+
 function ChipCupao({ codigo, desconto }) {
   return (
     <span className="bfy-chip" title="Cupão de desconto usado na loja" style={{ color: 'var(--color-success)' }}>
@@ -96,41 +109,34 @@ function entregaLabel(e) {
   return ['Entrega', data, morada].filter(Boolean).join(' · ')
 }
 
-function deductPedidoStock(linhas, box, deductSale) {
-  const items = (linhas ?? [])
-    .filter((l) => !l.customLabel && !String(l.cookieId).startsWith('custom-'))
-    .map((l) => ({ cookieId: l.cookieId, qty: l.qty }))
-  if (box?.counts) {
-    for (const [cookieId, qty] of Object.entries(box.counts)) {
-      if (qty > 0) items.push({ cookieId, qty })
-    }
-  }
-  if (items.length) deductSale(items)
-}
-
-/** Cookies que um pedido tira do stock: { cookieId: qty } (avulsos + BOX). */
+/**
+ * Cookies que um pedido tira do stock: { cookieId: qty } (avulsos + BOX + combos).
+ * Linhas com etiqueta não contam — a não ser que digam que sabores levam em
+ * `stock` ({ nutella: 1, pistache: 1 } por unidade), como os combos da Black Crumb.
+ */
 function stockDoPedido(linhas, box) {
   const m = {}
+  const somar = (cookieId, qty) => { if (qty > 0) m[cookieId] = (m[cookieId] ?? 0) + qty }
   for (const l of linhas ?? []) {
+    const qty = Number(l.qty) || 0
+    if (l.stock && typeof l.stock === 'object') {
+      for (const [cookieId, n] of Object.entries(l.stock)) somar(cookieId, (Number(n) || 0) * qty)
+      continue
+    }
     if (l.customLabel || String(l.cookieId).startsWith('custom-')) continue
-    m[l.cookieId] = (m[l.cookieId] ?? 0) + (Number(l.qty) || 0)
+    somar(l.cookieId, qty)
   }
-  for (const [cookieId, qty] of Object.entries(box?.counts ?? {})) {
-    if (qty > 0) m[cookieId] = (m[cookieId] ?? 0) + qty
-  }
+  for (const [cookieId, qty] of Object.entries(box?.counts ?? {})) somar(cookieId, qty)
   return m
 }
 
+function deductPedidoStock(linhas, box, deductSale) {
+  const items = Object.entries(stockDoPedido(linhas, box)).map(([cookieId, qty]) => ({ cookieId, qty }))
+  if (items.length) deductSale(items)
+}
+
 function restorePedidoStock(linhas, box, adjustCookies) {
-  for (const l of linhas ?? []) {
-    if (l.customLabel || String(l.cookieId).startsWith('custom-')) continue
-    adjustCookies(l.cookieId, l.qty)
-  }
-  if (box?.counts) {
-    for (const [cookieId, qty] of Object.entries(box.counts)) {
-      if (qty > 0) adjustCookies(cookieId, qty)
-    }
-  }
+  for (const [cookieId, qty] of Object.entries(stockDoPedido(linhas, box))) adjustCookies(cookieId, qty)
 }
 
 const EMPTY_CLIENTE = { nome: '', telefone: '', instagram: '', email: '', notas: '' }
@@ -332,6 +338,8 @@ export function Vendas() {
           label: l.customLabel,
           qty: l.qty,
           preco: l.preco ?? 0,
+          // sabores que a linha tira do stock (combos da Black Crumb) — têm de sobreviver à edição
+          ...(l.stock ? { stock: l.stock } : {}),
         })
       } else {
         // somar (não substituir) se o mesmo sabor vier em duas linhas
@@ -386,6 +394,7 @@ export function Vendas() {
       qty: l.qty,
       preco: l.preco,
       customLabel: l.label,
+      ...(l.stock ? { stock: l.stock } : {}),
     }))
     return [...catalog, ...custom]
   }
@@ -788,6 +797,7 @@ export function Vendas() {
                           </span>
                         )}
                         {p.origem === 'loja' && <ChipLoja />}
+                        {p.campanha === 'black' && <ChipBlack antecipado={p.entrega?.antecipado} />}
                         {p.cupom && <ChipCupao codigo={p.cupom} desconto={p.desconto} />}
                         {p.referencia && (
                           <span className="bfy-num text-[11px] font-black" style={{ color: 'var(--color-accent-dark)' }}>
@@ -990,6 +1000,7 @@ function PedidoCard({ pedido, cookies, st, onEdit, onDelete, etapa }) {
             · {pedido.formaPagamento}
           </span>
           {pedido.origem === 'loja' && <ChipLoja />}
+          {pedido.campanha === 'black' && <ChipBlack antecipado={pedido.entrega?.antecipado} />}
           {pedido.cupom && <ChipCupao codigo={pedido.cupom} desconto={pedido.desconto} />}
           {pedido.referencia && (
             <span className="bfy-num text-[11px] font-black" style={{ color: 'var(--color-accent-dark)' }}>

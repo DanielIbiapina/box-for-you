@@ -43,15 +43,17 @@ export function rotuloEtapa(etapa, tipo) {
 }
 
 /** O que o cliente lê em grande na página do pedido, por etapa. */
-export function textoParaCliente(etapa, { tipo, pagamento, local } = {}) {
+export function textoParaCliente(etapa, { tipo, pagamento, local, pagarJa = false } = {}) {
   const levantar = tipo === 'levantar'
   switch (etapa) {
     case 'recebido':
       return {
         titulo: 'Recebemos o teu pedido',
-        detalhe: pagamento === 'MB WAY'
-          ? 'Vamos confirmar contigo e enviar o pedido de pagamento MB WAY.'
-          : 'Vamos confirmar contigo por mensagem.',
+        detalhe: pagarJa
+          ? 'Assim que recebermos o MB WAY, confirmamos a tua encomenda.'
+          : pagamento === 'MB WAY'
+            ? 'Vamos confirmar contigo e enviar o pedido de pagamento MB WAY.'
+            : 'Vamos confirmar contigo por mensagem.',
       }
     case 'confirmado':
       return { titulo: 'Pedido confirmado', detalhe: 'Já está na nossa lista. Avisamos quando começarmos a preparar.' }

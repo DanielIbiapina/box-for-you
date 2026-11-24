@@ -377,7 +377,8 @@ export function DataProvider({ children }) {
   const aplicarDeltas = useCallback((t, deltas) => {
     const map = { ...stockRef.current[t] }
     for (const [cookieId, delta] of Object.entries(deltas)) {
-      map[cookieId] = Math.max(0, (map[cookieId] ?? 0) + delta)
+      // sem travar no zero: negativo = o que falta fazer (ver supabase/estoque-atomico.sql)
+      map[cookieId] = (map[cookieId] ?? 0) + delta
     }
     stockRef.current = { ...stockRef.current, [t]: map }
     setDb((prev) => ({ ...prev, [CHAVE_ESTOQUE[t]]: map }))

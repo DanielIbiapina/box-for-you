@@ -84,7 +84,15 @@ export function Home({ onNavigate }) {
 
       for (const l of p.linhas ?? []) {
         const q = l.qty ?? 0
-        if (q > 0) somar(l.customLabel ?? nomeSabor(l.cookieId), q)
+        if (q <= 0) continue
+        // combos (Black Crumb) dizem que sabores levam: conta-se sabor a sabor
+        if (l.stock && typeof l.stock === 'object') {
+          for (const [cookieId, n] of Object.entries(l.stock)) {
+            if (n > 0) somar(nomeSabor(cookieId), n * q)
+          }
+          continue
+        }
+        somar(l.customLabel ?? nomeSabor(l.cookieId), q)
       }
       for (const [cookieId, q] of Object.entries(p.box?.counts ?? {})) {
         if (q > 0) somar(nomeSabor(cookieId), q)

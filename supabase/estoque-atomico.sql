@@ -14,6 +14,10 @@
 -- Entrada: [ { "tipo": "cookie", "cookie_id": "nutella", "delta": -2 }, ... ]
 --   tipo:  'cookie' | 'massa' | 'cookie50'
 --   delta: negativo tira, positivo devolve
+--
+-- O stock pode ficar NEGATIVO (nov/2026): na Black Crumb os sabores vendem-se
+-- mesmo sem stock e o negativo é o que falta fazer. Por isso a conta já não
+-- pára no zero — se parasse, "−5 e fiz mais 3" dava 0 em vez de −2.
 
 create or replace function estoque_ajustar(p jsonb)
 returns void
@@ -33,9 +37,9 @@ begin
     continue when m.tipo is null or m.cookie_id is null or coalesce(m.delta, 0) = 0;
 
     insert into estoque (tipo, cookie_id, qty)
-    values (m.tipo, m.cookie_id, greatest(0, m.delta))
+    values (m.tipo, m.cookie_id, m.delta)
     on conflict (tipo, cookie_id)
-    do update set qty = greatest(0, estoque.qty + m.delta);
+    do update set qty = estoque.qty + m.delta;
   end loop;
 end $$;
 

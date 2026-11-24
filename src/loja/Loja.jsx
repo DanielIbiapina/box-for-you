@@ -5,10 +5,15 @@ import { Checkout } from './Checkout'
 import { Pedido } from './Sucesso'
 import { Aviso, IconeWhatsApp } from './ui'
 import { linkWhatsApp } from './negocio'
-import { criarPedido, fetchCardapio, isSupabaseConfigured } from './api'
+import { criarPedido, criarPedidoBlack, fetchCardapio, isSupabaseConfigured } from './api'
+import { Black, MontarCombo, BandejaBlack } from './Black'
+import {
+  blackAtiva, blackAberta, lojaFechadaPelaBlack, lerSacoBlack, gravarSacoBlack, limparSacoBlack, resumoBlack, payloadBlack,
+  taxaBlack, regrasEntregaBlack, diasBlack,
+} from './blackCrumb'
 import {
   findCookie, livreSabor, livreExtra, contar, agrupar,
-  resumoPedido, payloadPedido, clampEscolha, poupancaPorBox, arrumarEscolha, entraNaBox,
+  resumoPedido, payloadPedido, clampEscolha, poupancaPorBox, arrumarEscolha, entraNaBox, hojeIso,
 } from './util'
 import {
   lerCarrinho, gravarCarrinho, limparCarrinho,
@@ -36,6 +41,13 @@ export function Loja() {
   const [pedidoRef, setPedidoRef] = useState(() => refDaUrl())
   const [recemCriado, setRecemCriado] = useState(false)
 
+  // ── Black Crumb: aba própria enquanto a campanha estiver aberta ──────────
+  /** 'black' | 'cookies' — null = ainda não escolhido (abre na Black Crumb se estiver ativa). */
+  const [aba, setAba] = useState(null)
+  const [sacoBlack, setSacoBlack] = useState(lerSacoBlack)
+  const [montar, setMontar] = useState(null)
+  const [abertoBlack, setAbertoBlack] = useState(false)
+
   const carregar = () => setRecarga((n) => n + 1)
 
   const sacoRef = useRef({ picks, extras })
@@ -52,6 +64,7 @@ export function Loja() {
         const next = clampEscolha(dados, sacoRef.current.picks, sacoRef.current.extras)
         setPicks(next.picks)
         setExtras(next.extras)
+        setSacoBlack((s) => (blackAtiva(dados) ? limparSacoBlack(s, dados) : []))
       })
       .catch((e) => {
         console.error(e)
@@ -66,13 +79,17 @@ export function Loja() {
   }, [picks, extras])
 
   useEffect(() => {
+    gravarSacoBlack(sacoBlack)
+  }, [sacoBlack])
+
+  useEffect(() => {
     const onPop = () => setPedidoRef(refDaUrl())
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
   // Com uma folha aberta, a página por trás não rola.
-  const folhaAberta = aberto || Boolean(pedidoRef)
+  const folhaAberta = aberto || abertoBlack || Boolean(montar) || Boolean(pedidoRef)
   useEffect(() => {
     if (!folhaAberta) return undefined
     const antes = document.documentElement.style.overflow
@@ -216,18 +233,7 @@ export function Loja() {
       cliente: { nome: form.nome, telefone: form.telefone },
       ...payloadPedido(picks, extras, cardapio),
       pagamento: form.pagamento,
-      entrega: {
-        tipo: form.tipo,
-        data: form.data,
-        hora: form.hora,
-        local: form.tipo === 'levantar' ? form.local || undefined : undefined,
-        morada: form.morada,
-        localidade: form.localidade,
-        cp: form.cp,
-        // para o servidor calcular a taxa de entrega por distância
-        lat: form.tipo === 'entrega' ? form.lat : undefined,
-        lng: form.tipo === 'entrega' ? form.lng : undefined,
-      },
+      entrega: entregaDe(form),
       cupom: form.cupom || undefined,
       notas: form.notas,
     })
@@ -246,8 +252,51 @@ export function Loja() {
       setRecemCriado(true)
       irParaPedido(resposta.referencia)
       setPedidoRef(resposta.referencia)
-    } else if (resposta?.esgotado || ['local', 'entrega', 'morada'].includes(resposta?.campo)) {
-      // stock ou locais de levantamento mudaram desde que a página abriu
+    } else if (resposta?.esgotado || resposta?.fim || ['local', 'entrega', 'morada'].includes(resposta?.campo)) {
+      // stock ou locais mudaram desde que a página abriu, ou a loja fechou para uma campanha
+      carregar()
+    }
+    return resposta
+  }
+
+  // ── Black Crumb ─────────────────────────────────────────────────────────
+  function juntarCombo(combo) {
+    setSacoBlack((s) => [...s, combo])
+    setMontar(null)
+  }
+  const tirarCombo = (i) => {
+    toqueTirar()
+    setSacoBlack((s) => s.filter((_, k) => k !== i))
+  }
+  const repetirCombo = (i) => {
+    toqueBoxFechada()
+    setSacoBlack((s) => (s[i] ? [...s.slice(0, i + 1), { ...s[i], ids: [...s[i].ids] }, ...s.slice(i + 1)] : s))
+  }
+
+  async function enviarBlack(form) {
+    const resposta = await criarPedidoBlack({
+      cliente: { nome: form.nome, telefone: form.telefone },
+      combos: payloadBlack(sacoBlack),
+      entrega: entregaDe(form),
+      notas: form.notas,
+    })
+    if (resposta?.ok) {
+      toquePedidoFeito()
+      gravarUltimoPedido({
+        referencia: resposta.referencia,
+        telefone: form.telefone,
+        total: resposta.total,
+        pagamento: 'MB WAY',
+        campanha: 'black',
+      })
+      setAbertoBlack(false)
+      setSacoBlack([])
+      carregar()
+      setRecemCriado(true)
+      irParaPedido(resposta.referencia)
+      setPedidoRef(resposta.referencia)
+    } else if (resposta?.fim || ['local', 'entrega', 'morada', 'data'].includes(resposta?.campo)) {
+      // a campanha acabou ou os dias/locais mudaram desde que a página abriu
       carregar()
     }
     return resposta
@@ -295,6 +344,23 @@ export function Loja() {
   const poupanca = poupancaPorBox(cardapio)
   const comBandeja = !folhaAberta
 
+  const temBlack = blackAtiva(cardapio)
+  // durante a Black Crumb a loja normal fecha: só há a aba da campanha
+  const soBlack = lojaFechadaPelaBlack(cardapio)
+  const abaAtual = temBlack ? (soBlack ? 'black' : aba ?? 'black') : 'cookies'
+  const podeBlack = blackAberta(cardapio)
+  const resumoB = temBlack ? resumoBlack(sacoBlack, cardapio) : null
+  const campanhaBlack = temBlack
+    ? {
+      id: 'black',
+      pagamento: 'MB WAY',
+      dias: diasBlack(cardapio.black, hojeIso()),
+      taxa: (x) => taxaBlack(cardapio.black, x),
+      regrasEntrega: regrasEntregaBlack(cardapio.black),
+      brinde: resumoB.brinde,
+    }
+    : null
+
   return (
     <div className="loja-body" data-bandeja={comBandeja}>
       <header className="loja-top">
@@ -328,18 +394,42 @@ export function Loja() {
             )}
           </div>
         </div>
+        {temBlack && !soBlack && (
+          <nav className="loja-wrap-largo loja-abas" aria-label="Secções da loja">
+            <button
+              type="button"
+              className="loja-aba loja-aba-black"
+              aria-pressed={abaAtual === 'black'}
+              onClick={() => { setAba('black'); window.scrollTo({ top: 0 }) }}
+            >
+              {cardapio.black.nome || 'Black Crumb'}
+            </button>
+            <button
+              type="button"
+              className="loja-aba"
+              aria-pressed={abaAtual === 'cookies'}
+              onClick={() => { setAba('cookies'); window.scrollTo({ top: 0 }) }}
+            >
+              Cardápio
+            </button>
+          </nav>
+        )}
       </header>
 
-      <Menu
-        cardapio={cardapio}
-        picks={picks}
-        extras={extras}
-        poupancaBox={poupanca}
-        onJuntar={juntar}
-        onTirar={tirar}
-        onJuntarExtra={juntarExtra}
-        onTirarExtra={tirarExtra}
-      />
+      {abaAtual === 'black' ? (
+        <Black cardapio={cardapio} combos={sacoBlack} onMontar={setMontar} />
+      ) : (
+        <Menu
+          cardapio={cardapio}
+          picks={picks}
+          extras={extras}
+          poupancaBox={poupanca}
+          onJuntar={juntar}
+          onTirar={tirar}
+          onJuntarExtra={juntarExtra}
+          onTirarExtra={tirarExtra}
+        />
+      )}
 
       <footer className="loja-footer">
         <div className="loja-wrap text-center space-y-1">
@@ -348,7 +438,10 @@ export function Loja() {
         </div>
       </footer>
 
-      {comBandeja && (
+      {comBandeja && abaAtual === 'black' && (
+        <BandejaBlack resumo={resumoB} aberta={podeBlack} onAbrir={() => setAbertoBlack(true)} />
+      )}
+      {comBandeja && abaAtual !== 'black' && (
         <Bandeja
           cardapio={cardapio}
           resumo={resumo}
@@ -356,6 +449,32 @@ export function Loja() {
           fechou={fechou}
           onAbrir={() => abrirPedido()}
           onAbrirCaixa={abrirPedido}
+        />
+      )}
+
+      {montar && podeBlack && (
+        <MontarCombo
+          cardapio={cardapio}
+          comboId={montar}
+          onJuntar={juntarCombo}
+          onFechar={() => setMontar(null)}
+        />
+      )}
+
+      {abertoBlack && podeBlack && !pedidoRef && (
+        <Checkout
+          cardapio={cardapio}
+          resumo={resumoB}
+          poupancaBox={0}
+          campanha={campanhaBlack}
+          onFechar={() => setAbertoBlack(false)}
+          onTirarDaCaixa={() => {}}
+          onTirarCaixa={tirarCombo}
+          onRepetirCaixa={repetirCombo}
+          onPodeRepetirCaixa={() => true}
+          onAjustar={() => {}}
+          onPodeMais={() => false}
+          onEnviar={enviarBlack}
         />
       )}
 
@@ -383,12 +502,28 @@ export function Loja() {
           recemCriado={recemCriado}
           nome={contacto.nome}
           pagamento={ultimo?.referencia === pedidoRef ? ultimo.pagamento : ''}
+          campanha={ultimo?.referencia === pedidoRef ? ultimo.campanha : ''}
           total={ultimo?.referencia === pedidoRef ? ultimo.total : 0}
           onNovo={fecharPedido}
         />
       )}
     </div>
   )
+}
+
+/** Levantar/entrega como o servidor o espera (lat/lng só na entrega, para a taxa por distância). */
+function entregaDe(form) {
+  return {
+    tipo: form.tipo,
+    data: form.data,
+    hora: form.hora,
+    local: form.tipo === 'levantar' ? form.local || undefined : undefined,
+    morada: form.morada,
+    localidade: form.localidade,
+    cp: form.cp,
+    lat: form.tipo === 'entrega' ? form.lat : undefined,
+    lng: form.tipo === 'entrega' ? form.lng : undefined,
+  }
 }
 
 function Centro({ children, fundo }) {

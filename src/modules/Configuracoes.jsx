@@ -10,6 +10,7 @@ import { CardapioAdmin } from '../components/CardapioAdmin'
 import { LocaisLevantamento } from '../components/LocaisLevantamento'
 import { EntregaTaxa } from '../components/EntregaTaxa'
 import { Horarios } from '../components/Horarios'
+import { BlackCrumbAdmin } from '../components/BlackCrumbAdmin'
 import { Cupoes } from '../components/Cupoes'
 import { CONFIG_PROPRIOS } from '../stores/mappers'
 import { NotificacoesAparelho } from '../components/NotificacoesAparelho'
@@ -289,6 +290,7 @@ export function Configuracoes() {
         </button>
       </form>
 
+      <BlackCrumbAdmin />
       <LocaisLevantamento />
       <Horarios />
       <EntregaTaxa />

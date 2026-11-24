@@ -39,7 +39,7 @@ function entregaTexto(e) {
 }
 
 /** Página do pedido: a festa logo a seguir a pedir, e o acompanhamento via /?p=XXXXXX. */
-export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamento, total, onNovo }) {
+export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamento, campanha = '', total, onNovo }) {
   const [tel, setTel] = useState(telefoneInicial || '')
   const [dados, setDados] = useState(null)
   const [erro, setErro] = useState('')
@@ -126,14 +126,16 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
   }, [referencia, telAtivo, terminou])
 
   const tipo = dados?.entrega?.tipo
-  const texto = etapa
-    ? textoParaCliente(etapa, { tipo, pagamento: dados?.pagamento, local: dados?.entrega?.local?.nome })
-    : null
-
-  const primeiro = (nome || '').trim().split(/\s+/)[0]
   // O servidor manda a verdade; antes de ele responder, vale o que ficou guardado no pedido.
   const formaPagamento = dados?.pagamento || pagamento || ''
   const aPagar = dados?.total ?? total ?? 0
+  // Na Black Crumb o MB WAY paga-se já, ao encomendar (não é "se quiseres adiantar").
+  const pagarJa = (dados?.campanha || campanha) === 'black' && formaPagamento === 'MB WAY'
+  const texto = etapa
+    ? textoParaCliente(etapa, { tipo, pagamento: dados?.pagamento, local: dados?.entrega?.local?.nome, pagarJa })
+    : null
+
+  const primeiro = (nome || '').trim().split(/\s+/)[0]
 
   return (
     <div className="sheet-backdrop">
@@ -151,7 +153,9 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
               </div>
               <h2 className="festa-titulo">{primeiro ? `Obrigada, ${primeiro}!` : 'Pedido feito!'}</h2>
               <p className="festa-sub">
-                Já está connosco. Vamos falar contigo por mensagem para confirmar tudo.
+                {pagarJa
+                  ? 'Já está connosco. Para confirmar a encomenda, paga agora por MB WAY.'
+                  : 'Já está connosco. Vamos falar contigo por mensagem para confirmar tudo.'}
               </p>
             </div>
           ) : (
@@ -159,6 +163,11 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
               <img className="loja-mascote" src="/mascote-cramb.png" alt="" />
               <h2 className="loja-section-title">{texto ? texto.titulo : 'O teu pedido'}</h2>
             </div>
+          )}
+
+          {/* pagar já vem antes do bilhete: é a única coisa que falta fazer */}
+          {pagarJa && !['pago', 'entregue', 'cancelado'].includes(dados?.status) && (
+            <Mbway aPagar={aPagar} referencia={referencia} obrigatorio />
           )}
 
           {recemCriado && (
@@ -170,7 +179,7 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
           )}
 
           {/* adiantar o MB WAY só faz sentido enquanto não está pago */}
-          {formaPagamento === 'MB WAY' && !['pago', 'entregue', 'cancelado'].includes(dados?.status) && (
+          {!pagarJa && formaPagamento === 'MB WAY' && !['pago', 'entregue', 'cancelado'].includes(dados?.status) && (
             <Mbway aPagar={aPagar} />
           )}
 
@@ -283,8 +292,9 @@ export function Pedido({ referencia, telefoneInicial, recemCriado, nome, pagamen
 /**
  * Só para quem escolheu MB WAY: adiantar o pagamento em vez de esperar pelo
  * pedido de pagamento. Continua a ser opcional — ninguém paga antes de falarmos.
+ * `obrigatorio` (Black Crumb): o pagamento é já, e é ele que confirma a encomenda.
  */
-function Mbway({ aPagar }) {
+function Mbway({ aPagar, referencia = '', obrigatorio = false }) {
   const [copiado, setCopiado] = useState(false)
 
   async function copiar() {
@@ -296,14 +306,18 @@ function Mbway({ aPagar }) {
   }
 
   return (
-    <div className="mbway">
-      <p className="mbway-rotulo">Se quiseres adiantar</p>
+    <div className="mbway" data-obrigatorio={obrigatorio}>
+      <p className="mbway-rotulo">
+        {obrigatorio ? `Paga agora${aPagar > 0 ? ` ${fmtEuro(aPagar)}` : ''} por MB WAY` : 'Se quiseres adiantar'}
+      </p>
       <p className="mbway-numero bfy-num">{MBWAY}</p>
       <button type="button" className="btn-ghost btn-sm" onClick={copiar}>
         {copiado ? 'Copiado ✓' : 'Copiar número'}
       </button>
       <p className="mbway-nota">
-        MB WAY{aPagar > 0 ? `, ${fmtEuro(aPagar)}` : ''}. Se preferires, enviamos-te o pedido de pagamento.
+        {obrigatorio
+          ? `Na mensagem do MB WAY escreve #${referencia}. Confirmamos a encomenda assim que o pagamento chegar.`
+          : `MB WAY${aPagar > 0 ? `, ${fmtEuro(aPagar)}` : ''}. Se preferires, enviamos-te o pedido de pagamento.`}
       </p>
     </div>
   )
