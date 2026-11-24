@@ -9,6 +9,7 @@ import { SearchInput } from '../components/SearchInput'
 import { todayKey } from '../lib/salesAnalytics'
 import { mesDoPedido } from '../lib/contas'
 import { EtapaPedido } from '../components/EtapaPedido'
+import { IconeCookie, IconeCupao, IconeLoja } from '../loja/icones'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ const PAGAMENTOS = ['Dinheiro', 'MB WAY', 'Multibanco', 'Transferência', 'Outro
 function ChipLoja() {
   return (
     <span className="bfy-chip bfy-chip-accent" title="Pedido feito pelo cliente na loja online">
-      🛒 Loja
+      <IconeLoja size={13} /> Loja
     </span>
   )
 }
@@ -44,7 +45,7 @@ function ChipBlack({ antecipado }) {
       title={antecipado ? 'Black Crumb · encomenda antecipada: selos a dobrar' : 'Black Crumb'}
       style={{ background: '#0A0604', color: '#EFE4CB' }}
     >
-      🖤 Black{antecipado ? ' · selos ×2' : ''}
+      <IconeCookie size={13} /> Black{antecipado ? ' · selos ×2' : ''}
     </span>
   )
 }
@@ -52,7 +53,7 @@ function ChipBlack({ antecipado }) {
 function ChipCupao({ codigo, desconto }) {
   return (
     <span className="bfy-chip" title="Cupão de desconto usado na loja" style={{ color: 'var(--color-success)' }}>
-      🎟️ {codigo}{(desconto ?? 0) > 0 ? ` −${desconto.toFixed(2).replace('.', ',')} €` : ''}
+      <IconeCupao size={13} /> {codigo}{(desconto ?? 0) > 0 ? ` −${desconto.toFixed(2).replace('.', ',')} €` : ''}
     </span>
   )
 }

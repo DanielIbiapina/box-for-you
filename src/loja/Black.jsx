@@ -3,6 +3,9 @@ import { fmtEuro, findCookie, precoNormal, vezes } from './util'
 import { comboDef, fmtDiaSemana, fmtPrazo, regrasEntregaBlack, vantagemAntecipada } from './blackCrumb'
 import { toqueJuntar, toqueTirar, toqueBoxFechada } from './sensacao'
 import { saltar } from './voar'
+import {
+  IconeCalendario, IconeCookie, IconeMota, IconePresente, IconeSaco, IconeSelos, IconeTelemovel,
+} from './icones'
 
 /**
  * A aba da Black Crumb: os combos, as vantagens de encomendar já e o
@@ -21,12 +24,12 @@ export function Black({ cardapio, combos, onMontar }) {
   let aviso
   if (black.fase === 'antecipado') {
     aviso = (
-      <div className="black-prazo">
+      <div className="black-prazo" data-icones="true">
         <p className="black-prazo-titulo">Encomenda até {prazo}</p>
         <ul>
-          <li>Recebe ou levanta de {fmtDiaCurto(black.dias[0])} a {fmtDiaCurto(black.dias[black.dias.length - 1])}</li>
-          <li>Selos a dobrar no teu cartão</li>
-          {vantagemAntecipada(black) && <li>{vantagemAntecipada(black)}</li>}
+          <li><IconeCalendario size={18} />Recebe ou levanta de {fmtDiaCurto(black.dias[0])} a {fmtDiaCurto(black.dias[black.dias.length - 1])}</li>
+          <li><IconeSelos size={18} />Selos a dobrar no teu cartão</li>
+          {vantagemAntecipada(black) && <li><IconeMota size={18} />{vantagemAntecipada(black)}</li>}
         </ul>
       </div>
     )
@@ -111,9 +114,11 @@ export function Black({ cardapio, combos, onMontar }) {
       <section className="loja-wrap-largo black-regras" aria-labelledby="titulo-regras">
         <h2 id="titulo-regras" className="loja-h2">Como funciona</h2>
         <ul>
-          <li><span aria-hidden="true">📱</span> Pagas por MB WAY no momento da encomenda. Confirmamos assim que o pagamento chegar.</li>
-          {regrasEntregaBlack(black).map((t) => <li key={t}><span aria-hidden="true">🛵</span> {t}</li>)}
-          {brinde > 0 && <li><span aria-hidden="true">🎁</span> O mini cookie de oferta (50 g) é de sabor surpresa.</li>}
+          <li><IconeTelemovel size={20} /><span>Pagas por MB WAY no momento da encomenda. Confirmamos assim que o pagamento chegar.</span></li>
+          {regrasEntregaBlack(black).map((t, i) => (
+            <li key={t}>{i === 0 ? <IconeSaco size={20} /> : <IconeMota size={20} />}<span>{t}</span></li>
+          ))}
+          {brinde > 0 && <li><IconePresente size={20} /><span>O mini cookie de oferta (50 g) é de sabor surpresa.</span></li>}
         </ul>
       </section>
     </main>
@@ -190,13 +195,13 @@ export function MontarCombo({ cardapio, comboId, onJuntar, onFechar }) {
                   key={`${i}-${c.id}`} type="button" role="listitem" className="black-slot" data-cheio="true"
                   onClick={() => tirarPos(i)} aria-label={`Tirar ${c.nome}`}
                 >
-                  {c.image ? <img src={c.image} alt="" draggable="false" /> : <span aria-hidden="true">{c.emoji || '🍪'}</span>}
+                  {c.image ? <img src={c.image} alt="" draggable="false" /> : <IconeCookie size={26} />}
                 </button>
               ) : <span key={`v${i}`} role="listitem" className="black-slot" aria-label="Espaço vazio" />
             })}
             {brinde > 0 && (
               <span className="black-slot black-slot-brinde" role="listitem" title="Mini cookie de oferta" aria-label="Mini cookie de oferta">
-                🎁
+                <IconePresente size={22} />
               </span>
             )}
           </div>
@@ -237,7 +242,7 @@ function Sabor({ cookie, qty, cheio, onJuntar, onTirar }) {
         <span className="cookie-prato">
           {cookie.image
             ? <img ref={foto} className="cookie-foto" src={cookie.image} alt="" loading="lazy" draggable="false" />
-            : <span ref={foto} className="cookie-emoji" aria-hidden="true">{cookie.emoji || '🍪'}</span>}
+            : <span ref={foto} className="cookie-emoji" aria-hidden="true"><IconeCookie size={56} /></span>}
           {qty > 0 && <span key={qty} className="cookie-qty" aria-hidden="true">{qty}</span>}
         </span>
         <span className="cookie-nome">{cookie.nome}</span>
@@ -255,7 +260,7 @@ export function BandejaBlack({ resumo, aberta = true, onAbrir }) {
   let dica
   if (!aberta) dica = 'Encomendas fechadas por agora'
   else if (nItens === 0) dica = 'Escolhe um combo para começar'
-  else dica = `${nItens} ${nItens === 1 ? 'combo' : 'combos'}${brinde > 0 ? ` · +${brinde} mini de oferta 🎁` : ''}`
+  else dica = `${nItens} ${nItens === 1 ? 'combo' : 'combos'}${brinde > 0 ? ` · +${brinde} mini de oferta` : ''}`
   return (
     <div className="bandeja">
       <p key={dica} className="bandeja-dica" aria-live="polite">{dica}</p>

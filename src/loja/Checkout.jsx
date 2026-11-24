@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Aviso, IconeBox, Stepper } from './ui'
+import {
+  IconeCookie, IconeCupao, IconeEtiqueta, IconeMota, IconeNotas, IconePessoa, IconePin, IconePresente,
+  IconeSaco, IconeTelemovel,
+} from './icones'
 import { fmtEuro, fmtData, proximosDias, hojeIso, findCookie } from './util'
 import { gravarContacto, lerContacto } from './storage'
 import { toquePasso } from './sensacao'
@@ -8,13 +12,13 @@ import { faixasDoDia, desvioRelogio, rotuloHora } from './horarios'
 import { validarCupom } from './api'
 
 const RECEBER = [
-  { id: 'levantar', icone: '🛍️', imagem: '/landing-icons/levantar.webp', titulo: 'Levantar', nota: 'Vens tu buscar' },
-  { id: 'entrega', icone: '🛵', imagem: '/landing-icons/entrega.webp', titulo: 'Entrega', nota: 'Levamos até ti' },
+  { id: 'levantar', Icone: IconeSaco, imagem: '/landing-icons/levantar.webp', titulo: 'Levantar', nota: 'Vens tu buscar' },
+  { id: 'entrega', Icone: IconeMota, imagem: '/landing-icons/entrega.webp', titulo: 'Entrega', nota: 'Levamos até ti' },
 ]
 
 const PAGAMENTOS = [
-  { id: 'MB WAY', icone: '📱', nota: 'Enviamos o pedido de pagamento para o teu telemóvel.' },
-  { id: 'Dinheiro', icone: '💶', nota: 'Pagas quando receberes os cookies.' },
+  { id: 'MB WAY', Icone: IconeTelemovel, nota: 'Enviamos o pedido de pagamento para o teu telemóvel.' },
+  { id: 'Dinheiro', Icone: IconeNotas, nota: 'Pagas quando receberes os cookies.' },
 ]
 
 /** Para onde levar a pessoa quando o servidor recusa um campo. */
@@ -408,12 +412,12 @@ export function Checkout({
                 )}
                 {campanha?.brinde > 0 && resumo.linhas.length > 0 && (
                   <p className="poupanca">
-                    <span aria-hidden="true">🎁</span> +{campanha.brinde} mini {campanha.brinde === 1 ? 'cookie' : 'cookies'} de 50 g de oferta
+                    <IconePresente size={18} /> +{campanha.brinde} mini {campanha.brinde === 1 ? 'cookie' : 'cookies'} de 50 g de oferta
                   </p>
                 )}
                 {resumo.poupanca > 0 && (
                   <p className="poupanca">
-                    <span aria-hidden="true">🎉</span> Com a Box poupas {fmtEuro(resumo.poupanca)}
+                    <IconeEtiqueta size={18} /> Com a Box poupas {fmtEuro(resumo.poupanca)}
                   </p>
                 )}
                 {resumo.resto.length > 0 && poupancaBox > 0 && (
@@ -442,7 +446,7 @@ export function Checkout({
                     <Opcao
                       key={op.id}
                       ativo={form.tipo === op.id}
-                      icone={op.icone}
+                      icone={<op.Icone size={26} />}
                       imagem={op.imagem}
                       titulo={op.titulo}
                       nota={op.nota}
@@ -465,7 +469,7 @@ export function Checkout({
                       key={l.id}
                       linha
                       ativo={localEscolhido?.id === l.id}
-                      icone="📍"
+                      icone={<IconePin size={24} />}
                       titulo={l.nome}
                       nota={[l.morada, l.notas].filter(Boolean).join(' · ')}
                       onClick={() => escolherLocal(l.id)}
@@ -642,7 +646,7 @@ export function Checkout({
                       key={p.id}
                       linha
                       ativo={form.pagamento === p.id}
-                      icone={p.icone}
+                      icone={<p.Icone size={24} />}
                       titulo={p.id}
                       nota={p.nota}
                       onClick={() => escolherPagamento(p.id)}
@@ -694,6 +698,8 @@ export function Checkout({
                 {campanha?.pagamento === 'MB WAY'
                   ? 'A seguir mostramos o número MB WAY para pagares. Confirmamos assim que o pagamento chegar.'
                   : 'Não pagas nada agora. Falamos contigo para confirmar.'}
+                {' '}Ao fazer o pedido aceitas os{' '}
+                <a href="/legal/#termos" target="_blank" rel="noreferrer">termos e condições</a>.
               </p>
             )}
           </footer>
@@ -807,7 +813,7 @@ function Linha({
                     <span className="caixa-cookie-prato">
                       {c?.image
                         ? <img src={c.image} alt="" />
-                        : <span aria-hidden="true">{c?.emoji || '🍪'}</span>}
+                        : <IconeCookie size={22} />}
                     </span>
                     <span className="caixa-cookie-nome">{c?.short ?? id}</span>
                     <button
@@ -859,7 +865,7 @@ function Confirmar({
   entrega, taxaEntrega, taxaPendente, campanha, cupom, desconto, totalFinal, onCupom,
 }) {
   const pag = campanha?.pagamento
-    ? { icone: '📱', nota: 'Pagas já a seguir, para o número que te mostramos.' }
+    ? { Icone: IconeTelemovel, nota: 'Pagas já a seguir, para o número que te mostramos.' }
     : PAGAMENTOS.find((p) => p.id === form.pagamento)
   const nCaixas = resumo.caixas.length
   const nSoltos = resumo.linhas.filter((l) => l.tipo === 'avulso').reduce((s, l) => s + l.qty, 0)
@@ -885,7 +891,7 @@ function Confirmar({
     <>
       <h2 ref={titulo} tabIndex={-1} className="passo-titulo">Está tudo certo?</h2>
       <ul className="resumo">
-        <ResumoLinha icone="🍪" titulo={partes.join(' + ')} onMudar={() => irPara('pedido')}>
+        <ResumoLinha icone={<IconeCookie />} titulo={partes.join(' + ')} onMudar={() => irPara('pedido')}>
           {fotos.length > 0 && (
             <span className="resumo-fotos" aria-hidden="true">
               {fotos.map((src, i) => <img key={i} src={src} alt="" />)}
@@ -893,14 +899,14 @@ function Confirmar({
           )}
         </ResumoLinha>
         <ResumoLinha
-          icone={form.tipo === 'entrega' ? '🛵' : '🛍️'}
+          icone={form.tipo === 'entrega' ? <IconeMota /> : <IconeSaco />}
           titulo={`${form.tipo === 'entrega' ? 'Entrega' : 'Levantar'} · ${fmtData(form.data)}${form.hora ? ` · ${rotuloHora(form.hora)}` : ''}`}
           detalhe={onde}
           onMudar={() => irPara('receber')}
         />
-        <ResumoLinha icone="🙋" titulo={form.nome} detalhe={form.telefone} onMudar={() => irPara('contacto')} />
+        <ResumoLinha icone={<IconePessoa />} titulo={form.nome} detalhe={form.telefone} onMudar={() => irPara('contacto')} />
         <ResumoLinha
-          icone={pag?.icone ?? '💶'}
+          icone={pag ? <pag.Icone /> : <IconeNotas />}
           titulo={form.pagamento}
           detalhe={pag?.nota}
           onMudar={campanha?.pagamento ? null : () => irPara('pagar')}
@@ -988,7 +994,7 @@ function Cupao({ cupom, desconto, onCupom }) {
   if (cupom) {
     return (
       <p className="cupao-aplicado">
-        <span>🎟️ <b>{cupom.codigo}</b> · −{cupom.percent}% ({fmtEuro(desconto)})</span>
+        <span className="cupao-aplicado-txt"><IconeCupao size={18} /> <b>{cupom.codigo}</b> · −{cupom.percent}% ({fmtEuro(desconto)})</span>
         <button type="button" className="passo-link" onClick={() => onCupom(null)}>Remover</button>
       </p>
     )

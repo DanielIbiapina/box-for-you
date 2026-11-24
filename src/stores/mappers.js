@@ -142,6 +142,9 @@ export function configToApp(row) {
     // campanha Black Crumb: { ativo, antecipadoAte, fim, combos, … } — ver supabase/loja.sql
     black: row?.loja_black && typeof row.loja_black === 'object' ? row.loja_black : {},
     blackDisponivel: !row || 'loja_black' in row,
+    // { nome, nif, morada, telefone, email } — identificação do vendedor na loja (/legal/)
+    legal: row?.loja_legal && typeof row.loja_legal === 'object' ? row.loja_legal : {},
+    legalDisponivel: !row || 'loja_legal' in row,
   }
 }
 
@@ -153,6 +156,7 @@ export const CONFIG_PROPRIOS = [
   'horarios', 'horariosDisponivel',
   'mini50', 'mini50Disponivel',
   'black', 'blackDisponivel',
+  'legal', 'legalDisponivel',
   'textoCookiesDisponivel',
 ]
 export function configToRow(patch) {
@@ -171,5 +175,6 @@ export function configToRow(patch) {
   if (patch.horarios !== undefined) r.loja_horarios = patch.horarios
   if (patch.mini50 !== undefined) r.loja_mini50 = patch.mini50
   if (patch.black !== undefined) r.loja_black = patch.black
+  if (patch.legal !== undefined) r.loja_legal = patch.legal
   return r
 }

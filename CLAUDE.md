@@ -87,6 +87,23 @@ Typography comes from the logo (Google Fonts, linked in `index.html` / `crm/inde
 - `--font-title` / `--font-body` **Archivo** — titles use it wide (`font-stretch` 110–115%) and heavy.
 - `--font-script` **Mr Dafoe** — the "Lab" brush; only small touches (greeting, handwritten note).
 
+**No emoji in the UI.** Icons are hand-drawn SVGs in [`src/loja/icones.jsx`](src/loja/icones.jsx)
+(24×24, round 1.9 stroke, `currentColor`), shared by the store and the CRM. Draw a new
+one there rather than reaching for an emoji or an icon library. (The CRM still has
+emoji as *data* — the recipe/flavour `emoji` fields — which is a separate cleanup.)
+
+### Legal page (`/legal/`)
+
+Third Vite entry: `legal/index.html` → [`src/loja/legal-main.jsx`](src/loja/legal-main.jsx) →
+[`InfoLegal.jsx`](src/loja/InfoLegal.jsx). Seller identification, purchase terms,
+delivery, returns (no 14-day withdrawal for perishable food, DL 24/2014 art. 17.º),
+allergens, complaints (Livro de Reclamações + CICAP) and GDPR — required by Ifthenpay
+and Portuguese e-commerce law. Seller data lives in `configuracao.loja_legal`
+(edited in Definições → Dados legais, `DadosLegais.jsx`) and reaches the store through
+`loja_cardapio().legal`; delivery fees, hours and pickup places come from the same
+RPC, so the page never drifts from the checkout. The store footer is
+[`RodapeLegal.jsx`](src/loja/RodapeLegal.jsx).
+
 ### Static assets
 
 Nav icons are served from [`public/icons/`](public/icons/) as `/icons/nav-*.png`. Add PNGs with the exact filenames referenced in `App.jsx` (`nav-inicio.png`, `nav-receitas.png`, etc.) plus `logo.png` for the tablet sidebar.

@@ -7,6 +7,7 @@ import { Aviso, IconeWhatsApp } from './ui'
 import { linkWhatsApp } from './negocio'
 import { criarPedido, criarPedidoBlack, fetchCardapio, isSupabaseConfigured } from './api'
 import { Black, MontarCombo, BandejaBlack } from './Black'
+import { RodapeLegal } from './RodapeLegal'
 import {
   blackAtiva, blackAberta, lojaFechadaPelaBlack, lerSacoBlack, gravarSacoBlack, limparSacoBlack, resumoBlack, payloadBlack,
   taxaBlack, regrasEntregaBlack, diasBlack,
@@ -431,12 +432,7 @@ export function Loja() {
         />
       )}
 
-      <footer className="loja-footer">
-        <div className="loja-wrap text-center space-y-1">
-          <img className="loja-logo loja-logo-on-dark mx-auto" src="/hero-crumb.png" alt="" />
-          <p className="text-sm">cookies. coffee. repeat</p>
-        </div>
-      </footer>
+      <RodapeLegal legal={cardapio.legal} marca={cardapio.negocio?.nome?.trim() || 'Crumb Lab'} />
 
       {comBandeja && abaAtual === 'black' && (
         <BandejaBlack resumo={resumoB} aberta={podeBlack} onAbrir={() => setAbertoBlack(true)} />

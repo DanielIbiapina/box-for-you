@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useConfiguracoes } from '../stores/useConfiguracoes'
+import { IconeCookie } from '../loja/icones'
 
 const fmtEuro = (v) => new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(Number(v) || 0)
 
@@ -42,7 +43,7 @@ export function BlackCrumbAdmin() {
     <div className="bfy-card p-6 mb-5 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold bfy-card-title">🖤 Black Crumb</h2>
+          <h2 className="text-base font-bold bfy-card-title flex items-center gap-1.5"><IconeCookie size={18} cheio /> Black Crumb</h2>
           <p className="text-xs ink-3 mt-1">
             Aba própria na loja com os combos. Pagamento só por MB WAY, na hora. Os sabores estão sempre
             disponíveis: o stock desconta e pode ficar negativo — é o que falta fazer.
@@ -90,7 +91,7 @@ export function BlackCrumbAdmin() {
         ))}
       </div>
       <p className="text-xs ink-3">
-        Em Vendas, os pedidos aparecem com 🖤 Black (e “selos ×2” quando são antecipados). O mini cookie de oferta é de
+        Em Vendas, os pedidos aparecem com a etiqueta Black (e “selos ×2” quando são antecipados). O mini cookie de oferta é de
         sabor surpresa e não sai do stock.
       </p>
     </div>

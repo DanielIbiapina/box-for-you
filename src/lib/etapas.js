@@ -64,7 +64,7 @@ export function textoParaCliente(etapa, { tipo, pagamento, local, pagarJa = fals
         ? { titulo: 'Está pronto! Podes vir buscar', detalhe: local ? `Levantamento em ${local}.` : 'Combinamos contigo o sítio e a hora.' }
         : { titulo: 'Está pronto', detalhe: 'Sai em breve para entrega.' }
     case 'a_caminho':
-      return { titulo: 'O teu pedido está a caminho', detalhe: 'Prepara o leite. 🥛' }
+      return { titulo: 'O teu pedido está a caminho', detalhe: 'Prepara o leite.' }
     case 'entregue':
       return {
         titulo: levantar ? 'Pedido levantado' : 'Pedido entregue',

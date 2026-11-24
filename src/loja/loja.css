@@ -1181,7 +1181,13 @@ button.linha-box-fotos:active { transform: scale(0.94); }
 .black-prazo-titulo { font-weight: 900; font-size: var(--text-md); color: #F2B39E; }
 .black-prazo ul { margin: 0.4rem 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.25rem; }
 .black-prazo li { position: relative; padding-left: 1.1rem; font-size: var(--text-sm); color: var(--ink-on-dark); }
-.black-prazo li::before { content: '✦'; position: absolute; left: 0; top: 0; color: #E9886A; font-size: 0.7rem; line-height: 1.6; }
+/* marcador: uma migalha (forma irregular), não um símbolo de fonte */
+.black-prazo li::before {
+  content: ''; position: absolute; left: 0.15rem; top: 0.5em;
+  width: 0.42rem; height: 0.36rem;
+  border-radius: 46% 54% 40% 60% / 55% 45% 58% 42%;
+  background: #E9886A; transform: rotate(-12deg);
+}
 
 .black-combos { display: grid; gap: 0.8rem; }
 @media (min-width: 720px) { .black-combos { grid-template-columns: repeat(3, 1fr); gap: 1rem; } }
@@ -1341,3 +1347,70 @@ button.linha-box-fotos:active { transform: scale(0.94); }
 .black-combo:disabled .black-combo-cta { background: var(--ink-4); }
 .black-prazo[data-fechado='true'] { border-color: rgba(239, 228, 203, 0.3); }
 .black-prazo[data-fechado='true'] .black-prazo-titulo { color: var(--ink-on-dark); }
+
+/* ── Ícones da marca (src/loja/icones.jsx) ─────────────────────────────── */
+.opcao-icone { color: var(--color-accent-dark); }
+.opcao-icone svg, .resumo-icone svg, .black-regras li > svg, .black-prazo li > svg { display: block; flex-shrink: 0; }
+.resumo-icone { display: flex; justify-content: center; padding-top: 0.12rem; color: var(--color-accent-dark); }
+.poupanca svg { flex-shrink: 0; }
+.cupao-aplicado-txt { display: inline-flex; align-items: center; gap: 0.35rem; }
+.cupao-aplicado-txt svg { color: var(--color-success); }
+.cookie-emoji { display: grid; place-items: center; color: var(--ink-3); }
+.black-regras li > svg { margin-top: 0.05rem; color: var(--color-accent-dark); }
+.black-slot-brinde { color: var(--color-accent-dark); }
+/* no aviso da encomenda antecipada cada linha tem o seu ícone em vez da migalha */
+.black-prazo[data-icones='true'] li { display: flex; align-items: flex-start; gap: 0.55rem; padding-left: 0; }
+.black-prazo[data-icones='true'] li::before { content: none; }
+.black-prazo[data-icones='true'] li > svg { margin-top: 0.05rem; color: #E9886A; }
+
+/* ── Informação legal (/legal/) e rodapé legal ──────────────────────────── */
+.legal-corpo { padding-top: 1.75rem; padding-bottom: 3rem; }
+.legal-titulo {
+  font-family: var(--font-marca); font-weight: 400; font-synthesis: none;
+  font-variation-settings: 'YEAR' 1979; text-transform: uppercase;
+  font-size: clamp(1.6rem, 7vw, 2.4rem); line-height: 1.05; color: var(--ink-1);
+}
+.legal-sub { margin-top: 0.6rem; font-size: var(--text-sm); color: var(--ink-3); }
+.legal-indice { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1.2rem 0 0.5rem; }
+.legal-indice a {
+  padding: 0.35rem 0.75rem; border-radius: 999px;
+  background: var(--color-surface); border: 1px solid var(--line-1);
+  font-size: var(--text-xs); font-weight: 700; color: var(--color-accent-dark); text-decoration: none;
+}
+.legal-seccao {
+  margin-top: 1rem; padding: 1.2rem 1.15rem;
+  border-radius: 18px; background: var(--color-surface); box-shadow: var(--shadow-card);
+  scroll-margin-top: 5rem;
+}
+.legal-seccao h2 {
+  font-family: var(--font-marca); font-weight: 400; font-synthesis: none;
+  font-variation-settings: 'YEAR' 2000; text-transform: uppercase; letter-spacing: 0.01em;
+  font-size: var(--text-lg); line-height: 1.2; color: var(--ink-1);
+}
+.legal-seccao h3 { margin-top: 1rem; font-weight: 800; font-stretch: 110%; font-size: var(--text-md); color: var(--ink-1); }
+.legal-seccao p { margin-top: 0.45rem; font-size: var(--text-md); line-height: 1.55; color: var(--ink-2); }
+.legal-seccao a { color: var(--color-accent-dark); font-weight: 700; text-underline-offset: 2px; }
+.legal-ficha { display: grid; gap: 0.55rem; margin-top: 0.9rem; }
+.legal-ficha > div { display: grid; grid-template-columns: 9rem 1fr; gap: 0.75rem; font-size: var(--text-md); }
+.legal-ficha dt { color: var(--ink-3); }
+.legal-ficha dd { margin: 0; font-weight: 700; color: var(--ink-1); }
+@media (max-width: 420px) { .legal-ficha > div { grid-template-columns: 1fr; gap: 0; } }
+.legal-faixas { list-style: none; margin: 0.6rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.legal-faixas li {
+  padding: 0.3rem 0.65rem; border-radius: 999px; background: var(--color-surface-sunk);
+  border: 1px solid var(--line-1); font-size: var(--text-xs); color: var(--ink-2);
+}
+.legal-livro {
+  display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 0.9rem;
+  padding: 0.6rem 0.95rem; border-radius: 12px;
+  background: var(--color-primary); color: var(--ink-on-dark) !important; text-decoration: none;
+  font-weight: 800; font-size: var(--text-sm);
+}
+.legal-aviso { margin-top: 1rem; font-size: var(--text-sm); color: var(--color-danger); }
+.legal-voltar { color: var(--ink-on-dark); border-color: rgba(239, 228, 203, 0.25); text-decoration: none; }
+
+.rodape-legal-id { margin-top: 0.75rem; font-size: var(--text-2xs); line-height: 1.5; color: var(--ink-on-dark-2); }
+.rodape-legal { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.35rem 1rem; margin-top: 0.6rem; }
+.rodape-legal a { font-size: var(--text-xs); color: var(--ink-on-dark); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(239, 228, 203, 0.35); }
+.rodape-livro { display: inline-flex; align-items: center; gap: 0.3rem; }
+.checkout-letra a { color: var(--color-accent-dark); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }

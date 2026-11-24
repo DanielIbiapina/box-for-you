@@ -14,6 +14,8 @@ export default defineConfig({
       input: {
         loja: 'index.html',
         crm: 'crm/index.html',
+        // informação legal (termos, entregas e devoluções, privacidade…)
+        legal: 'legal/index.html',
       },
     },
   },

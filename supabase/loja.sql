@@ -90,6 +90,18 @@ update configuracao
    }'::jsonb
  where id = 'main' and not (loja_horarios ? 'semana');
 
+-- Dados legais do vendedor, que a loja mostra no rodapé e em /legal/ (exigidos
+-- pela Ifthenpay e pela lei do comércio eletrónico). A dona preenche em
+-- Definições → Dados legais. { "nome", "nif", "morada", "telefone", "email" }
+alter table configuracao add column if not exists loja_legal jsonb not null default '{}'::jsonb;
+update configuracao
+   set loja_legal = '{
+     "nome": "", "nif": "",
+     "morada": "Vereda 2 Manuel da Rocha Páris, 36, 4400-189 Vila Nova de Gaia",
+     "telefone": "+351 939 826 591", "email": ""
+   }'::jsonb
+ where id = 'main' and loja_legal = '{}'::jsonb;
+
 -- Campanhas com aba própria na loja (Black Crumb, Natal…). O pedido guarda de
 -- que campanha veio, para a dona o distinguir em Vendas.
 alter table pedidos add column if not exists campanha text;
@@ -425,6 +437,10 @@ begin
     ),
     -- campanha Black Crumb: combos, dias marcáveis e regras ({ ativo: false } fora do prazo)
     'black', loja_black_estado(v_cfg.loja_black),
+    -- identificação do vendedor (rodapé e /legal/); só os campos preenchidos
+    'legal', (select coalesce(jsonb_object_agg(k, left(btrim(v), 200)), '{}'::jsonb)
+                from jsonb_each_text(coalesce(v_cfg.loja_legal, '{}'::jsonb)) e(k, v)
+               where k in ('nome', 'nif', 'morada', 'telefone', 'email') and btrim(v) <> ''),
     'cookies', v_cookies,
     'box', jsonb_build_object(
       'size',  coalesce((v_cfg.box_config->>'size')::int, 4),

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { IconeBox } from './ui'
+import { IconeCookie } from './icones'
 import {
   fmtEuro, livreSabor, livreExtra, vezes, precoExtra, MINI_BOX_ID, chaveMini50,
 } from './util'
@@ -137,7 +138,7 @@ function CookieCard({ cookie, qty, livre, onJuntar, onTirar }) {
         <span className="cookie-prato">
           {cookie.image
             ? <img ref={foto} className="cookie-foto" src={cookie.image} alt="" loading="lazy" draggable="false" />
-            : <span ref={foto} className="cookie-emoji" aria-hidden="true">{cookie.emoji || '🍪'}</span>}
+            : <span ref={foto} className="cookie-emoji" aria-hidden="true"><IconeCookie size={56} /></span>}
           {etiqueta}
           {qty > 0 && <span key={qty} className="cookie-qty" aria-hidden="true">{qty}</span>}
         </span>
