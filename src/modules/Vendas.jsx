@@ -131,13 +131,36 @@ function stockDoPedido(linhas, box) {
   return m
 }
 
+/** Minis de 50 g que um pedido tira do stock (minis de oferta da Black Crumb): { cookieId: qty }. */
+function stock50DoPedido(linhas) {
+  const m = {}
+  for (const l of linhas ?? []) {
+    if (!l.stock50 || typeof l.stock50 !== 'object') continue
+    const qty = Number(l.qty) || 0
+    for (const [cookieId, n] of Object.entries(l.stock50)) {
+      const q = (Number(n) || 0) * qty
+      if (q > 0) m[cookieId] = (m[cookieId] ?? 0) + q
+    }
+  }
+  return m
+}
+
+/** Acerta um balde de stock pela diferença entre dois mapas { cookieId: qty } (antes − depois volta ao stock). */
+function acertarStock(antes, depois, ajustar) {
+  for (const cookieId of new Set([...Object.keys(antes), ...Object.keys(depois)])) {
+    const devolver = (antes[cookieId] ?? 0) - (depois[cookieId] ?? 0)
+    if (devolver !== 0) ajustar(cookieId, devolver)
+  }
+}
+
 function deductPedidoStock(linhas, box, deductSale) {
   const items = Object.entries(stockDoPedido(linhas, box)).map(([cookieId, qty]) => ({ cookieId, qty }))
   if (items.length) deductSale(items)
 }
 
-function restorePedidoStock(linhas, box, adjustCookies) {
+function restorePedidoStock(linhas, box, adjustCookies, adjustCookies50) {
   for (const [cookieId, qty] of Object.entries(stockDoPedido(linhas, box))) adjustCookies(cookieId, qty)
+  for (const [cookieId, qty] of Object.entries(stock50DoPedido(linhas))) adjustCookies50(cookieId, qty)
 }
 
 const EMPTY_CLIENTE = { nome: '', telefone: '', instagram: '', email: '', notas: '' }
@@ -193,7 +216,7 @@ function IconEdit() {
 
 export function Vendas() {
   const { cookies, boxConfig, addCookie } = useCookies()
-  const { stockCookies, adjustCookies, deductSale } = useEstoqueCookies()
+  const { stockCookies, adjustCookies, adjustCookies50, deductSale } = useEstoqueCookies()
   const { clientes, adicionar: addCliente, atualizar: updateCliente, remover: removeCliente } = useClientes()
   const { pedidos, adicionar: addPedido, atualizar: updatePedido, remover: removePedido } = usePedidosVendas()
 
@@ -341,6 +364,7 @@ export function Vendas() {
           preco: l.preco ?? 0,
           // sabores que a linha tira do stock (combos da Black Crumb) — têm de sobreviver à edição
           ...(l.stock ? { stock: l.stock } : {}),
+          ...(l.stock50 ? { stock50: l.stock50 } : {}),
         })
       } else {
         // somar (não substituir) se o mesmo sabor vier em duas linhas
@@ -396,6 +420,7 @@ export function Vendas() {
       preco: l.preco,
       customLabel: l.label,
       ...(l.stock ? { stock: l.stock } : {}),
+      ...(l.stock50 ? { stock50: l.stock50 } : {}),
     }))
     return [...catalog, ...custom]
   }
@@ -476,12 +501,19 @@ export function Vendas() {
       // cancelar (devolve tudo), reativar (tira tudo) e mudar quantidades num
       // pedido ativo — antes este último caso não mexia no stock.
       if (old) {
-        const antes  = old.status !== 'cancelado' ? stockDoPedido(old.linhas, old.box) : {}
-        const depois = dados.status !== 'cancelado' ? stockDoPedido(linhas, boxData) : {}
-        for (const cookieId of new Set([...Object.keys(antes), ...Object.keys(depois)])) {
-          const devolver = (antes[cookieId] ?? 0) - (depois[cookieId] ?? 0)
-          if (devolver !== 0) adjustCookies(cookieId, devolver)
-        }
+        const ativoAntes = old.status !== 'cancelado'
+        const ativoDepois = dados.status !== 'cancelado'
+        acertarStock(
+          ativoAntes ? stockDoPedido(old.linhas, old.box) : {},
+          ativoDepois ? stockDoPedido(linhas, boxData) : {},
+          adjustCookies,
+        )
+        // minis de 50 g (os de oferta da Black Crumb)
+        acertarStock(
+          ativoAntes ? stock50DoPedido(old.linhas) : {},
+          ativoDepois ? stock50DoPedido(linhas) : {},
+          adjustCookies50,
+        )
       }
     }
     setModalPedido(null)
@@ -490,7 +522,7 @@ export function Vendas() {
   function handleDeletePedido(p) {
     if (!confirm(`Excluir pedido de ${fmtEuro(p.totalEur)}?`)) return
     if (p.status !== 'cancelado') {
-      restorePedidoStock(p.linhas, p.box, adjustCookies)
+      restorePedidoStock(p.linhas, p.box, adjustCookies, adjustCookies50)
     }
     removePedido(p.id)
   }

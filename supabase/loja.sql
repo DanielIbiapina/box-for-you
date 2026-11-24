@@ -1173,14 +1173,17 @@ end $$;
 -- Entrada:
 -- {
 --   "cliente": { "nome": "...", "telefone": "..." },
---   "combos":  [ { "combo": "duo", "sabores": { "nutella": 1, "pistache": 1 } } ],
+--   "combos":  [ { "combo": "duo", "sabores": { "nutella": 1, "pistache": 1 },
+--                  "minis": ["pistache"] } ],
 --   "entrega": { ... como no loja_criar_pedido ... },
 --   "notas":   "..."
 -- }
 -- Pagamento só por MB WAY, na hora. O preço de cada combo, o brinde e a taxa
 -- de entrega saem daqui (configuracao.loja_black) — o browser só manda a escolha.
 -- Cada combo vira uma linha com etiqueta e com `stock` (os sabores que tirou),
--- para a app devolver o stock certo se o pedido for cancelado.
+-- para a app devolver o stock certo se o pedido for cancelado. O mini de oferta
+-- (brindePorCombo por combo) é escolhido pelo cliente em `minis`; sai do stock de
+-- 50 g e fica numa linha a 0 € com `stock50`. Sem `minis` (loja antiga) é surpresa.
 -- Saída: { ok: true, pedidoId, referencia, total, taxaEntrega, antecipado } | { ok: false, motivo, campo }
 create or replace function loja_criar_pedido_black(p jsonb)
 returns jsonb
@@ -1209,7 +1212,10 @@ declare
   v_need    jsonb := '{}'::jsonb;
   v_linhas  jsonb := '[]'::jsonb;
   v_n       int := 0;
-  v_brinde  int;
+  v_bpc     int;                       -- minis de oferta por combo
+  v_mini    text;
+  v_need50  jsonb := '{}'::jsonb;      -- { cookieId: qty } de minis escolhidos
+  v_surpresa int := 0;                 -- minis sem sabor escolhido (loja antiga)
   v_total   numeric := 0;
   v_taxa    numeric := 0;
   v_km      numeric;
@@ -1250,6 +1256,7 @@ begin
   if jsonb_array_length(v_combos) > 20 then
     return jsonb_build_object('ok', false, 'motivo', 'Para encomendas grandes, fala connosco diretamente.');
   end if;
+  v_bpc := coalesce((v_bf->>'brindePorCombo')::int, 0);
 
   for v_combo in select value from jsonb_array_elements(v_combos)
   loop
@@ -1301,13 +1308,44 @@ begin
       'customLabel', format('%s · %s', v_def->>'nome', v_resumo),
       'stock', v_stock
     );
+
+    -- os minis de oferta deste combo, com o sabor que o cliente escolheu
+    if v_bpc > 0 then
+      if jsonb_typeof(v_combo->'minis') = 'array' then
+        if jsonb_array_length(v_combo->'minis') <> v_bpc then
+          return jsonb_build_object('ok', false, 'motivo',
+            format('Escolhe o sabor do mini cookie de oferta do %s.', v_def->>'nome'));
+        end if;
+        for v_mini in select value from jsonb_array_elements_text(v_combo->'minis')
+        loop
+          if not exists (select 1 from cookies_catalogo where id = v_mini and ativo_no_cardapio) then
+            return jsonb_build_object('ok', false, 'motivo', 'O sabor do mini já não está disponível. Atualiza a página.');
+          end if;
+          v_need50 := jsonb_set(v_need50, array[v_mini],
+                        to_jsonb(coalesce((v_need50->>v_mini)::int, 0) + 1));
+        end loop;
+      else
+        v_surpresa := v_surpresa + v_bpc;
+      end if;
+    end if;
   end loop;
 
-  -- brinde: mini cookie(s) de 50 g por combo, sabor surpresa (não mexe no stock)
-  v_brinde := v_n * coalesce((v_bf->>'brindePorCombo')::int, 0);
-  if v_brinde > 0 then
+  -- minis de oferta: uma linha a 0 € por sabor, com o stock de 50 g que tiram
+  for v_par in
+    select t.key as id, t.value::int as qty, c.nome, c.short
+      from jsonb_each_text(v_need50) t(key, value)
+      join cookies_catalogo c on c.id = t.key
+     order by c.nome
+  loop
     v_linhas := v_linhas || jsonb_build_object(
-      'cookieId', 'black-brinde', 'qty', v_brinde, 'preco', 0,
+      'cookieId', 'black-mini-' || v_par.id, 'qty', v_par.qty, 'preco', 0,
+      'customLabel', format('Mini %s 50 g (oferta)', coalesce(nullif(btrim(v_par.nome), ''), v_par.id)),
+      'stock50', jsonb_build_object(v_par.id, 1)
+    );
+  end loop;
+  if v_surpresa > 0 then
+    v_linhas := v_linhas || jsonb_build_object(
+      'cookieId', 'black-brinde', 'qty', v_surpresa, 'preco', 0,
       'customLabel', 'Mini cookie 50 g de oferta (sabor surpresa)'
     );
   end if;
@@ -1388,6 +1426,12 @@ begin
   insert into estoque (tipo, cookie_id, qty)
   select 'cookie', t.key, -(t.value::numeric)
     from jsonb_each_text(v_need) t(key, value)
+  on conflict (tipo, cookie_id) do update set qty = estoque.qty + excluded.qty;
+
+  -- os minis de oferta saem do stock de 50 g, com a mesma regra
+  insert into estoque (tipo, cookie_id, qty)
+  select 'cookie50', t.key, -(t.value::numeric)
+    from jsonb_each_text(v_need50) t(key, value)
   on conflict (tipo, cookie_id) do update set qty = estoque.qty + excluded.qty;
 
   return jsonb_build_object(

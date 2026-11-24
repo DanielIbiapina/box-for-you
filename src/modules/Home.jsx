@@ -92,6 +92,13 @@ export function Home({ onNavigate }) {
           }
           continue
         }
+        // minis de oferta (Black Crumb): também são para fazer, sabor a sabor
+        if (l.stock50 && typeof l.stock50 === 'object') {
+          for (const [cookieId, n] of Object.entries(l.stock50)) {
+            if (n > 0) somar(`${nomeSabor(cookieId)} 50 g`, n * q)
+          }
+          continue
+        }
         somar(l.customLabel ?? nomeSabor(l.cookieId), q)
       }
       for (const [cookieId, q] of Object.entries(p.box?.counts ?? {})) {

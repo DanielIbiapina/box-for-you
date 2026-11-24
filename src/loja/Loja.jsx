@@ -6,11 +6,11 @@ import { Pedido } from './Sucesso'
 import { Aviso, IconeWhatsApp } from './ui'
 import { linkWhatsApp } from './negocio'
 import { criarPedido, criarPedidoBlack, fetchCardapio, isSupabaseConfigured } from './api'
-import { Black, MontarCombo, BandejaBlack } from './Black'
+import { Black, MontarCombo, BandejaBlack, AvisoEntregaBlack } from './Black'
 import { RodapeLegal } from './RodapeLegal'
 import {
   blackAtiva, blackAberta, lojaFechadaPelaBlack, lerSacoBlack, gravarSacoBlack, limparSacoBlack, resumoBlack, payloadBlack,
-  taxaBlack, regrasEntregaBlack, diasBlack,
+  taxaBlack, diasBlack,
 } from './blackCrumb'
 import {
   findCookie, livreSabor, livreExtra, contar, agrupar,
@@ -271,13 +271,13 @@ export function Loja() {
   }
   const repetirCombo = (i) => {
     toqueBoxFechada()
-    setSacoBlack((s) => (s[i] ? [...s.slice(0, i + 1), { ...s[i], ids: [...s[i].ids] }, ...s.slice(i + 1)] : s))
+    setSacoBlack((s) => (s[i] ? [...s.slice(0, i + 1), { ...s[i], ids: [...s[i].ids], minis: [...(s[i].minis ?? [])] }, ...s.slice(i + 1)] : s))
   }
 
   async function enviarBlack(form) {
     const resposta = await criarPedidoBlack({
       cliente: { nome: form.nome, telefone: form.telefone },
-      combos: payloadBlack(sacoBlack),
+      combos: payloadBlack(sacoBlack, Number(cardapio.black?.brindePorCombo) || 0),
       entrega: entregaDe(form),
       notas: form.notas,
     })
@@ -357,7 +357,7 @@ export function Loja() {
       pagamento: 'MB WAY',
       dias: diasBlack(cardapio.black, hojeIso()),
       taxa: (x) => taxaBlack(cardapio.black, x),
-      regrasEntrega: regrasEntregaBlack(cardapio.black),
+      avisoEntrega: <AvisoEntregaBlack black={cardapio.black} />,
       brinde: resumoB.brinde,
     }
     : null
@@ -368,21 +368,21 @@ export function Loja() {
         <div className="loja-wrap-largo py-2.5 flex items-center justify-between gap-4">
           <img className="loja-logo" src="/hero-crumb.png" alt="Crumb Lab" />
           <div className="flex items-center gap-2">
-            {/* WhatsApp no topo: sempre à mão (o topo fica fixo) e sem tapar os cookies */}
+            {/* WhatsApp no topo: um balão de fala, como nas mascotes da logo */}
             <a
-              className="zap-topo"
+              className="zap-balao"
               href={linkWhatsApp('Olá! Tenho uma pergunta sobre os cookies.')}
               target="_blank"
               rel="noreferrer"
-              aria-label="Falar connosco no WhatsApp"
+              aria-label="Dúvidas? Fala connosco no WhatsApp"
             >
-              <IconeWhatsApp size={16} />
-              <span>WhatsApp</span>
+              <span className="zap-balao-txt">Dúvidas?</span>
+              <IconeWhatsApp size={13} />
             </a>
             {(ultimo || pedidoRef) && (
               <button
                 type="button"
-                className="btn-ghost btn-sm"
+                className="topo-link"
                 onClick={() => {
                   const ref = pedidoRef || ultimo.referencia
                   if (!ref) return

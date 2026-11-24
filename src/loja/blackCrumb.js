@@ -31,12 +31,14 @@ export function fmtDiaSemana(iso) {
 
 export const comboDef = (black, id) => black?.combos?.find((c) => c.id === id) ?? null
 
-/** O saco da Black Crumb: [{ combo: 'duo', ids: ['nutella', 'pistache'] }]. */
+/** O saco da Black Crumb: [{ combo: 'duo', ids: ['nutella', 'pistache'], minis: ['all-black'] }]. */
 export function lerSacoBlack() {
   try {
     const d = JSON.parse(localStorage.getItem(SACO_KEY) ?? 'null')
     if (!d || !Array.isArray(d.combos) || Date.now() - (d.savedAt ?? 0) > 7 * 864e5) return []
-    return d.combos.filter((c) => typeof c?.combo === 'string' && Array.isArray(c.ids))
+    return d.combos
+      .filter((c) => typeof c?.combo === 'string' && Array.isArray(c.ids))
+      .map((c) => ({ ...c, minis: Array.isArray(c.minis) ? c.minis.filter((x) => typeof x === 'string') : [] }))
   } catch {
     return []
   }
@@ -49,12 +51,25 @@ export function gravarSacoBlack(combos) {
   } catch { /* quota / modo privado */ }
 }
 
-/** Tira do saco os combos que já não existem ou com sabores que saíram do cardápio. */
+/**
+ * Tira do saco os combos que já não existem ou com sabores que saíram do
+ * cardápio. Um mini que saiu do cardápio cai; o combo fica (sem mini escolhido
+ * o servidor manda um de sabor surpresa).
+ */
 export function limparSacoBlack(combos, cardapio) {
-  return combos.filter((c) => {
-    const def = comboDef(cardapio?.black, c.combo)
-    return def && c.ids.length === def.cookies && c.ids.every((id) => findCookie(cardapio, id))
-  })
+  return combos
+    .filter((c) => {
+      const def = comboDef(cardapio?.black, c.combo)
+      return def && c.ids.length === def.cookies && c.ids.every((id) => findCookie(cardapio, id))
+    })
+    .map((c) => ({ ...c, minis: (c.minis ?? []).filter((id) => findCookie(cardapio, id)) }))
+}
+
+/** "mini Pistache" (ou "minis Pistache e Nutella") a partir dos ids escolhidos. */
+function textoMinis(minis, cardapio) {
+  const nomes = (minis ?? []).map((id) => findCookie(cardapio, id)?.nome).filter(Boolean)
+  if (!nomes.length) return ''
+  return `${nomes.length > 1 ? 'minis' : 'mini'} ${nomes.join(' e ')} de oferta`
 }
 
 /** Linhas para o passo "O teu pedido" do checkout (mesma forma que util.resumoPedido). */
@@ -65,7 +80,7 @@ export function resumoBlack(combos, cardapio) {
     return {
       key: `combo-${i}`, tipo: 'combo', inicio: i, ids: c.ids,
       nome: def?.nome ?? c.combo,
-      detalhe: resumoCaixa(contar(c.ids), cardapio),
+      detalhe: [resumoCaixa(contar(c.ids), cardapio), textoMinis(c.minis, cardapio)].filter(Boolean).join(' + '),
       qty: 1, subtotal: Number(def?.preco) || 0,
     }
   })
@@ -78,8 +93,15 @@ export function resumoBlack(combos, cardapio) {
   }
 }
 
-/** O que vai para o servidor: só a escolha. */
-export const payloadBlack = (combos) => combos.map((c) => ({ combo: c.combo, sabores: contar(c.ids) }))
+/**
+ * O que vai para o servidor: só a escolha. Os minis só vão quando estão
+ * todos escolhidos; sem eles o servidor manda o mini de sabor surpresa.
+ */
+export const payloadBlack = (combos, brindePorCombo = 0) => combos.map((c) => ({
+  combo: c.combo,
+  sabores: contar(c.ids),
+  ...((c.minis ?? []).length === brindePorCombo && brindePorCombo > 0 ? { minis: c.minis } : {}),
+}))
 
 /**
  * Taxa de entrega com as regras da campanha (o servidor faz a mesma conta):
@@ -105,17 +127,31 @@ export function vantagemAntecipada(black) {
   const ateKm = Number(black.antecipadoFreteGratisAteKm)
   const desc = Number(black.antecipadoDescontoFrete)
   if (!Number.isFinite(ateKm)) return ''
-  return `Entrega grátis até ${String(ateKm).replace('.', ',')} km${Number.isFinite(desc) && desc > 0 ? ` e ${fmtEuro(desc)} de desconto mais longe` : ''}`
+  return `Entrega grátis até ${String(ateKm).replace('.', ',')} km${Number.isFinite(desc) && desc > 0 ? ` (mais longe, ${euroCurto(desc)} de desconto)` : ''}`
 }
 
-/** As regras de entrega, em frases curtas, para a página e o checkout. */
-export function regrasEntregaBlack(black) {
-  const r = ['Levantar na cozinha é sempre grátis.']
+/** "20 €" em vez de "20,00 €" quando é redondo (fica mais limpo nos avisos). */
+const euroCurto = (v) => (Number.isInteger(Number(v)) ? `${Number(v)} €` : fmtEuro(v))
+
+/**
+ * O aviso de entrega da campanha, numa só peça: a regra para todos (grátis a
+ * partir de X €) e, enquanto é encomenda antecipada, a vantagem extra.
+ * { titulo, texto } — texto vazio quando não há vantagem extra.
+ */
+export function avisoEntregaBlack(black) {
   const gratis = Number(black?.freteGratisAPartirDe)
-  if (Number.isFinite(gratis) && gratis > 0) r.push(`Entrega grátis a partir de ${fmtEuro(gratis)}.`)
-  const ant = vantagemAntecipada(black)
-  if (ant) r.push(`Encomendando já: ${ant.charAt(0).toLowerCase()}${ant.slice(1)}.`)
-  return r
+  const titulo = Number.isFinite(gratis) && gratis > 0 ? `Entrega grátis a partir de ${euroCurto(gratis)}` : ''
+  let texto = ''
+  if (black?.antecipado) {
+    const ateKm = Number(black.antecipadoFreteGratisAteKm)
+    const desc = Number(black.antecipadoDescontoFrete)
+    if (Number.isFinite(ateKm)) {
+      const prazo = fmtPrazo(black.antecipadoAte).replace(/-feira/, '')
+      texto = `Encomendando até ${prazo}, também é grátis até ${String(ateKm).replace('.', ',')} km`
+        + (Number.isFinite(desc) && desc > 0 ? `. Mais longe, tens ${euroCurto(desc)} de desconto.` : '.')
+    }
+  }
+  return { titulo, texto }
 }
 
 /** "sexta, 27 nov às 19h" a partir de "2026-11-27T19:00" (hora de Lisboa). */

@@ -199,7 +199,7 @@ export function InfoLegal() {
           </p>
           <p>
             Em caso de litígio de consumo, podes recorrer a uma entidade de resolução alternativa de litígios:{' '}
-            <a href="https://www.cicap.pt" target="_blank" rel="noreferrer">CICAP – Centro de Informação de Consumo e Arbitragem do Porto</a>.
+            <a href="https://www.cicap.pt" target="_blank" rel="noreferrer">CICAP, o Centro de Informação de Consumo e Arbitragem do Porto</a>.
             Mais informação no <a href="https://www.consumidor.gov.pt" target="_blank" rel="noreferrer">Portal do Consumidor</a>.
           </p>
           <a className="legal-livro" href="https://www.livroreclamacoes.pt" target="_blank" rel="noreferrer">

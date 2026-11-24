@@ -1071,27 +1071,35 @@ button.linha-box-fotos:active { transform: scale(0.94); }
 .zap-cartao-nota { font-size: var(--text-xs); color: var(--ink-3); }
 
 /* WhatsApp no topo (cabeçalho escuro, fixo) */
-.zap-topo {
+/* WhatsApp no topo: um balão de fala creme, com rabicho, como as mascotes da logo.
+   O "Dúvidas?" vai no pincel do "Lab". */
+.zap-balao {
+  position: relative;
   display: inline-flex; align-items: center; gap: 0.35rem;
-  padding: 0.38rem 0.75rem;
-  border-radius: 999px;
-  background: rgba(37, 211, 102, 0.14);
-  border: 1px solid rgba(37, 211, 102, 0.4);
+  padding: 0.2rem 0.7rem 0.3rem 0.8rem;
+  border-radius: 14px 14px 14px 4px;
+  background: var(--ink-on-dark); color: var(--color-primary);
+  text-decoration: none; line-height: 1;
+  transform: rotate(-2deg);
+  transition: transform .2s var(--mola);
+}
+.zap-balao::after {
+  content: ''; position: absolute; left: 0.35rem; bottom: -0.38rem;
+  width: 0.7rem; height: 0.55rem; background: inherit;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.zap-balao:hover { transform: rotate(0deg) scale(1.04); }
+.zap-balao:active { transform: rotate(0deg) scale(0.96); }
+.zap-balao-txt { font-family: var(--font-script); font-size: 1.35rem; padding-top: 0.15rem; }
+.zap-balao svg { flex-shrink: 0; opacity: 0.75; }
+.topo-link {
+  padding: 0.3rem 0.1rem; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: var(--text-sm); font-weight: 700; font-stretch: 110%;
   color: var(--ink-on-dark);
-  font-size: var(--text-xs); font-weight: 700;
-  text-decoration: none;
+  text-decoration: underline; text-decoration-color: rgba(239, 228, 203, 0.4); text-underline-offset: 4px;
   white-space: nowrap;
-  transition: background .15s, transform .1s;
 }
-.zap-topo svg { color: #25D366; flex-shrink: 0; }
-.zap-topo:hover { background: rgba(37, 211, 102, 0.24); }
-.zap-topo:active { transform: scale(0.96); }
-.loja-top .btn-ghost { white-space: nowrap; }
-/* telemóveis muito estreitos: só o ícone, para caber ao lado de "O meu pedido" */
-@media (max-width: 359px) {
-  .zap-topo { padding: 0.45rem; }
-  .zap-topo span { display: none; }
-}
+.topo-link:hover { text-decoration-color: var(--ink-on-dark); }
 
 .loja-mascote {
   width: 5.5rem; height: auto; margin-inline: auto;
@@ -1247,17 +1255,6 @@ button.linha-box-fotos:active { transform: scale(0.94); }
 }
 @media (min-width: 720px) { .black-combo-cta { align-self: stretch; margin-top: 0.4rem; padding-block: 0.65rem; } }
 
-.black-regras { padding-top: 2rem; padding-bottom: 1.5rem; }
-.black-regras ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
-.black-regras li {
-  display: flex; gap: 0.6rem;
-  padding: 0.7rem 0.85rem;
-  border-radius: 14px;
-  background: var(--color-surface);
-  font-size: var(--text-sm);
-  line-height: 1.45;
-  color: var(--ink-2);
-}
 
 /* construtor de combo */
 .black-montar-topo { flex: 1; min-width: 0; text-align: center; }
@@ -1291,8 +1288,6 @@ button.linha-box-fotos:active { transform: scale(0.94); }
   color: var(--ink-on-dark);
 }
 
-/* regras de entrega da campanha (checkout) */
-.faixas-campanha li { background: var(--color-accent-soft); border-color: rgba(154, 59, 28, 0.25); color: var(--color-accent-dark); font-weight: 700; }
 
 /* pagar já (Black Crumb): o cartão do MB WAY fica em evidência */
 .mbway[data-obrigatorio='true'] { animation-delay: .35s; box-shadow: 0 0 0 2px var(--color-accent); }
@@ -1350,13 +1345,12 @@ button.linha-box-fotos:active { transform: scale(0.94); }
 
 /* ── Ícones da marca (src/loja/icones.jsx) ─────────────────────────────── */
 .opcao-icone { color: var(--color-accent-dark); }
-.opcao-icone svg, .resumo-icone svg, .black-regras li > svg, .black-prazo li > svg { display: block; flex-shrink: 0; }
+.opcao-icone svg, .resumo-icone svg, .black-prazo li > svg { display: block; flex-shrink: 0; }
 .resumo-icone { display: flex; justify-content: center; padding-top: 0.12rem; color: var(--color-accent-dark); }
 .poupanca svg { flex-shrink: 0; }
 .cupao-aplicado-txt { display: inline-flex; align-items: center; gap: 0.35rem; }
 .cupao-aplicado-txt svg { color: var(--color-success); }
 .cookie-emoji { display: grid; place-items: center; color: var(--ink-3); }
-.black-regras li > svg { margin-top: 0.05rem; color: var(--color-accent-dark); }
 .black-slot-brinde { color: var(--color-accent-dark); }
 /* no aviso da encomenda antecipada cada linha tem o seu ícone em vez da migalha */
 .black-prazo[data-icones='true'] li { display: flex; align-items: flex-start; gap: 0.55rem; padding-left: 0; }
@@ -1414,3 +1408,91 @@ button.linha-box-fotos:active { transform: scale(0.94); }
 .rodape-legal a { font-size: var(--text-xs); color: var(--ink-on-dark); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(239, 228, 203, 0.35); }
 .rodape-livro { display: inline-flex; align-items: center; gap: 0.3rem; }
 .checkout-letra a { color: var(--color-accent-dark); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+
+/* ── Black Crumb: como funciona (trilho de migalhas) ───────────────────── */
+.black-como { padding-top: 2.25rem; padding-bottom: 1.75rem; }
+.black-trilho { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; gap: 1.4rem; }
+.black-trilho li { position: relative; display: grid; grid-template-columns: 3rem 1fr; gap: 0.9rem; align-items: start; }
+.black-num {
+  font-family: var(--font-marca); font-weight: 400; font-synthesis: none;
+  font-variation-settings: 'YEAR' 1998; font-size: 2.7rem; line-height: 0.9;
+  color: var(--color-accent-dark); text-align: center;
+}
+/* as migalhas que ligam um passo ao seguinte */
+.black-trilho li:not(:last-child)::after {
+  content: ''; position: absolute; left: 1.5rem; top: 2.85rem; bottom: -1.3rem; width: 6px; margin-left: -3px;
+  background: radial-gradient(circle at 50% 50%, var(--color-accent) 0 1.7px, transparent 2.2px) center top / 6px 9px repeat-y;
+  opacity: 0.55;
+}
+.black-trilho h3 { font-weight: 800; font-stretch: 115%; font-size: var(--text-lg); line-height: 1.2; color: var(--ink-1); }
+.black-trilho p { margin-top: 0.2rem; font-size: var(--text-sm); line-height: 1.45; color: var(--ink-2); }
+@media (min-width: 720px) {
+  .black-trilho { grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+  .black-trilho li { grid-template-columns: 1fr; gap: 0.6rem; }
+  .black-num { text-align: left; font-size: 3.2rem; }
+  .black-trilho li:not(:last-child)::after {
+    left: 3.6rem; right: 0.5rem; top: 1.3rem; bottom: auto; width: auto; height: 6px; margin: 0;
+    background: radial-gradient(circle at 50% 50%, var(--color-accent) 0 1.7px, transparent 2.2px) left center / 9px 6px repeat-x;
+  }
+}
+
+/* ── Black Crumb: o aviso de entrega é um bilhete (recortes dos lados) ──── */
+.black-bilhete {
+  --furo: 0.65rem;
+  display: grid; grid-template-columns: auto 1fr; align-items: stretch;
+  margin-top: 1.6rem;
+  background: #0A0604; color: var(--ink-on-dark);
+  border-radius: 14px;
+  -webkit-mask:
+    radial-gradient(circle var(--furo) at 0 50%, transparent 98%, #000 100%) 0 0 / 51% 100% no-repeat,
+    radial-gradient(circle var(--furo) at 100% 50%, transparent 98%, #000 100%) 100% 0 / 51% 100% no-repeat;
+          mask:
+    radial-gradient(circle var(--furo) at 0 50%, transparent 98%, #000 100%) 0 0 / 51% 100% no-repeat,
+    radial-gradient(circle var(--furo) at 100% 50%, transparent 98%, #000 100%) 100% 0 / 51% 100% no-repeat;
+}
+.black-bilhete-canhoto {
+  display: grid; place-items: center;
+  padding: 0.9rem 0.85rem 0.9rem 1.3rem;
+  border-right: 2px dashed rgba(239, 228, 203, 0.22);
+  color: #E9886A;
+}
+.black-bilhete-txt { padding: 0.85rem 1.4rem 0.95rem 1rem; }
+.black-bilhete-kicker { font-size: var(--text-2xs); font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #E9886A; }
+.black-bilhete-titulo {
+  margin-top: 0.2rem;
+  font-family: var(--font-marca); font-weight: 400; font-synthesis: none;
+  font-variation-settings: 'YEAR' 2000; text-transform: uppercase; letter-spacing: 0.01em;
+  font-size: var(--text-lg); line-height: 1.15;
+}
+.black-bilhete-texto { margin-top: 0.35rem; font-size: var(--text-sm); line-height: 1.45; color: var(--ink-on-dark-2); }
+.passo .black-bilhete { margin-top: 1rem; }
+
+/* ── Black Crumb: construtor em dois passos (cookies → mini de oferta) ──── */
+.black-passos {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem;
+  margin-top: 1rem; padding: 0.25rem;
+  border-radius: 12px; background: var(--color-surface-sunk);
+}
+.black-passos button {
+  padding: 0.55rem 0.5rem; border: 0; border-radius: 9px; background: transparent;
+  font: inherit; font-size: var(--text-sm); font-weight: 700; color: var(--ink-3); cursor: pointer;
+  touch-action: manipulation;
+}
+.black-passos button[aria-selected='true'] { background: var(--color-surface); color: var(--ink-1); box-shadow: var(--shadow-card); }
+.black-passos b { margin-left: 0.3rem; font-weight: 800; color: var(--color-accent-dark); }
+.black-slot-mini {
+  --s: 2.35rem; position: relative; align-self: center;
+  border-color: var(--color-accent); color: var(--color-accent-dark); cursor: pointer;
+}
+.black-slot-mini[data-cheio='true'] { border: none; background: var(--prato); }
+.black-slot-mini[data-ativo='true'] { box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent); }
+/* um laço por cima do mini: é a oferta */
+.black-slot-laco { position: absolute; top: -0.3rem; left: 50%; width: 0; height: 0; }
+.black-slot-laco::before, .black-slot-laco::after {
+  content: ''; position: absolute; top: 0; width: 0.6rem; height: 0.42rem;
+  background: var(--color-accent); border-radius: 60% 40% 40% 60% / 60% 50% 50% 40%;
+}
+.black-slot-laco::before { right: -0.05rem; transform: rotate(-18deg); }
+.black-slot-laco::after { left: -0.05rem; transform: rotate(18deg) scaleX(-1); }
+.cookie-card[data-mini='true'] .cookie-foto { transform: scale(0.8); }
+.cookie-card[data-mini='true'] .cookie-preco { font-size: var(--text-2xs); font-weight: 700; color: var(--ink-3); }

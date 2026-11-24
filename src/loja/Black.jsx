@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { fmtEuro, findCookie, precoNormal, vezes } from './util'
-import { comboDef, fmtDiaSemana, fmtPrazo, regrasEntregaBlack, vantagemAntecipada } from './blackCrumb'
+import { avisoEntregaBlack, comboDef, fmtDiaSemana, fmtPrazo, vantagemAntecipada } from './blackCrumb'
 import { toqueJuntar, toqueTirar, toqueBoxFechada } from './sensacao'
 import { saltar } from './voar'
 import {
-  IconeCalendario, IconeCookie, IconeMota, IconePresente, IconeSaco, IconeSelos, IconeTelemovel,
+  IconeCalendario, IconeCookie, IconeMota, IconePresente, IconeSelos,
 } from './icones'
 
 /**
@@ -20,6 +20,11 @@ export function Black({ cardapio, combos, onMontar }) {
   const nDe = (id) => combos.filter((c) => c.combo === id).length
   const aberta = Boolean(black.aberta)
   const fimDeSemana = (black.diasNoDia ?? []).map(fmtDiaCurto).join(' e ')
+  // os dias que se podem marcar agora (na pausa, os do fim de semana que aí vem)
+  const diasAgora = aberta ? black.dias : (black.diasNoDia ?? [])
+  const quando = black.fase === 'antecipado'
+    ? `de ${fmtDiaCurto(black.dias[0])} a ${fmtDiaCurto(black.dias[black.dias.length - 1])}`
+    : diasAgora.map((d) => fmtDiaSemana(d).split(',')[0]).join(' ou ')
 
   let aviso
   if (black.fase === 'antecipado') {
@@ -96,7 +101,7 @@ export function Black({ cardapio, combos, onMontar }) {
                 <span className="black-combo-txt">
                   <span className="black-combo-nome">{c.nome}</span>
                   <span className="black-combo-detalhe">
-                    {c.cookies} cookies{brinde > 0 ? ` + ${brinde} mini cookie de oferta` : ''}
+                    {c.cookies} cookies{brinde > 0 ? ` + ${brinde} mini de oferta, à tua escolha` : ''}
                     {c.gramas ? <><br />cerca de {c.gramas} g de cookies</> : null}
                   </span>
                   <span className="black-combo-precos">
@@ -111,17 +116,53 @@ export function Black({ cardapio, combos, onMontar }) {
         </div>
       </section>
 
-      <section className="loja-wrap-largo black-regras" aria-labelledby="titulo-regras">
-        <h2 id="titulo-regras" className="loja-h2">Como funciona</h2>
-        <ul>
-          <li><IconeTelemovel size={20} /><span>Pagas por MB WAY no momento da encomenda. Confirmamos assim que o pagamento chegar.</span></li>
-          {regrasEntregaBlack(black).map((t, i) => (
-            <li key={t}>{i === 0 ? <IconeSaco size={20} /> : <IconeMota size={20} />}<span>{t}</span></li>
-          ))}
-          {brinde > 0 && <li><IconePresente size={20} /><span>O mini cookie de oferta (50 g) é de sabor surpresa.</span></li>}
-        </ul>
+      <section className="loja-wrap-largo black-como" aria-labelledby="titulo-como">
+        <h2 id="titulo-como" className="loja-h2">Como funciona</h2>
+        <ol className="black-trilho">
+          <li>
+            <span className="black-num" aria-hidden="true">1</span>
+            <div>
+              <h3>Monta o combo</h3>
+              <p>Escolhes o sabor de cada cookie{brinde > 0 ? ' e do mini de oferta' : ''}.</p>
+            </div>
+          </li>
+          <li>
+            <span className="black-num" aria-hidden="true">2</span>
+            <div>
+              <h3>Marca o dia</h3>
+              <p>Recebes em casa ou levantas na nossa cozinha, {quando}.</p>
+            </div>
+          </li>
+          <li>
+            <span className="black-num" aria-hidden="true">3</span>
+            <div>
+              <h3>Pagas por MB WAY</h3>
+              <p>Logo a seguir à encomenda. Confirmamos assim que o pagamento chegar.</p>
+            </div>
+          </li>
+        </ol>
+        <AvisoEntregaBlack black={black} />
       </section>
     </main>
+  )
+}
+
+/**
+ * O aviso de entrega da campanha, como um bilhete: a regra para todos e, se
+ * ainda for encomenda antecipada, a vantagem extra. Na página e no checkout.
+ */
+export function AvisoEntregaBlack({ black }) {
+  const { titulo, texto } = avisoEntregaBlack(black)
+  if (!titulo && !texto) return null
+  return (
+    <div className="black-bilhete">
+      <span className="black-bilhete-canhoto" aria-hidden="true"><IconeMota size={26} /></span>
+      <div className="black-bilhete-txt">
+        <p className="black-bilhete-kicker">Entregas na {black?.nome || 'Black Crumb'}</p>
+        {titulo && <p className="black-bilhete-titulo">{titulo}</p>}
+        {texto && <p className="black-bilhete-texto">{texto}</p>}
+      </div>
+    </div>
   )
 }
 
@@ -132,18 +173,26 @@ function fmtDiaCurto(iso) {
 }
 
 /**
- * Montar um combo: N espaços, todos os sabores à escolha (sem limite de stock).
- * Toca para juntar; toca num espaço (ou no −) para tirar.
+ * Montar um combo em dois passos: primeiro os N cookies (todos os sabores à
+ * escolha, sem limite de stock), depois o mini de oferta. Ao fechar os cookies
+ * passa sozinho para o mini; as abas de cima deixam voltar a qualquer um.
+ * Toca num espaço (ou no −) para tirar.
  */
 export function MontarCombo({ cardapio, comboId, onJuntar, onFechar }) {
   const def = comboDef(cardapio.black, comboId)
+  const brinde = Number(cardapio.black.brindePorCombo) || 0
   const [ids, setIds] = useState([])
+  const [minis, setMinis] = useState([])
+  const [modo, setModo] = useState('cookies')
   const titulo = useRef(null)
+  const timer = useRef(null)
   const cheio = def ? ids.length >= def.cookies : false
   const faltam = def ? def.cookies - ids.length : 0
-  const brinde = Number(cardapio.black.brindePorCombo) || 0
+  const minisOk = minis.length >= brinde
+  const pronto = cheio && minisOk
 
   useEffect(() => { titulo.current?.focus({ preventScroll: true }) }, [])
+  useEffect(() => () => clearTimeout(timer.current), [])
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onFechar() }
     window.addEventListener('keydown', onKey)
@@ -155,10 +204,15 @@ export function MontarCombo({ cardapio, comboId, onJuntar, onFechar }) {
   function juntar(id, el) {
     if (cheio) return
     const proximo = [...ids, id]
-    if (proximo.length === def.cookies) toqueBoxFechada()
-    else toqueJuntar(proximo.length)
     saltar(el)
     setIds(proximo)
+    if (proximo.length === def.cookies) {
+      toqueBoxFechada()
+      // deixa ver o último cookie pousar antes de passar ao mini
+      if (brinde > 0 && !minisOk) timer.current = setTimeout(() => setModo('mini'), 450)
+    } else {
+      toqueJuntar(proximo.length)
+    }
   }
   function tirarUm(id) {
     const i = ids.lastIndexOf(id)
@@ -169,7 +223,30 @@ export function MontarCombo({ cardapio, comboId, onJuntar, onFechar }) {
   function tirarPos(i) {
     toqueTirar()
     setIds(ids.filter((_, k) => k !== i))
+    setModo('cookies')
   }
+  /** Com um só mini por combo, tocar noutro sabor troca-o. */
+  function escolherMini(id, el) {
+    saltar(el)
+    toqueBoxFechada()
+    setMinis((m) => (brinde === 1 ? [id] : m.length < brinde ? [...m, id] : m))
+  }
+  function tirarMini(id) {
+    const i = minis.lastIndexOf(id)
+    if (i < 0) return
+    toqueTirar()
+    setMinis(minis.filter((_, k) => k !== i))
+  }
+
+  let sub
+  if (modo === 'mini') sub = minisOk ? 'Mini escolhido. Podes trocar.' : 'Agora o mini cookie de oferta (50 g)'
+  else if (cheio) sub = brinde > 0 && !minisOk ? 'Cookies prontos. Falta o mini de oferta.' : 'Pronto!'
+  else sub = `Escolhe ${faltam === def.cookies ? def.cookies : `mais ${faltam}`} ${faltam === 1 ? 'cookie' : 'cookies'}`
+
+  let cta
+  if (pronto) cta = `Juntar ao pedido · ${fmtEuro(def.preco)}`
+  else if (!cheio) cta = `Faltam ${faltam} ${faltam === 1 ? 'cookie' : 'cookies'}`
+  else cta = 'Escolhe o mini de oferta'
 
   return (
     <div className="sheet-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onFechar() }}>
@@ -178,16 +255,13 @@ export function MontarCombo({ cardapio, comboId, onJuntar, onFechar }) {
           <button type="button" className="btn-icon" onClick={onFechar} aria-label="Fechar">✕</button>
           <div className="black-montar-topo">
             <h2 ref={titulo} tabIndex={-1} className="black-montar-titulo">{def.nome}</h2>
-            <p className="black-montar-sub">
-              {cheio ? 'Pronto!' : `Escolhe ${faltam === def.cookies ? def.cookies : `mais ${faltam}`} ${faltam === 1 ? 'cookie' : 'cookies'}`}
-              {' · '}{fmtEuro(def.preco)}
-            </p>
+            <p className="black-montar-sub">{sub} · {fmtEuro(def.preco)}</p>
           </div>
           <span className="w-9" aria-hidden="true" />
         </header>
 
         <div className="checkout-corpo">
-          <div className="black-slots" role="list" aria-label="Cookies do combo">
+          <div className="black-slots" role="list" aria-label="O teu combo">
             {Array.from({ length: def.cookies }, (_, i) => {
               const c = ids[i] ? findCookie(cardapio, ids[i]) : null
               return c ? (
@@ -199,17 +273,42 @@ export function MontarCombo({ cardapio, comboId, onJuntar, onFechar }) {
                 </button>
               ) : <span key={`v${i}`} role="listitem" className="black-slot" aria-label="Espaço vazio" />
             })}
-            {brinde > 0 && (
-              <span className="black-slot black-slot-brinde" role="listitem" title="Mini cookie de oferta" aria-label="Mini cookie de oferta">
-                <IconePresente size={22} />
-              </span>
-            )}
+            {Array.from({ length: brinde }, (_, i) => {
+              const c = minis[i] ? findCookie(cardapio, minis[i]) : null
+              return (
+                <button
+                  key={`m${i}-${c?.id ?? 'vazio'}`} type="button" role="listitem"
+                  className="black-slot black-slot-mini" data-cheio={Boolean(c)} data-ativo={modo === 'mini'}
+                  onClick={() => setModo('mini')}
+                  aria-label={c ? `Mini de oferta: ${c.nome}. Trocar` : 'Escolher o mini de oferta'}
+                >
+                  {c?.image ? <img src={c.image} alt="" draggable="false" /> : <IconePresente size={18} />}
+                  <span className="black-slot-laco" aria-hidden="true" />
+                </button>
+              )
+            })}
           </div>
 
-          <div className="cookie-grelha mt-4">
-            {(cardapio.cookies ?? []).map((c) => (
+          {brinde > 0 && (
+            <div className="black-passos" role="tablist" aria-label="Passos do combo">
+              <button type="button" role="tab" aria-selected={modo === 'cookies'} onClick={() => setModo('cookies')}>
+                Cookies <b className="bfy-num">{ids.length}/{def.cookies}</b>
+              </button>
+              <button type="button" role="tab" aria-selected={modo === 'mini'} onClick={() => setModo('mini')}>
+                Mini de oferta <b className="bfy-num">{Math.min(minis.length, brinde)}/{brinde}</b>
+              </button>
+            </div>
+          )}
+
+          <div className="cookie-grelha mt-4" data-modo={modo}>
+            {(cardapio.cookies ?? []).map((c) => (modo === 'mini' ? (
+              <Sabor
+                key={c.id} cookie={c} qty={vezes(minis, c.id)} cheio={false} mini
+                onJuntar={escolherMini} onTirar={tirarMini}
+              />
+            ) : (
               <Sabor key={c.id} cookie={c} qty={vezes(ids, c.id)} cheio={cheio} onJuntar={juntar} onTirar={tirarUm} />
-            ))}
+            )))}
           </div>
         </div>
 
@@ -217,10 +316,10 @@ export function MontarCombo({ cardapio, comboId, onJuntar, onFechar }) {
           <button
             type="button"
             className="btn-primary btn-block checkout-cta"
-            disabled={!cheio}
-            onClick={() => onJuntar({ combo: def.id, ids })}
+            disabled={!pronto}
+            onClick={() => onJuntar({ combo: def.id, ids, minis: minis.slice(0, brinde) })}
           >
-            {cheio ? `Juntar ao pedido · ${fmtEuro(def.preco)}` : `Faltam ${faltam}`}
+            {cta}
           </button>
         </footer>
       </div>
@@ -228,16 +327,17 @@ export function MontarCombo({ cardapio, comboId, onJuntar, onFechar }) {
   )
 }
 
-function Sabor({ cookie, qty, cheio, onJuntar, onTirar }) {
+function Sabor({ cookie, qty, cheio, mini = false, onJuntar, onTirar }) {
   const foto = useRef(null)
   return (
-    <div className="cookie-card" data-qty={qty > 0}>
+    <div className="cookie-card" data-qty={qty > 0} data-mini={mini}>
       <button
         type="button"
         className="cookie-toque"
         aria-disabled={cheio}
+        aria-pressed={mini ? qty > 0 : undefined}
         onClick={() => onJuntar(cookie.id, foto.current)}
-        aria-label={`Juntar ${cookie.nome}${qty ? `. Tens ${qty}.` : ''}`}
+        aria-label={mini ? `Mini de oferta: ${cookie.nome}` : `Juntar ${cookie.nome}${qty ? `. Tens ${qty}.` : ''}`}
       >
         <span className="cookie-prato">
           {cookie.image
@@ -246,8 +346,9 @@ function Sabor({ cookie, qty, cheio, onJuntar, onTirar }) {
           {qty > 0 && <span key={qty} className="cookie-qty" aria-hidden="true">{qty}</span>}
         </span>
         <span className="cookie-nome">{cookie.nome}</span>
+        {mini && <span className="cookie-preco">mini 50 g</span>}
       </button>
-      {qty > 0 && (
+      {qty > 0 && !mini && (
         <button type="button" className="cookie-menos" onClick={() => onTirar(cookie.id)} aria-label={`Remover um ${cookie.nome}`}>−</button>
       )}
     </div>

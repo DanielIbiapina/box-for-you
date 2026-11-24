@@ -60,7 +60,7 @@ const descLocal = (l) => [l.nome, l.morada, l.notas].filter(Boolean).join(' · '
  *   { dias: [{ iso, rotulo, dia }],  só estes dias, sem "Outro dia…"
  *     pagamento: 'MB WAY',           pagamento fixo — salta o passo de pagar
  *     taxa({ total, km, taxa, semMapa }) → número | null (a confirmar)
- *     regrasEntrega: ['…'],          frases no passo da morada
+ *     avisoEntrega: <…/>,            aviso no passo da morada (no lugar da tabela de taxas)
  *     brinde: n }                    mini cookies de oferta a mostrar
  * Sem cupão nas campanhas. As linhas `tipo: 'combo'` só se removem ou repetem.
  */
@@ -545,12 +545,9 @@ export function Checkout({
               <>
                 <h2 ref={titulo} tabIndex={-1} className="passo-titulo">Onde entregamos?</h2>
                 <p className="passo-sub">{txtEntrega}</p>
-                {campanha?.regrasEntrega?.length > 0 && (
-                  <ul className="faixas-entrega faixas-campanha" aria-label="Regras de entrega da campanha">
-                    {campanha.regrasEntrega.map((t) => <li key={t}>{t}</li>)}
-                  </ul>
-                )}
-                {regrasEntrega && (
+                {campanha?.avisoEntrega}
+                {/* nas campanhas a tabela por distância não aparece: a taxa vê-se logo a seguir */}
+                {regrasEntrega && !campanha && (
                   <ul className="faixas-entrega" aria-label="Taxa de entrega">
                     {regrasEntrega.faixas.map((f, i) => (
                       <li key={i}>
@@ -594,7 +591,7 @@ export function Checkout({
                 {regrasEntrega && geoAtual?.estado === 'sem-mapa' && (
                   <p className="passo-info">
                     Não encontrámos esta rua com este código postal. Confirma se estão certos
-                    {taxaPendente ? ' — se estiverem, combinamos a taxa de entrega contigo.' : '. A entrega é grátis.'}
+                    {taxaPendente ? '. Se estiverem, combinamos a taxa de entrega contigo.' : '. A entrega é grátis.'}
                   </p>
                 )}
                 {regrasEntrega && (

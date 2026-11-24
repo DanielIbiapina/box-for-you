@@ -190,8 +190,11 @@ With `fechaLojaNormal`, the normal store is closed for the whole campaign: the m
 is hidden and `loja_criar_pedido` refuses with `fim: true`. After `fim` everything is
 back to normal and the Black tab is gone.
 
-- Combos are N cookies at a fixed price; every combo carries 1 free 50 g mini cookie
-  (surprise flavour, not taken from stock). Payment is MB WAY only, paid right away.
+- Combos are N cookies at a fixed price; every combo carries `brindePorCombo` free
+  50 g mini cookies whose flavour the customer picks in the builder (second step,
+  `minis` in the payload). Minis come out of the `cookie50` stock and are stored as
+  0 € lines with `stock50`; without `minis` (old cached bundle) the server falls back
+  to one "sabor surpresa" line. Payment is MB WAY only, paid right away.
 - Flavours are always available: the order deducts stock even below zero (negative =
   still to bake). For that reason `estoque_ajustar` and `aplicarDeltas` no longer
   clamp at 0; only setting an absolute value does.
