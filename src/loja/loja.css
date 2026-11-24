@@ -1071,27 +1071,9 @@ button.linha-box-fotos:active { transform: scale(0.94); }
 .zap-cartao-nota { font-size: var(--text-xs); color: var(--ink-3); }
 
 /* WhatsApp no topo (cabeçalho escuro, fixo) */
-/* WhatsApp no topo: um balão de fala creme, com rabicho, como as mascotes da logo.
-   O "Dúvidas?" vai no pincel do "Lab". */
-.zap-balao {
-  position: relative;
-  display: inline-flex; align-items: center; gap: 0.35rem;
-  padding: 0.2rem 0.7rem 0.3rem 0.8rem;
-  border-radius: 14px 14px 14px 4px;
-  background: var(--ink-on-dark); color: var(--color-primary);
-  text-decoration: none; line-height: 1;
-  transform: rotate(-2deg);
-  transition: transform .2s var(--mola);
-}
-.zap-balao::after {
-  content: ''; position: absolute; left: 0.35rem; bottom: -0.38rem;
-  width: 0.7rem; height: 0.55rem; background: inherit;
-  clip-path: polygon(0 0, 100% 0, 0 100%);
-}
-.zap-balao:hover { transform: rotate(0deg) scale(1.04); }
-.zap-balao:active { transform: rotate(0deg) scale(0.96); }
-.zap-balao-txt { font-family: var(--font-script); font-size: 1.35rem; padding-top: 0.15rem; }
-.zap-balao svg { flex-shrink: 0; opacity: 0.75; }
+/* WhatsApp no topo: discreto, uma ligação como "O meu pedido", com o balão de migalhas */
+.topo-zap { display: inline-flex; align-items: center; gap: 0.35rem; }
+.topo-zap svg { flex-shrink: 0; opacity: 0.85; }
 .topo-link {
   padding: 0.3rem 0.1rem; border: 0; background: none; cursor: pointer;
   font: inherit; font-size: var(--text-sm); font-weight: 700; font-stretch: 110%;

@@ -3,7 +3,8 @@ import { Menu } from './Menu'
 import { Bandeja } from './Bandeja'
 import { Checkout } from './Checkout'
 import { Pedido } from './Sucesso'
-import { Aviso, IconeWhatsApp } from './ui'
+import { Aviso } from './ui'
+import { IconeBalao } from './icones'
 import { linkWhatsApp } from './negocio'
 import { criarPedido, criarPedidoBlack, fetchCardapio, isSupabaseConfigured } from './api'
 import { Black, MontarCombo, BandejaBlack, AvisoEntregaBlack } from './Black'
@@ -367,17 +368,17 @@ export function Loja() {
       <header className="loja-top">
         <div className="loja-wrap-largo py-2.5 flex items-center justify-between gap-4">
           <img className="loja-logo" src="/hero-crumb.png" alt="Crumb Lab" />
-          <div className="flex items-center gap-2">
-            {/* WhatsApp no topo: um balão de fala, como nas mascotes da logo */}
+          <div className="flex items-center gap-4">
+            {/* WhatsApp no topo: uma ligação discreta, no mesmo tom de "O meu pedido" */}
             <a
-              className="zap-balao"
+              className="topo-link topo-zap"
               href={linkWhatsApp('Olá! Tenho uma pergunta sobre os cookies.')}
               target="_blank"
               rel="noreferrer"
               aria-label="Dúvidas? Fala connosco no WhatsApp"
             >
-              <span className="zap-balao-txt">Dúvidas?</span>
-              <IconeWhatsApp size={13} />
+              <IconeBalao size={17} />
+              <span>Dúvidas?</span>
             </a>
             {(ultimo || pedidoRef) && (
               <button

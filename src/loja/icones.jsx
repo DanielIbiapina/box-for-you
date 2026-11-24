@@ -166,6 +166,16 @@ export function IconeCalendario({ size, ...p }) {
   )
 }
 
+/** Balão de conversa com três migalhas (falar connosco). */
+export function IconeBalao({ size, ...p }) {
+  return (
+    <Svg size={size} {...p}>
+      <path d="M5.2 4.6h13.6a2.6 2.6 0 0 1 2.6 2.6v7.6a2.6 2.6 0 0 1-2.6 2.6H10.4l-4.6 3.4v-3.4h-.6a2.6 2.6 0 0 1-2.6-2.6V7.2a2.6 2.6 0 0 1 2.6-2.6Z" />
+      <path d="M8.3 11h.01M12 10.8h.01M15.7 11.1h.01" strokeWidth="2.6" />
+    </Svg>
+  )
+}
+
 /** Livro com fita e ponto de exclamação (Livro de Reclamações). */
 export function IconeLivro({ size, ...p }) {
   return (

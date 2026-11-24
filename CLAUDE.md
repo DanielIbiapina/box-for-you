@@ -87,7 +87,9 @@ Typography comes from the logo (Google Fonts, linked in `index.html` / `crm/inde
 - `--font-title` / `--font-body` **Archivo** — titles use it wide (`font-stretch` 110–115%) and heavy.
 - `--font-script` **Mr Dafoe** — the "Lab" brush; only small touches (greeting, handwritten note).
 
-**No emoji in the UI.** Icons are hand-drawn SVGs in [`src/loja/icones.jsx`](src/loja/icones.jsx)
+**No emoji in the UI**, and none of the other "vibe-coded" tells either: em dashes in
+prose, cards with a coloured left border, stock pill badges. Keep accents discreet
+(the header WhatsApp is a plain link with a drawn speech-bubble icon). Icons are hand-drawn SVGs in [`src/loja/icones.jsx`](src/loja/icones.jsx)
 (24×24, round 1.9 stroke, `currentColor`), shared by the store and the CRM. Draw a new
 one there rather than reaching for an emoji or an icon library. (The CRM still has
 emoji as *data* — the recipe/flavour `emoji` fields — which is a separate cleanup.)
@@ -203,7 +205,7 @@ back to normal and the Black tab is gone.
   `salesAnalytics` read `stock`, so cancelling or deleting returns the right flavours.
   Keep `stock` when rebuilding lines.
 - Orders have `campanha = 'black'`; `entrega.antecipado = true` means pre-order
-  (double loyalty stamps). Vendas shows a 🖤 Black chip.
+  (double loyalty stamps). Vendas shows a "Black" chip (cookie icon) with "selos ×2".
 - `Checkout.jsx` takes a `campanha` prop (fixed days, fixed payment, own delivery-fee
   rule, no coupon), so the next campaign (Christmas) can reuse it.
 - `loja_entrega_validar()` is the shared pickup/delivery validation for campaign
