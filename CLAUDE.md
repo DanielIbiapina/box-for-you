@@ -159,9 +159,18 @@ The 4-digit postal code picks a search area from `public/cp4.json` (GeoNames,
 regenerate with `node scripts/gerar-cp.mjs PT.txt`). Those points are municipality
 centres, too coarse for the fee itself. The street is then looked up in
 OpenStreetMap inside that area, and a result counts only when both the street name
-and the first 4 digits of OSM's postcode match. Otherwise the fee stays "a
-confirmar". Never fall back to a free-text search: it matches same-named streets
-in other towns.
+and the first 4 digits of OSM's postcode match (on a long street whose stretches are
+far apart, the stretch with the nearest postcode wins). Never fall back to a free-text
+search for the street: it matches same-named streets in other towns.
+
+If the street is not found, the **locality** is searched inside the same postcode area
+(the full text, "Gandra, Paredes", to avoid a nearer same-named hamlet): that gives an
+approximate distance (`precisao: 'localidade'`), enough to charge the band and to
+refuse addresses beyond the last band; the order's `entrega.aprox` is set and Vendas
+flags it. **If nothing is found, delivery is refused** (client and both SQL order
+functions), with a WhatsApp way out. It used to be accepted as "taxa a confirmar",
+which let a 38 km order through with no fee (Nov 2026); old orders with
+`taxaAConfirmar` still get a "Taxa a confirmar" chip in Vendas.
 
 `src/loja/api.js` calls PostgREST with plain `fetch` rather than `supabase-js`, to
 keep the customer-facing bundle small. Don't import `supabase-js` into `src/loja/`.

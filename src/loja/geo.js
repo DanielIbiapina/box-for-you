@@ -10,8 +10,13 @@
  *  2. Procura-se a rua no mapa (OpenStreetMap) só dentro dessa zona.
  *  3. Só vale um resultado com o mesmo nome de rua E cujo código postal no
  *     mapa comece pelos mesmos 4 dígitos. Entre esses: o número de porta
- *     certo, senão o código postal completo certo, senão o meio da rua.
- * Sem essa certeza a taxa fica "a confirmar" e a dona combina com o cliente.
+ *     certo, senão o código postal completo certo, senão o meio da rua; numa
+ *     rua comprida (troços espalhados), o troço de código postal mais perto.
+ *  4. Sem a rua, procura-se a LOCALIDADE dentro da zona: dá uma distância
+ *     aproximada (precisao: 'localidade'), que chega para cobrar a taxa e para
+ *     recusar moradas longe de mais.
+ * Sem nada disto (null) não se aceita a entrega: a pessoa confirma a morada ou
+ * combina connosco. (Antes ficava "a confirmar" e passavam entregas a 38 km.)
  *
  * Porquê: a pesquisa só por rua apanhava ruas homónimas noutro concelho
  * (uma morada a 11 km deu 3,9 km).
@@ -99,15 +104,24 @@ const ponto = (x) => ({ lat: Number(x.lat), lng: Number(x.lon) })
 const cpDoMapa = (x) => String(x.address?.postcode ?? '').replace(/\s/g, '')
 const ruaDoMapa = (x) => x.address?.road ?? x.address?.pedestrian ?? x.address?.square ?? (x.category === 'highway' ? x.name : '')
 
-/** Coordenadas de uma morada portuguesa (rua + código postal). null = não deu para ter a certeza. */
+/** Tipos de lugar que servem de "localidade" (não ruas nem pontos soltos). */
+const LUGARES = new Set([
+  'city', 'town', 'village', 'hamlet', 'suburb', 'quarter', 'neighbourhood', 'city_district',
+  'borough', 'municipality', 'locality', 'isolated_dwelling', 'administrative',
+])
+
+/**
+ * Coordenadas de uma morada portuguesa (rua + código postal), com a precisão:
+ * { lat, lng, precisao: 'rua' | 'localidade' }. null = não deu para a encontrar.
+ */
 export async function localizar({ morada, localidade, cp }) {
   const m = String(cp ?? '').trim().match(CP7)
   if (!m) return null
   return tentar(async () => {
     const [, cp4, cp3] = m
     const zona = await zonaDe(cp4)
+    if (!zona) return null
     const alvo = partirMorada(morada)
-    if (!zona || !alvo.nome) return null
 
     const dLat = zona.raioKm / 111
     const dLng = zona.raioKm / (111 * Math.cos((zona.lat * Math.PI) / 180))
@@ -117,30 +131,49 @@ export async function localizar({ morada, localidade, cp }) {
       limit: '40',
     }
     const certos = (lista) => lista.filter((x) => cpDoMapa(x).slice(0, 4) === cp4 && mesmaRua(alvo, partirMorada(ruaDoMapa(x))))
+    const rua = (p) => ({ ...p, precisao: 'rua' })
 
-    // 1.º como foi escrita (com porta e localidade); 2.º só o nome da rua
-    let bons = certos(await procurar({
-      ...area, street: [alvo.porta, alvo.rua].filter(Boolean).join(' '), city: String(localidade ?? '').trim(),
-    }))
-    if (!bons.length) {
-      await espera(1000) // regra do OpenStreetMap: no máximo 1 pedido por segundo
-      bons = certos(await procurar({ ...area, street: alvo.rua }))
+    if (alvo.nome) {
+      // 1.º como foi escrita (com porta e localidade); 2.º só o nome da rua
+      let bons = certos(await procurar({
+        ...area, street: [alvo.porta, alvo.rua].filter(Boolean).join(' '), city: String(localidade ?? '').trim(),
+      }))
+      if (!bons.length) {
+        await espera(1000) // regra do OpenStreetMap: no máximo 1 pedido por segundo
+        bons = certos(await procurar({ ...area, street: alvo.rua }))
+      }
+      if (bons.length) {
+        const porta = alvo.porta && bons.find((x) => normal(String(x.address?.house_number ?? '')) === alvo.porta)
+        if (porta) return rua(ponto(porta))
+        const exato = bons.find((x) => cpDoMapa(x) === `${cp4}-${cp3}`)
+        if (exato) return rua(ponto(exato))
+        // Vários troços da mesma rua: o meio, se forem mesmo a mesma rua
+        const pts = bons.map(ponto)
+        const meio = {
+          lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length,
+          lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length,
+        }
+        if (pts.every((p) => distanciaKm(meio, p) <= DISPERSAO_MAX)) return rua(meio)
+        // Rua comprida (ex.: Av. da Boavista): o troço com o código postal mais
+        // perto do escrito — os códigos seguem a rua, por isso andam juntos
+        const perto = [...bons].sort((a, b) => Math.abs(cp3Do(a) - Number(cp3)) - Math.abs(cp3Do(b) - Number(cp3)))[0]
+        if (Number.isFinite(cp3Do(perto))) return rua(ponto(perto))
+      }
     }
-    if (!bons.length) return null
 
-    const porta = alvo.porta && bons.find((x) => normal(String(x.address?.house_number ?? '')) === alvo.porta)
-    if (porta) return ponto(porta)
-    const exato = bons.find((x) => cpDoMapa(x) === `${cp4}-${cp3}`)
-    if (exato) return ponto(exato)
-    // Vários troços da mesma rua: o meio, se forem mesmo a mesma rua
-    const pts = bons.map(ponto)
-    const meio = {
-      lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length,
-      lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length,
-    }
-    return pts.every((p) => distanciaKm(meio, p) <= DISPERSAO_MAX) ? meio : null
+    // Sem a rua: a localidade dentro da zona do código postal. Escrita inteira
+    // ("Gandra, Paredes") para não cair num lugarejo homónimo mais perto.
+    const loc = String(localidade ?? '').replace(/\s+-\s+/g, ', ').trim()
+    if (!loc) return null
+    await espera(1000)
+    const lugares = (await procurar({ ...area, q: loc, limit: '5' }))
+      .filter((x) => LUGARES.has(x.addresstype) || x.category === 'place' || x.category === 'boundary')
+    return lugares.length ? { ...ponto(lugares[0]), precisao: 'localidade' } : null
   })
 }
+
+/** Os 3 últimos dígitos do código postal de um resultado do mapa (NaN se não tiver). */
+const cp3Do = (x) => Number(cpDoMapa(x).split('-')[1])
 
 /** Coordenadas de uma morada escrita de uma vez (a morada de partida, no CRM). */
 export async function localizarTexto(texto) {

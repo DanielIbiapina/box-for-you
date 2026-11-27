@@ -520,6 +520,8 @@ function entregaDe(form) {
     cp: form.cp,
     lat: form.tipo === 'entrega' ? form.lat : undefined,
     lng: form.tipo === 'entrega' ? form.lng : undefined,
+    // 'rua' ou 'localidade' (distância aproximada) — a dona vê isto em Vendas
+    precisao: form.tipo === 'entrega' ? form.precisao : undefined,
   }
 }
 

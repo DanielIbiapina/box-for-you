@@ -1451,3 +1451,5 @@ button.linha-box-fotos:active { transform: scale(0.94); }
 
 /* ── Black Crumb: construtor (o mini de oferta é surpresa: legenda por baixo) ── */
 .black-montar-brinde { margin-top: 0.6rem; text-align: center; font-size: var(--text-xs); font-weight: 700; color: var(--color-accent-dark); }
+
+.passo-info a { color: var(--color-accent-dark); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }

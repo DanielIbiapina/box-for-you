@@ -10,6 +10,7 @@ import { toquePasso } from './sensacao'
 import { localizar, distanciaKm, taxaPara, cpCompleto } from './geo'
 import { faixasDoDia, desvioRelogio, rotuloHora } from './horarios'
 import { validarCupom } from './api'
+import { linkWhatsApp } from './negocio'
 
 const RECEBER = [
   { id: 'levantar', Icone: IconeSaco, imagem: '/landing-icons/levantar.webp', titulo: 'Levantar', nota: 'Vens tu buscar' },
@@ -92,7 +93,11 @@ export function Checkout({
   const [comNota, setComNota] = useState(false)
   const [dias] = useState(() => campanha?.dias ?? proximosDias(8))
   const [hoje] = useState(hojeIso)
-  /** Distância/taxa da morada de entrega: { chave, estado: 'a-ver'|'ok'|'sem-mapa', km, taxa, lat, lng } */
+  /**
+   * Distância/taxa da morada de entrega: { chave, estado: 'a-ver'|'ok'|'fora'|'sem-mapa', km, taxa, lat, lng, aprox }.
+   * aprox = só se encontrou a localidade (distância aproximada). 'sem-mapa' já não
+   * deixa avançar: sem saber onde é, não aceitamos a entrega.
+   */
   const [geo, setGeo] = useState(null)
   /** Cupão aplicado: { codigo, percent } */
   const [cupom, setCupom] = useState(null)
@@ -145,7 +150,10 @@ export function Checkout({
     else {
       const km = distanciaKm(regrasEntrega.origem, pos)
       const taxa = taxaPara(km, regrasEntrega.faixas)
-      r = { chave: chaveMorada, estado: taxa === null ? 'fora' : 'ok', km, taxa, lat: pos.lat, lng: pos.lng }
+      r = {
+        chave: chaveMorada, estado: taxa === null ? 'fora' : 'ok', km, taxa, lat: pos.lat, lng: pos.lng,
+        aprox: pos.precisao === 'localidade',
+      }
     }
     setGeo(r)
     return r
@@ -287,12 +295,11 @@ export function Checkout({
       const p = semMorada()
       if (p) return setErro(p)
       // com taxa por distância, só avança depois de saber quanto custa (ou que não chegamos lá)
-      const avisado = geoAtual?.estado === 'sem-mapa'
       calcularEntrega().then((r) => {
         if (r?.estado === 'fora') {
           setErro(`Ainda não entregamos tão longe (cerca de ${fmtKm(r.km)}). Podes voltar e escolher levantar.`)
-        } else if (r?.estado === 'sem-mapa' && !avisado) {
-          // fica aqui uma vez, para o aviso se ver (pode ser um erro na rua ou no código postal)
+        } else if (r?.estado === 'sem-mapa') {
+          setErro('Não encontrámos esta morada. Confirma a rua, a localidade e o código postal.')
         } else {
           irPara('contacto')
         }
@@ -325,6 +332,7 @@ export function Checkout({
         local: localEscolhido?.id ?? '',
         lat: g?.estado === 'ok' ? g.lat : undefined,
         lng: g?.estado === 'ok' ? g.lng : undefined,
+        precisao: g?.estado === 'ok' ? (g.aprox ? 'localidade' : 'rua') : undefined,
         cupom: cupom?.codigo ?? '',
       })
       if (!resposta?.ok) {
@@ -349,7 +357,6 @@ export function Checkout({
   else if (passo === 'local' && localEscolhido) cta = { rotulo: 'Continuar' }
   else if (passo === 'quando' && form.data && horaValida) cta = { rotulo: 'Continuar' }
   else if (passo === 'morada' && geoAtual?.estado === 'a-ver') cta = { rotulo: 'A calcular a distância…', off: true }
-  else if (passo === 'morada' && geoAtual?.estado === 'sem-mapa') cta = { rotulo: 'Continuar mesmo assim' }
   else if (passo === 'morada' || passo === 'contacto') cta = { rotulo: 'Continuar' }
   else if (passo === 'pagar' && form.pagamento) cta = { rotulo: 'Continuar' }
   else if (passo === 'confirmar') {
@@ -584,14 +591,18 @@ export function Checkout({
                 </div>
                 {regrasEntrega && geoAtual?.estado === 'ok' && (
                   <p className="passo-info">
-                    Fica a cerca de {fmtKm(geoAtual.km)} · entrega{' '}
+                    Fica a cerca de {fmtKm(geoAtual.km)}{geoAtual.aprox ? ' (pela localidade)' : ''} · entrega{' '}
                     <b>{taxaEntrega > 0 ? fmtEuro(taxaEntrega) : 'grátis'}</b>
                   </p>
                 )}
                 {regrasEntrega && geoAtual?.estado === 'sem-mapa' && (
                   <p className="passo-info">
-                    Não encontrámos esta rua com este código postal. Confirma se estão certos
-                    {taxaPendente ? '. Se estiverem, combinamos a taxa de entrega contigo.' : '. A entrega é grátis.'}
+                    Não encontrámos esta morada no mapa. Confirma a rua, a localidade e o código postal.
+                    Se estiver tudo certo,{' '}
+                    <a href={linkWhatsApp(`Olá! Quero encomendar com entrega em ${[form.morada, form.localidade, form.cp].filter(Boolean).join(', ')}, mas o site não encontrou a morada.`)} target="_blank" rel="noreferrer">
+                      fala connosco no WhatsApp
+                    </a>{' '}
+                    para combinarmos a entrega, ou volta atrás e escolhe levantar.
                   </p>
                 )}
                 {regrasEntrega && (

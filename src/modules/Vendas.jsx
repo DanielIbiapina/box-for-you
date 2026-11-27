@@ -9,7 +9,7 @@ import { SearchInput } from '../components/SearchInput'
 import { todayKey } from '../lib/salesAnalytics'
 import { mesDoPedido } from '../lib/contas'
 import { EtapaPedido } from '../components/EtapaPedido'
-import { IconeCookie, IconeCupao, IconeLoja } from '../loja/icones'
+import { IconeCookie, IconeCupao, IconeLoja, IconeMota } from '../loja/icones'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -107,7 +107,29 @@ function entregaLabel(e) {
   const data = [dia, hora].filter(Boolean).join(' ')
   if (e.tipo === 'levantar') return ['Levantar', e.local?.nome, data].filter(Boolean).join(' · ')
   const morada = [e.morada, e.localidade, e.cp].filter(Boolean).join(', ')
-  return ['Entrega', data, morada].filter(Boolean).join(' · ')
+  // a distância e a taxa que a loja calculou (aprox. = só achou a localidade)
+  const km = e.distanciaKm != null ? `${String(e.distanciaKm).replace('.', ',')} km${e.aprox ? ' (aprox.)' : ''}` : ''
+  const taxa = e.taxaAConfirmar ? 'taxa a confirmar'
+    : e.taxa != null ? (Number(e.taxa) > 0 ? `taxa ${fmtEuro(Number(e.taxa))}` : 'entrega grátis') : ''
+  return ['Entrega', data, morada, km, taxa].filter(Boolean).join(' · ')
+}
+
+/**
+ * Entrega que a loja não conseguiu pôr no mapa (pedidos antigos, "taxa a confirmar")
+ * ou só pela localidade: a dona tem de confirmar a distância e cobrar a taxa.
+ */
+function ChipEntrega({ entrega }) {
+  if (entrega?.tipo !== 'entrega' || !(entrega.taxaAConfirmar || entrega.aprox)) return null
+  return (
+    <span
+      className="bfy-chip badge-baixo"
+      title={entrega.taxaAConfirmar
+        ? 'A loja não encontrou esta morada no mapa: confirma a distância e cobra a taxa de entrega.'
+        : 'A distância foi calculada só pela localidade: confirma a morada.'}
+    >
+      <IconeMota size={13} /> {entrega.taxaAConfirmar ? 'Taxa a confirmar' : 'Distância aprox.'}
+    </span>
+  )
 }
 
 /**
@@ -832,6 +854,7 @@ export function Vendas() {
                         {p.origem === 'loja' && <ChipLoja />}
                         {p.campanha === 'black' && <ChipBlack antecipado={p.entrega?.antecipado} />}
                         {p.cupom && <ChipCupao codigo={p.cupom} desconto={p.desconto} />}
+                        <ChipEntrega entrega={p.entrega} />
                         {p.referencia && (
                           <span className="bfy-num text-[11px] font-black" style={{ color: 'var(--color-accent-dark)' }}>
                             #{p.referencia}
@@ -1035,6 +1058,7 @@ function PedidoCard({ pedido, cookies, st, onEdit, onDelete, etapa }) {
           {pedido.origem === 'loja' && <ChipLoja />}
           {pedido.campanha === 'black' && <ChipBlack antecipado={pedido.entrega?.antecipado} />}
           {pedido.cupom && <ChipCupao codigo={pedido.cupom} desconto={pedido.desconto} />}
+          <ChipEntrega entrega={pedido.entrega} />
           {pedido.referencia && (
             <span className="bfy-num text-[11px] font-black" style={{ color: 'var(--color-accent-dark)' }}>
               #{pedido.referencia}

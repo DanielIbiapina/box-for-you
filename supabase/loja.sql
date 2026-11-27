@@ -843,8 +843,10 @@ begin
   end if;
 
   -- ── taxa de entrega por distância (linha reta) ─────────────────────────────
-  -- Sem coordenadas (a morada não foi encontrada no mapa), aceita-se o pedido
-  -- com a taxa "a confirmar" — a dona combina com o cliente.
+  -- Sem coordenadas (a morada não foi encontrada no mapa) NÃO se aceita a
+  -- entrega: antes ficava "a confirmar" e passou uma entrega a 38 km sem taxa.
+  -- precisao = 'localidade': a loja só achou a localidade, a distância é
+  -- aproximada e fica marcada para a dona ver.
   v_ent_cfg := coalesce(v_cfg.loja_entrega_config, '{}'::jsonb);
   if v_tipo = 'entrega'
      and coalesce(v_ent_cfg->>'ativo', '') = 'true'
@@ -880,9 +882,11 @@ begin
           'cookieId', 'entrega', 'qty', 1, 'preco', v_taxa,
           'customLabel', format('Entrega (%s km)', replace(round(v_km, 1)::text, '.', ',')));
       end if;
-      v_entrega := v_entrega || jsonb_build_object('distanciaKm', round(v_km, 1), 'taxa', v_taxa);
+      v_entrega := v_entrega || jsonb_build_object('distanciaKm', round(v_km, 1), 'taxa', v_taxa)
+                   || case when v_ent->>'precisao' = 'localidade' then '{"aprox": true}'::jsonb else '{}'::jsonb end;
     else
-      v_entrega := v_entrega || jsonb_build_object('taxaAConfirmar', true);
+      return jsonb_build_object('ok', false, 'campo', 'morada', 'motivo',
+        'Não encontrámos esta morada no mapa. Confirma a rua, a localidade e o código postal, ou fala connosco no WhatsApp para combinarmos a entrega.');
     end if;
   end if;
 
@@ -1138,9 +1142,15 @@ begin
     return jsonb_build_object('ok', true, 'entrega', v_entrega, 'entregaAtiva', false);
   end if;
 
-  -- sem coordenadas (a rua não apareceu no mapa) a taxa fica a confirmar
+  -- sem coordenadas (a morada não apareceu no mapa) não se aceita a entrega:
+  -- antes ficava "a confirmar" e passou uma entrega a 38 km sem taxa
   if coalesce(v_ent->>'lat', '') !~ '^-?\d+(\.\d+)?$' or coalesce(v_ent->>'lng', '') !~ '^-?\d+(\.\d+)?$' then
-    return jsonb_build_object('ok', true, 'entrega', v_entrega, 'entregaAtiva', true, 'semMapa', true);
+    return jsonb_build_object('ok', false, 'campo', 'morada', 'motivo',
+      'Não encontrámos esta morada no mapa. Confirma a rua, a localidade e o código postal, ou fala connosco no WhatsApp para combinarmos a entrega.');
+  end if;
+  -- só se achou a localidade: a distância é aproximada (a dona vê isto em Vendas)
+  if v_ent->>'precisao' = 'localidade' then
+    v_entrega := v_entrega || '{"aprox": true}'::jsonb;
   end if;
 
   v_km := 2 * 6371 * asin(sqrt(
