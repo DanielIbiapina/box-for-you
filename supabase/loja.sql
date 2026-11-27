@@ -107,7 +107,7 @@ update configuracao
 alter table pedidos add column if not exists campanha text;
 
 -- Black Crumb (Black Friday, nov/2026). Horas em hora de Lisboa. Três fases:
---   1. até antecipadoAte (sex 19h): "encomenda antecipada" — selos a dobrar e
+--   1. até antecipadoAte (sex 21h; era 19h, alargado a 27/11): "encomenda antecipada" — selos a dobrar e
 --      vantagem na entrega; marca-se de diasAntecipado[0] a diasAntecipado[1].
 --   2. de antecipadoAte até reabre (sáb 0h): tudo fechado, ninguém encomenda.
 --   3. de reabre até fim (seg 0h): Black Crumb outra vez, só para os dias de
@@ -127,7 +127,7 @@ update configuracao
    set loja_black = '{
      "ativo": true,
      "nome": "Black Crumb",
-     "antecipadoAte": "2026-11-27T19:00",
+     "antecipadoAte": "2026-11-27T21:00",
      "reabre": "2026-11-28T00:00",
      "fim": "2026-11-30T00:00",
      "fechaLojaNormal": true,

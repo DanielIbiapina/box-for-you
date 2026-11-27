@@ -192,7 +192,7 @@ Its config is `configuracao.loja_black` (dates, combos, prices, gift, delivery r
 `loja_black_estado()` turns it into what the store sees in `loja_cardapio().black`.
 
 The campaign runs in phases (`fase`), all in Lisbon time:
-1. `antecipado` — until `antecipadoAte` (Fri 19h): pre-orders with perks, any day of
+1. `antecipado` — until `antecipadoAte` (Fri 21h; extended from 19h on 27/11 with a direct update of `loja_black`): pre-orders with perks, any day of
    `diasAntecipado` (28/11–6/12).
 2. `pausa` — until `reabre` (Sat 0h): nobody can order (`aberta: false`).
 3. `noDia` — until `fim` (Mon 0h): orders only for `diasNoDia` (Sat/Sun), normal fee.
